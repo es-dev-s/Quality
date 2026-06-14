@@ -153,3 +153,7 @@ Only these roles can open `/forms/audit`: **Quality Analyst**, **Quality Manager
 **Agent** and **Supervisor** cannot — they get redirected to Dashboard or Access Denied. Log in as `admin@example.com` (superadmin) or a Quality Analyst account.
 
 After changing roles or running seed, **sign out and sign in again** so the session picks up permissions.
+
+### 8. Audit form crashes on HTTP (`crypto.randomUUID is not a function`)
+
+Browsers disable `crypto.randomUUID` on plain HTTP (only HTTPS and localhost get it). The audit form uses a fallback UUID helper — pull latest code, then `npm run build` and restart PM2.

@@ -33,6 +33,7 @@ import {
 } from "@/lib/audit/feedback";
 import type { FeedbackSecurity, FeedbackStatus } from "@/lib/audit/feedback";
 import { AuditScorePanel } from "@/components/forms/audit-score-panel";
+import { createRandomUUID } from "@/lib/random-id";
 
 function templateInteractionType(templateId: string): InteractionType | null {
   if (templateId === "chat") return "Chat";
@@ -155,7 +156,7 @@ export function AuditForm({
 
   useEffect(() => {
     if (!isEditMode && !submissionKeyRef.current) {
-      submissionKeyRef.current = crypto.randomUUID();
+      submissionKeyRef.current = createRandomUUID();
     }
   }, [isEditMode]);
   const config = interactionConfig;
