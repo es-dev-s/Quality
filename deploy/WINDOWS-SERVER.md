@@ -4,10 +4,19 @@ Yes, the app works over **plain HTTP** on a Windows Server for users on your net
 
 ## Login redirect loop (most common issue)
 
-If login succeeds but you are sent back to `/login`, the session cookie was not saved. This usually happens when:
+If login succeeds but you are sent back to `/login?callbackUrl=...`, the **session cookie was not saved or not read by middleware**.
 
-1. **`npm run start` (production)** was used **without** `AUTH_SECURE_COOKIES="false"` on HTTP, or
-2. **`APP_URL`** does not match what users type in the browser (e.g. env has `http://192.168.1.50:4782` but users open `http://WIN-SERVER:4782`).
+Log pattern:
+```text
+POST /login?callbackUrl=... 303
+GET /login?callbackUrl=/dashboard 200   ← session missing, bounced back to login
+```
+
+This usually happens when:
+
+1. **`AUTH_SECURE_COOKIES` is not `"false"` at `npm run build` time** — middleware (edge) expects `__Secure-` cookies that HTTP browsers drop, or
+2. **`APP_URL` does not match** what users type in the browser, or
+3. Build was done on another PC **without** the server `.env`, then copied to the server.
 
 ### Fix — server `.env`
 
@@ -23,12 +32,21 @@ AUTH_SECRET="long-random-secret"
 
 Replace `YOUR_SERVER_IP` with the server’s LAN IP. `APP_URL` must match the address users use in the browser.
 
-After changing `.env`:
+After changing `.env`, **on the server** (not your laptop):
 
 ```powershell
 npm run build
 pm2 restart quality-audit
 ```
+
+Confirm build output includes:
+```text
+[deploy] AUTH_SECURE_COOKIES=false APP_URL=http://10.80.80.221:4782
+```
+
+Then open `http://10.80.80.221:4782/api/health` — expect `"secureCookies": false`.
+
+After login, DevTools → Application → Cookies → `http://10.80.80.221:4782` should show **`authjs.session-token`** (not `__Secure-authjs.session-token`).
 
 ## First-time setup on the server
 

@@ -1,10 +1,15 @@
 import type { NextAuthConfig } from "next-auth";
 import type { SessionRole } from "@/lib/rbac";
-import { shouldTrustHost, shouldUseSecureCookies } from "@/lib/deployment";
+import {
+  buildHttpAuthCookies,
+  resolveTrustHost,
+  useSecureCookies,
+} from "@/lib/auth-cookies";
 
 export const authConfig = {
-  trustHost: shouldTrustHost(),
-  useSecureCookies: shouldUseSecureCookies(),
+  trustHost: resolveTrustHost(),
+  useSecureCookies,
+  ...(useSecureCookies ? {} : { cookies: buildHttpAuthCookies() }),
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",
@@ -27,18 +32,13 @@ export const authConfig = {
     },
     authorized({ auth, request }) {
       const pathname = request.nextUrl.pathname;
-      const isLoggedIn = !!auth?.user;
-      const isLoginPage = pathname.startsWith("/login");
 
-      if (pathname === "/") {
-        return false;
+      // Login and root are handled in middleware.ts — do not block here.
+      if (pathname === "/" || pathname.startsWith("/login")) {
+        return true;
       }
 
-      if (isLoginPage) {
-        return !isLoggedIn;
-      }
-
-      return isLoggedIn;
+      return !!auth?.user;
     },
   },
 } satisfies NextAuthConfig;

@@ -1,5 +1,6 @@
 import { collectAllowedOrigins } from "@/lib/deployment-origins";
-import { getAppUrl, shouldTrustHost, shouldUseSecureCookies } from "@/lib/deployment";
+import { getAppUrl, shouldTrustHost } from "@/lib/deployment";
+import { resolveUseSecureCookies } from "@/lib/auth-cookies";
 import { prisma } from "@/lib/prisma";
 import { ensureDefaultTemplate } from "@/lib/audit/template-db";
 
@@ -11,7 +12,8 @@ export async function GET() {
     ok: true,
     appUrl: getAppUrl() ?? null,
     authTrustHost: shouldTrustHost(),
-    secureCookies: shouldUseSecureCookies(),
+    secureCookies: resolveUseSecureCookies(),
+    authSecureCookiesEnv: process.env.AUTH_SECURE_COOKIES ?? null,
     allowedOrigins: collectAllowedOrigins(),
     nodeEnv: process.env.NODE_ENV ?? null,
   };
