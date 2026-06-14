@@ -107,6 +107,11 @@ export function canReadAuditLogs(role?: SessionRole | null): boolean {
   return hasScope(role, PERMISSIONS.AUDIT_LOGS_READ);
 }
 
+/** Permanent audit deletion — super admin only. */
+export function canDeleteAuditLogs(role?: SessionRole | null): boolean {
+  return isSuperAdmin(role);
+}
+
 export function canWriteAuditTemplates(role?: SessionRole | null): boolean {
   return hasScope(role, PERMISSIONS.AUDIT_TEMPLATES_WRITE);
 }

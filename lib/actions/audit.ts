@@ -9,7 +9,7 @@ import {
   requirePermission,
 } from "@/lib/auth-guards";
 import { PERMISSIONS } from "@/lib/permissions";
-import { canEditFeedbackFully, hasScope } from "@/lib/rbac";
+import { canEditFeedbackFully, hasScope, isSuperAdmin } from "@/lib/rbac";
 import { scopedAuditByIdWhere, scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
 import { calculateResults } from "@/lib/audit/calculate-results";
 import { getInteractionConfig } from "@/lib/actions/interaction-config";
@@ -21,6 +21,7 @@ import { withDbRetry } from "@/lib/db/with-db-retry";
 import { assertWriteRateLimit } from "@/lib/server/rate-limit";
 import {
   auditIdSchema,
+  deleteAuditSubmissionsSchema,
   saveAuditSubmissionSchema,
   updateAuditFeedbackSchema,
   updateAuditSubmissionSchema,
@@ -51,6 +52,13 @@ import type {
 
 function validationError(message: string) {
   return { error: message };
+}
+
+function revalidateAuditPaths() {
+  revalidatePath("/dashboard");
+  revalidatePath("/audit-logs");
+  revalidatePath("/analytics");
+  revalidatePath("/reports");
 }
 
 function recordFromStoredSubmission(
@@ -730,6 +738,45 @@ export async function updateAuditFeedback(
   revalidatePath("/reports");
 
   return { success: true as const };
+}
+
+export async function deleteAuditSubmissions(ids: string[]) {
+  const session = await requireAuth();
+  if (!isSuperAdmin(session.user.role)) {
+    return permissionError();
+  }
+
+  const rateLimited = assertWriteRateLimit(session.user.id, "audit:delete", {
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (rateLimited) return rateLimited;
+
+  const parsed = deleteAuditSubmissionsSchema.safeParse({ ids });
+  if (!parsed.success) {
+    return validationError(
+      parsed.error.issues[0]?.message ?? "Invalid delete request."
+    );
+  }
+
+  const uniqueIds = [...new Set(parsed.data.ids)];
+
+  try {
+    const result = await prisma.auditSubmission.deleteMany({
+      where: { id: { in: uniqueIds } },
+    });
+
+    if (result.count === 0) {
+      return { error: "No matching audits found." };
+    }
+
+    revalidateAuditPaths();
+
+    return { success: true as const, deleted: result.count };
+  } catch (error) {
+    console.error("deleteAuditSubmissions failed:", error);
+    return { error: "Could not delete the selected audits. Please try again." };
+  }
 }
 
 /** @deprecated Use updateAuditFeedback */

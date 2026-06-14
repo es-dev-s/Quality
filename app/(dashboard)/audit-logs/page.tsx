@@ -7,6 +7,7 @@ import { getAuditLogs } from "@/lib/actions/audit";
 import {
   canEditFeedbackFully,
   canEditFeedbackStatus,
+  canDeleteAuditLogs,
   canWriteAuditLogs,
 } from "@/lib/rbac";
 
@@ -19,6 +20,7 @@ async function AuditLogsContent() {
       canEditFeedbackStatus={canEditFeedbackStatus(session.user.role)}
       canEditFeedbackFully={canEditFeedbackFully(session.user.role)}
       canEditAudits={canWriteAuditLogs(session.user.role)}
+      canDeleteAudits={canDeleteAuditLogs(session.user.role)}
     />
   );
 }

@@ -572,7 +572,46 @@
 .audit-logs__head-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+}
+
+.audit-logs__bulk-count {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-muted-fg);
+}
+
+.audit-logs__select-col {
+  width: 44px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.audit-logs__checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.audit-logs__row--selected {
+  background: color-mix(in srgb, var(--color-accent-soft) 65%, transparent);
+}
+
+.audit-logs__action-btn--danger {
+  color: var(--color-danger);
+}
+
+.audit-logs__action-btn--danger:hover {
+  border-color: color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+}
+
+.audit-logs__action-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .platform-param-card--danger {

@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition, useEffect } from "react";
-import { ChevronDown, Download, Eye, Pencil, Search, SlidersHorizontal, X } from "lucide-react";
+import { ChevronDown, Download, Eye, Pencil, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { AuditDetailModal } from "@/components/audit-logs/audit-detail-modal";
 import { Input, Select } from "@/components/primitives/field";
+import { useToast } from "@/components/primitives/toast";
 import { cn } from "@/lib/utils";
-import { updateAuditFeedback } from "@/lib/actions/audit";
+import { deleteAuditSubmissions, updateAuditFeedback } from "@/lib/actions/audit";
 import type { AuditLogEntry } from "@/lib/audit/audit-records";
 import {
   FEEDBACK_SECURITY_OPTIONS,
@@ -26,6 +27,7 @@ type AuditLogsTableProps = {
   canEditFeedbackStatus?: boolean;
   canEditFeedbackFully?: boolean;
   canEditAudits?: boolean;
+  canDeleteAudits?: boolean;
 };
 
 type ScorePreset = "all" | "90+" | "75-89" | "50-74" | "1-49" | "0";
@@ -175,7 +177,9 @@ export function AuditLogsTable({
   canEditFeedbackStatus = false,
   canEditFeedbackFully = false,
   canEditAudits = false,
+  canDeleteAudits = false,
 }: AuditLogsTableProps) {
+  const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [scorePreset, setScorePreset] = useState<ScorePreset>("all");
   const [grade, setGrade] = useState("");
@@ -187,11 +191,30 @@ export function AuditLogsTable({
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
   const [rows, setRows] = useState(submissions);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    ids: string[];
+    label: string;
+  } | null>(null);
   const [, startFeedback] = useTransition();
+  const [deletePending, startDelete] = useTransition();
+
+  const columnCount = canDeleteAudits ? 12 : 11;
 
   useEffect(() => {
     setRows(submissions);
   }, [submissions]);
+
+  useEffect(() => {
+    setSelectedIds((current) => {
+      const rowIds = new Set(rows.map((row) => row.id));
+      const next = new Set<string>();
+      for (const id of current) {
+        if (rowIds.has(id)) next.add(id);
+      }
+      return next.size === current.size ? current : next;
+    });
+  }, [rows]);
 
   const lobs = useMemo(
     () => [...new Set(rows.map((s) => s.lob))].sort(),
@@ -219,6 +242,73 @@ export function AuditLogsTable({
       return true;
     });
   }, [rows, search, scorePreset, dateRange, grade, type, businessType, lob, feedbackStatus]);
+
+  const filteredIds = useMemo(() => filtered.map((row) => row.id), [filtered]);
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((row) => selectedIds.has(row.id));
+  const someFilteredSelected =
+    filtered.some((row) => selectedIds.has(row.id)) && !allFilteredSelected;
+  const selectedCount = selectedIds.size;
+
+  function toggleRowSelection(id: string, checked: boolean) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleFilteredSelection(checked: boolean) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      for (const id of filteredIds) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  function openDeleteConfirm(ids: string[]) {
+    if (ids.length === 0) return;
+    const label =
+      ids.length === 1
+        ? (rows.find((row) => row.id === ids[0])?.auditCode ?? "this audit")
+        : `${ids.length} selected audits`;
+    setDeleteConfirm({ ids, label });
+  }
+
+  function confirmDelete() {
+    if (!deleteConfirm) return;
+    const ids = deleteConfirm.ids;
+    setDeleteConfirm(null);
+
+    startDelete(async () => {
+      const result = await deleteAuditSubmissions(ids);
+      if ("error" in result && result.error) {
+        toast(result.error, "error");
+        return;
+      }
+
+      const deleted = "deleted" in result ? result.deleted : ids.length;
+      setRows((current) => current.filter((row) => !ids.includes(row.id)));
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        for (const id of ids) next.delete(id);
+        return next;
+      });
+      if (viewId && ids.includes(viewId)) {
+        setViewId(null);
+      }
+      toast(
+        deleted === 1
+          ? "Audit deleted permanently."
+          : `${deleted} audits deleted permanently.`,
+        "success"
+      );
+    });
+  }
 
   const hasActiveFilters =
     search.trim() !== "" ||
@@ -379,6 +469,30 @@ export function AuditLogsTable({
             <p className="audit-logs__desc">{resultLabel}</p>
           </div>
           <div className="audit-logs__head-actions">
+            {canDeleteAudits && selectedCount > 0 ? (
+              <>
+                <span className="audit-logs__bulk-count">
+                  {selectedCount} selected
+                </span>
+                <button
+                  type="button"
+                  className="ui-btn ui-btn--danger ui-btn--sm"
+                  disabled={deletePending}
+                  onClick={() => openDeleteConfirm(Array.from(selectedIds))}
+                >
+                  <Trash2 size={15} aria-hidden />
+                  Delete selected
+                </button>
+                <button
+                  type="button"
+                  className="ui-btn ui-btn--secondary ui-btn--sm"
+                  disabled={deletePending}
+                  onClick={() => setSelectedIds(new Set())}
+                >
+                  Clear selection
+                </button>
+              </>
+            ) : null}
             {filtered.length > 0 && (
               <button
                 type="button"
@@ -619,6 +733,21 @@ export function AuditLogsTable({
         <table className="ui-table audit-logs__table">
           <thead>
             <tr>
+              {canDeleteAudits ? (
+                <th className="audit-logs__select-col">
+                  <input
+                    type="checkbox"
+                    className="audit-logs__checkbox"
+                    checked={allFilteredSelected}
+                    ref={(input) => {
+                      if (input) input.indeterminate = someFilteredSelected;
+                    }}
+                    onChange={(e) => toggleFilteredSelection(e.target.checked)}
+                    disabled={filtered.length === 0 || deletePending}
+                    aria-label="Select all visible audits"
+                  />
+                </th>
+              ) : null}
               <th>Agent</th>
               <th>Type / LOB</th>
               <th>Call date</th>
@@ -635,7 +764,7 @@ export function AuditLogsTable({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={11} className="ui-table__empty">
+                <td colSpan={columnCount} className="ui-table__empty">
                   No audits yet.{" "}
                   <Link href="/forms/audit" className="audit-logs__empty-link">
                     Start your first audit
@@ -644,7 +773,7 @@ export function AuditLogsTable({
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={11} className="ui-table__empty">
+                <td colSpan={columnCount} className="ui-table__empty">
                   No audits match your filters.{" "}
                   <button
                     type="button"
@@ -657,7 +786,26 @@ export function AuditLogsTable({
               </tr>
             ) : (
               filtered.map((row) => (
-                <tr key={row.id}>
+                <tr
+                  key={row.id}
+                  className={cn(
+                    selectedIds.has(row.id) && "audit-logs__row--selected"
+                  )}
+                >
+                  {canDeleteAudits ? (
+                    <td className="audit-logs__select-col">
+                      <input
+                        type="checkbox"
+                        className="audit-logs__checkbox"
+                        checked={selectedIds.has(row.id)}
+                        onChange={(e) =>
+                          toggleRowSelection(row.id, e.target.checked)
+                        }
+                        disabled={deletePending}
+                        aria-label={`Select audit ${row.auditCode}`}
+                      />
+                    </td>
+                  ) : null}
                   <td>
                     <div className="audit-logs__agent-cell">
                       <span className="audit-logs__avatar" aria-hidden>
@@ -804,6 +952,17 @@ export function AuditLogsTable({
                           <Pencil size={15} aria-hidden />
                         </Link>
                       ) : null}
+                      {canDeleteAudits ? (
+                        <button
+                          type="button"
+                          className="audit-logs__action-btn audit-logs__action-btn--danger"
+                          title="Delete audit"
+                          disabled={deletePending}
+                          onClick={() => openDeleteConfirm([row.id])}
+                        >
+                          <Trash2 size={15} aria-hidden />
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
@@ -814,6 +973,49 @@ export function AuditLogsTable({
       </div>
 
       <AuditDetailModal auditId={viewId} onClose={() => setViewId(null)} />
+
+      {deleteConfirm ? (
+        <div className="platform-modal" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            className="platform-modal__backdrop"
+            aria-label="Cancel delete"
+            onClick={() => setDeleteConfirm(null)}
+          />
+          <div className="platform-modal__panel">
+            <header className="platform-modal__head">
+              <div>
+                <h2 className="platform-modal__title">Delete audit record?</h2>
+                <p className="platform-modal__sub">
+                  {deleteConfirm.ids.length === 1
+                    ? `Permanently delete ${deleteConfirm.label}. This cannot be undone.`
+                    : `Permanently delete ${deleteConfirm.label}. This cannot be undone.`}
+                </p>
+              </div>
+            </header>
+            <div className="platform-modal__body">
+              <div className="platform-settings__confirm-actions">
+                <button
+                  type="button"
+                  className="ui-btn ui-btn--secondary"
+                  disabled={deletePending}
+                  onClick={() => setDeleteConfirm(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="ui-btn ui-btn--danger"
+                  disabled={deletePending}
+                  onClick={confirmDelete}
+                >
+                  {deletePending ? "Deleting…" : "Delete"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
