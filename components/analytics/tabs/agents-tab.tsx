@@ -16,12 +16,14 @@ import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
 import { QmsChartTooltip } from "@/components/analytics/qms-chart-tooltip";
 import {
   CHART_COLORS,
+  QMS_CHART_TOOLTIP,
   QmsBadge,
   QmsCard,
   QmsEmpty,
   QmsSectionTitle,
   QmsViewToggle,
 } from "@/components/analytics/qms-primitives";
+import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
 
 export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
   const [view, setView] = useState<"bottom" | "top">("bottom");
@@ -73,10 +75,10 @@ export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
           }
           sub="Agents with ≥3 audits"
         />
-        <div className="qms-chart">
+        <QmsChartFrame>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ left: 10, right: 60, bottom: 60 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} vertical={false} />
               <XAxis
                 dataKey="agent"
                 tick={{ fill: CHART_COLORS.text, fontSize: 9 }}
@@ -90,7 +92,10 @@ export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
                 tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
                 tickFormatter={(v) => `${v}%`}
               />
-              <Tooltip content={<QmsChartTooltip suffix="%" />} />
+              <Tooltip
+                {...QMS_CHART_TOOLTIP}
+                content={<QmsChartTooltip suffix="%" />}
+              />
               {view === "bottom" && (
                 <ReferenceLine
                   y={90}
@@ -98,7 +103,7 @@ export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
                   strokeDasharray="5 5"
                 />
               )}
-              <Bar dataKey="avg" name="Avg score" radius={[4, 4, 0, 0]}>
+              <Bar dataKey="avg" name="Avg score" radius={[4, 4, 0, 0]} isAnimationActive={false}>
                 {chartData.map((row, index) => (
                   <Cell
                     key={row.agent}
@@ -114,7 +119,7 @@ export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </QmsChartFrame>
       </QmsCard>
 
       <QmsCard>

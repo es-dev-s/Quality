@@ -11,15 +11,21 @@ import {
 import { PERMISSIONS } from "@/lib/permissions";
 import { canEditFeedbackFully, hasScope } from "@/lib/rbac";
 import { scopedAuditByIdWhere, scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
-import { mergeAuditorOptions } from "@/lib/audit/auditors";
 import { calculateResults } from "@/lib/audit/calculate-results";
 import { getInteractionConfig } from "@/lib/actions/interaction-config";
-import { fetchActiveAgentNames } from "@/lib/audit/agent-db";
 import { getLobDffOptions } from "@/lib/audit/interaction-options";
 import { validateAuditFormAgainstConfig } from "@/lib/audit/validate-audit-form-config";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { getTemplateById } from "@/lib/actions/templates";
 import { withDbRetry } from "@/lib/db/with-db-retry";
+import { assertWriteRateLimit } from "@/lib/server/rate-limit";
+import {
+  auditIdSchema,
+  saveAuditSubmissionSchema,
+  updateAuditFeedbackSchema,
+  updateAuditSubmissionSchema,
+} from "@/lib/validation/audit";
+import { paginationLimitSchema } from "@/lib/validation/common";
 import {
   defaultAuditFeedback,
   normalizeFeedbackForSave,
@@ -37,74 +43,145 @@ import type {
 } from "@/lib/audit/audit-records";
 import type {
   AuditFormData,
+  AuditRecord,
   AuditRow,
   CategoryScore,
   ScoresMap,
 } from "@/lib/audit/types";
 
+function validationError(message: string) {
+  return { error: message };
+}
+
+function recordFromStoredSubmission(
+  submission: { record: unknown; auditCode: string }
+): AuditRecord | null {
+  if (!submission.record || typeof submission.record !== "object") {
+    return null;
+  }
+  return submission.record as AuditRecord;
+}
+
+async function findIdempotentSubmission(
+  submissionKey: string,
+  submittedById: string
+) {
+  const existing = await prisma.auditSubmission.findUnique({
+    where: { submissionKey },
+    select: { submittedById: true, record: true, auditCode: true },
+  });
+  if (!existing) return null;
+  if (existing.submittedById !== submittedById) {
+    return { error: "This submission key is already in use." } as const;
+  }
+  const record = recordFromStoredSubmission(existing);
+  if (!record) {
+    return { error: "Could not load the existing submission." } as const;
+  }
+  return { success: true as const, record };
+}
+
 export async function getAuditors() {
   await requirePermission(PERMISSIONS.AUDIT_FORM_READ);
-  const [config, users] = await Promise.all([
-    getInteractionConfig(),
-    prisma.user.findMany({
-      select: { name: true, email: true },
-      orderBy: { name: "asc" },
-    }),
-  ]);
-
-  return mergeAuditorOptions(config, users);
+  const config = await getInteractionConfig();
+  return config.auditors;
 }
 
 export async function saveAuditSubmission(
   formData: AuditFormData,
   scores: ScoresMap,
-  templateId: string
+  templateId: string,
+  options?: { submissionKey?: string }
 ) {
   const session = await requirePermission(PERMISSIONS.AUDIT_FORM_WRITE);
-  const template = await getTemplateById(templateId);
+
+  const rateLimited = assertWriteRateLimit(session.user.id, "audit:save", {
+    limit: 20,
+    windowMs: 60_000,
+  });
+  if (rateLimited) return rateLimited;
+
+  const parsed = saveAuditSubmissionSchema.safeParse({
+    formData,
+    scores,
+    templateId,
+    submissionKey: options?.submissionKey,
+  });
+  if (!parsed.success) {
+    return validationError(
+      parsed.error.issues[0]?.message ?? "Invalid audit submission."
+    );
+  }
+
+  const {
+    formData: validFormData,
+    scores: validScores,
+    templateId: validTemplateId,
+    submissionKey,
+  } = parsed.data;
+
+  if (submissionKey) {
+    const idempotent = await findIdempotentSubmission(
+      submissionKey,
+      session.user.id
+    );
+    if (idempotent) {
+      if ("error" in idempotent) return idempotent;
+      return idempotent;
+    }
+  }
+
+  const template = await getTemplateById(validTemplateId);
   if (!template) {
     return { error: "Audit template not found." };
   }
 
-  const [interactionConfig, agentNames, users] = await Promise.all([
+  const [interactionConfig, users] = await Promise.all([
     getInteractionConfig(),
-    fetchActiveAgentNames(),
     prisma.user.findMany({
       select: { name: true, email: true },
     }),
   ]);
-  const configError = validateAuditFormAgainstConfig(formData, {
-    ...interactionConfig,
-    agents: agentNames,
-  }, users);
+  const configError = validateAuditFormAgainstConfig(
+    validFormData,
+    interactionConfig,
+    users
+  );
   if (configError) {
     return { error: configError };
   }
 
   const feedbackError = validateFeedbackForSave({
-    feedbackSecurity: formData.feedbackSecurity,
-    feedbackStatus: formData.feedbackStatus,
-    feedbackDate: formData.feedbackDate,
+    feedbackSecurity: validFormData.feedbackSecurity,
+    feedbackStatus: validFormData.feedbackStatus,
+    feedbackDate: validFormData.feedbackDate,
   });
   if (feedbackError) {
     return { error: feedbackError };
   }
 
   const feedback = normalizeFeedbackForSave({
-    feedbackSecurity: formData.feedbackSecurity,
-    feedbackStatus: formData.feedbackStatus,
-    feedbackDate: formData.feedbackDate,
+    feedbackSecurity: validFormData.feedbackSecurity,
+    feedbackStatus: validFormData.feedbackStatus,
+    feedbackDate: validFormData.feedbackDate,
   });
 
   const matchedLob = interactionConfig.lobs.find(
     (lob) =>
-      lob.name === formData.lob && lob.businessType === formData.businessType
+      lob.name === validFormData.lob &&
+      lob.businessType === validFormData.businessType
   );
   const subReasonOptions = getLobDffOptions(matchedLob);
 
-  const result = calculateResults(formData, scores, template, feedback, {
-    subReasonRequired: subReasonOptions.length > 0,
-  });
+  const result = calculateResults(
+    validFormData,
+    validScores,
+    template,
+    feedback,
+    {
+      subReasonRequired: subReasonOptions.length > 0,
+    }
+  );
 
   if (!result.ok) {
     return { error: result.error };
@@ -136,13 +213,14 @@ export async function saveAuditSubmission(
     feedbackStatus: feedback.feedbackStatus,
     feedbackSecurity: feedback.feedbackSecurity,
     feedbackDate: feedback.feedbackDate || null,
-    agentFeedback: formData.agentFeedback.trim(),
+    agentFeedback: validFormData.agentFeedback.trim(),
     totalScored: record.totalScored,
     totalMax: record.totalMax,
-    scores,
+    scores: validScores,
     catScores: record.catScores,
     rows: record.rows,
     record: record as unknown as object,
+    submissionKey: submissionKey ?? null,
   };
 
   try {
@@ -151,10 +229,29 @@ export async function saveAuditSubmission(
         await prisma.auditSubmission.create({ data: submissionData });
         break;
       } catch (error) {
+        if (
+          submissionKey &&
+          isPrismaUniqueViolation(error, "submissionKey")
+        ) {
+          const idempotent = await findIdempotentSubmission(
+            submissionKey,
+            session.user.id
+          );
+          if (idempotent) {
+            if ("error" in idempotent) return idempotent;
+            return idempotent;
+          }
+        }
         if (isPrismaUniqueViolation(error, "auditCode") && attempt < 2) {
-          const retry = calculateResults(formData, scores, template, feedback, {
-            subReasonRequired: subReasonOptions.length > 0,
-          });
+          const retry = calculateResults(
+            validFormData,
+            validScores,
+            template,
+            feedback,
+            {
+              subReasonRequired: subReasonOptions.length > 0,
+            }
+          );
           if (!retry.ok) {
             return { error: retry.error };
           }
@@ -241,10 +338,12 @@ async function fetchRecentAuditSubmissions(
 
 export async function getAuditLogs(limit = 500) {
   const session = await requirePermission(PERMISSIONS.AUDIT_LOGS_READ);
+  const parsedLimit = paginationLimitSchema.safeParse(limit);
+  const take = parsedLimit.success ? parsedLimit.data : 500;
 
   const submissions = await fetchRecentAuditSubmissions(
     scopedAuditWhere(session),
-    limit
+    take
   );
 
   return {
@@ -255,9 +354,13 @@ export async function getAuditLogs(limit = 500) {
 
 export async function getAuditDetail(id: string) {
   const session = await requirePermission(PERMISSIONS.AUDIT_LOGS_READ);
+  const parsedId = auditIdSchema.safeParse({ id });
+  if (!parsedId.success) {
+    return null;
+  }
 
   const submission = await prisma.auditSubmission.findFirst({
-    where: scopedAuditByIdWhere(session, id),
+    where: scopedAuditByIdWhere(session, parsedId.data.id),
     include: {
       submittedBy: { select: { name: true, email: true } },
     },
@@ -366,8 +469,12 @@ async function fetchAuditSubmissionById(
 
 export async function getAuditForEdit(id: string): Promise<AuditEditPayload | null> {
   const session = await requirePermission(PERMISSIONS.AUDIT_FORM_WRITE);
+  const parsedId = auditIdSchema.safeParse({ id });
+  if (!parsedId.success) {
+    return null;
+  }
 
-  const submission = await fetchAuditSubmissionById(session, id);
+  const submission = await fetchAuditSubmissionById(session, parsedId.data.id);
   if (!submission) return null;
 
   const templateId = resolveSubmissionTemplateId(
@@ -397,8 +504,33 @@ export async function updateAuditSubmission(
 ) {
   const session = await requirePermission(PERMISSIONS.AUDIT_FORM_WRITE);
 
+  const rateLimited = assertWriteRateLimit(session.user.id, "audit:update", {
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (rateLimited) return rateLimited;
+
+  const parsed = updateAuditSubmissionSchema.safeParse({
+    id,
+    formData,
+    scores,
+    templateId,
+  });
+  if (!parsed.success) {
+    return validationError(
+      parsed.error.issues[0]?.message ?? "Invalid audit update."
+    );
+  }
+
+  const {
+    id: validId,
+    formData: validFormData,
+    scores: validScores,
+    templateId: validTemplateId,
+  } = parsed.data;
+
   const existing = await prisma.auditSubmission.findFirst({
-    where: scopedAuditByIdWhere(session, id),
+    where: scopedAuditByIdWhere(session, validId),
     select: {
       id: true,
       auditCode: true,
@@ -410,50 +542,51 @@ export async function updateAuditSubmission(
     return { error: "Audit not found." };
   }
 
-  const template = await getTemplateById(templateId);
+  const template = await getTemplateById(validTemplateId);
   if (!template) {
     return { error: "Audit template not found." };
   }
 
-  const [interactionConfig, agentNames, users] = await Promise.all([
+  const [interactionConfig, users] = await Promise.all([
     getInteractionConfig(),
-    fetchActiveAgentNames(),
     prisma.user.findMany({
       select: { name: true, email: true },
     }),
   ]);
-  const configError = validateAuditFormAgainstConfig(formData, {
-    ...interactionConfig,
-    agents: agentNames,
-  }, users);
+  const configError = validateAuditFormAgainstConfig(
+    validFormData,
+    interactionConfig,
+    users
+  );
   if (configError) {
     return { error: configError };
   }
 
   const feedbackError = validateFeedbackForSave({
-    feedbackSecurity: formData.feedbackSecurity,
-    feedbackStatus: formData.feedbackStatus,
-    feedbackDate: formData.feedbackDate,
+    feedbackSecurity: validFormData.feedbackSecurity,
+    feedbackStatus: validFormData.feedbackStatus,
+    feedbackDate: validFormData.feedbackDate,
   });
   if (feedbackError) {
     return { error: feedbackError };
   }
 
   const feedback = normalizeFeedbackForSave({
-    feedbackSecurity: formData.feedbackSecurity,
-    feedbackStatus: formData.feedbackStatus,
-    feedbackDate: formData.feedbackDate,
+    feedbackSecurity: validFormData.feedbackSecurity,
+    feedbackStatus: validFormData.feedbackStatus,
+    feedbackDate: validFormData.feedbackDate,
   });
 
   const matchedLob = interactionConfig.lobs.find(
     (lob) =>
-      lob.name === formData.lob && lob.businessType === formData.businessType
+      lob.name === validFormData.lob &&
+      lob.businessType === validFormData.businessType
   );
   const subReasonOptions = getLobDffOptions(matchedLob);
 
   const result = calculateResults(
-    formData,
-    scores,
+    validFormData,
+    validScores,
     template,
     {
       id: existing.auditCode,
@@ -469,8 +602,8 @@ export async function updateAuditSubmission(
   const record = result.record;
 
   try {
-    await prisma.auditSubmission.update({
-      where: { id },
+    const updated = await prisma.auditSubmission.updateMany({
+      where: scopedAuditByIdWhere(session, validId),
       data: {
         templateId: template.id,
         agent: record.agent,
@@ -493,15 +626,19 @@ export async function updateAuditSubmission(
         feedbackStatus: feedback.feedbackStatus,
         feedbackSecurity: feedback.feedbackSecurity,
         feedbackDate: feedback.feedbackDate || null,
-        agentFeedback: formData.agentFeedback.trim(),
+        agentFeedback: validFormData.agentFeedback.trim(),
         totalScored: record.totalScored,
         totalMax: record.totalMax,
-        scores,
+        scores: validScores,
         catScores: record.catScores,
         rows: record.rows,
         record: record as unknown as object,
       },
     });
+
+    if (updated.count === 0) {
+      return { error: "Audit not found." };
+    }
   } catch (error) {
     console.error("updateAuditSubmission failed:", error);
     return {
@@ -511,7 +648,7 @@ export async function updateAuditSubmission(
 
   revalidatePath("/dashboard");
   revalidatePath("/audit-logs");
-  revalidatePath(`/audit-logs/${id}/edit`);
+  revalidatePath(`/audit-logs/${validId}/edit`);
   revalidatePath("/analytics");
   revalidatePath("/reports");
   revalidatePath("/forms");
@@ -534,8 +671,21 @@ export async function updateAuditFeedback(
     return permissionError();
   }
 
+  const rateLimited = assertWriteRateLimit(session.user.id, "audit:feedback", {
+    limit: 60,
+    windowMs: 60_000,
+  });
+  if (rateLimited) return rateLimited;
+
+  const parsed = updateAuditFeedbackSchema.safeParse({ id, ...data });
+  if (!parsed.success) {
+    return validationError(
+      parsed.error.issues[0]?.message ?? "Invalid feedback update."
+    );
+  }
+
   const existing = await prisma.auditSubmission.findFirst({
-    where: scopedAuditByIdWhere(session, id),
+    where: scopedAuditByIdWhere(session, parsed.data.id),
     select: {
       id: true,
       feedbackSecurity: true,
@@ -548,11 +698,11 @@ export async function updateAuditFeedback(
 
   const canEditAllFeedback = canEditFeedbackFully(session.user.role);
   const payload = canEditAllFeedback
-    ? data
+    ? parsed.data
     : {
         feedbackSecurity: parseFeedbackSecurity(existing.feedbackSecurity),
-        feedbackStatus: data.feedbackStatus,
-        feedbackDate: data.feedbackDate,
+        feedbackStatus: parsed.data.feedbackStatus,
+        feedbackDate: parsed.data.feedbackDate,
       };
 
   const feedbackError = validateFeedbackForSave(payload);
@@ -562,14 +712,18 @@ export async function updateAuditFeedback(
 
   const feedback = normalizeFeedbackForSave(payload);
 
-  await prisma.auditSubmission.update({
-    where: { id: existing.id },
+  const updated = await prisma.auditSubmission.updateMany({
+    where: scopedAuditByIdWhere(session, parsed.data.id),
     data: {
       feedbackSecurity: feedback.feedbackSecurity,
       feedbackStatus: feedback.feedbackStatus,
       feedbackDate: feedback.feedbackDate || null,
     },
   });
+
+  if (updated.count === 0) {
+    return { error: "Audit not found." };
+  }
 
   revalidatePath("/audit-logs");
   revalidatePath("/analytics");

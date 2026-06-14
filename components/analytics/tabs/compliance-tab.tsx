@@ -5,11 +5,14 @@ import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
 import { QmsChartTooltip } from "@/components/analytics/qms-chart-tooltip";
 import {
   CHART_COLORS,
+  QMS_CHART_TOOLTIP,
   QmsCard,
+  QmsEmpty,
   QmsKpiTile,
   QmsSectionTitle,
   QmsSparkline,
 } from "@/components/analytics/qms-primitives";
+import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
 
 export function ComplianceTab({ data }: { data: QmsAnalyticsData }) {
   const { kpis } = data;
@@ -65,69 +68,83 @@ export function ComplianceTab({ data }: { data: QmsAnalyticsData }) {
       <div className="qms-panels qms-panels--3">
         <QmsCard className="qms-card--chart">
           <QmsSectionTitle title="Issue severity breakdown" />
-          <div className="qms-chart qms-chart--pie">
-            {sevData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={sevData}
-                    cx="50%"
-                    cy="45%"
-                    outerRadius={90}
-                    dataKey="value"
-                    label={({ name, percent }) =>
-                      `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
-                    }
-                    labelLine={false}
-                  >
-                    {sevData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<QmsChartTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="qms-empty">No severity data available.</p>
-            )}
-          </div>
+          <QmsChartFrame
+            className="qms-chart--pie"
+            empty={sevData.length === 0}
+            emptyMessage="No severity data available."
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={sevData}
+                  cx="50%"
+                  cy="45%"
+                  outerRadius={90}
+                  dataKey="value"
+                  minAngle={8}
+                  label={({ name, percent }) =>
+                    (percent ?? 0) >= 0.08
+                      ? `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
+                      : ""
+                  }
+                  labelLine={false}
+                  isAnimationActive={false}
+                >
+                  {sevData.map((entry) => (
+                    <Cell key={entry.name} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  {...QMS_CHART_TOOLTIP}
+                  content={<QmsChartTooltip />}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </QmsChartFrame>
         </QmsCard>
 
         <QmsCard className="qms-card--chart">
           <QmsSectionTitle title="Feedback completion status" />
-          <div className="qms-chart qms-chart--pie">
-            {fbData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={fbData}
-                    cx="50%"
-                    cy="45%"
-                    outerRadius={90}
-                    dataKey="value"
-                    label={({ name, percent }) =>
-                      `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
-                    }
-                    labelLine={false}
-                  >
-                    {fbData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<QmsChartTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="qms-empty">No feedback data available.</p>
-            )}
-          </div>
+          <QmsChartFrame
+            className="qms-chart--pie"
+            empty={fbData.length === 0}
+            emptyMessage="No feedback data available."
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={fbData}
+                  cx="50%"
+                  cy="45%"
+                  outerRadius={90}
+                  dataKey="value"
+                  minAngle={8}
+                  label={({ name, percent }) =>
+                    (percent ?? 0) >= 0.08
+                      ? `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
+                      : ""
+                  }
+                  labelLine={false}
+                  isAnimationActive={false}
+                >
+                  {fbData.map((entry) => (
+                    <Cell key={entry.name} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  {...QMS_CHART_TOOLTIP}
+                  content={<QmsChartTooltip />}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </QmsChartFrame>
         </QmsCard>
 
         <QmsCard>
           <QmsSectionTitle title="Fatal incidents by team" />
           <div className="qms-fatal-list">
             {data.fatal_by_team.length === 0 ? (
-              <p className="qms-empty">No fatal incidents recorded.</p>
+              <QmsEmpty message="No fatal incidents recorded." />
             ) : (
               data.fatal_by_team.map((item) => (
                 <div key={item.team} className="qms-fatal-list__row">

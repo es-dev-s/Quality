@@ -14,12 +14,14 @@ import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
 import { QmsChartTooltip } from "@/components/analytics/qms-chart-tooltip";
 import {
   CHART_COLORS,
+  QMS_CHART_TOOLTIP,
   QmsBadge,
   QmsCard,
   QmsEmpty,
   QmsKpiTile,
   QmsSectionTitle,
 } from "@/components/analytics/qms-primitives";
+import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
 
 const AUDITOR_COLORS = [
   CHART_COLORS.accent,
@@ -74,20 +76,24 @@ export function AuditorsTab({ data }: { data: QmsAnalyticsData }) {
           title="Auditor workload distribution"
           sub="Total audits completed by each QA analyst"
         />
-        <div className="qms-chart">
+        <QmsChartFrame>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data.auditors} margin={{ bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
+            <BarChart data={data.auditors} margin={{ bottom: 48, left: 4, right: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} vertical={false} />
               <XAxis
                 dataKey="name"
                 tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
                 angle={-20}
                 textAnchor="end"
                 interval={0}
+                height={48}
               />
               <YAxis tick={{ fill: CHART_COLORS.text, fontSize: 10 }} />
-              <Tooltip content={<QmsChartTooltip />} />
-              <Bar dataKey="count" name="Audits" radius={[4, 4, 0, 0]}>
+              <Tooltip
+                {...QMS_CHART_TOOLTIP}
+                content={<QmsChartTooltip />}
+              />
+              <Bar dataKey="count" name="Audits" radius={[4, 4, 0, 0]} isAnimationActive={false}>
                 {data.auditors.map((_, index) => (
                   <Cell
                     key={index}
@@ -97,7 +103,7 @@ export function AuditorsTab({ data }: { data: QmsAnalyticsData }) {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </QmsChartFrame>
       </QmsCard>
 
       <QmsCard>

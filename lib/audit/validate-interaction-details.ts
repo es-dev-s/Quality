@@ -8,7 +8,7 @@ const REQUIRED_FIELDS: {
   { key: "supervisor", label: "Supervisor Name" },
   { key: "callDate", label: "Call Date" },
   { key: "auditDate", label: "Audit Date" },
-  { key: "auditor", label: "Quality Auditor" },
+  { key: "auditor", label: "Quality Analyst" },
   { key: "lob", label: "LOB" },
   { key: "sublob", label: "Reason" },
   { key: "mobile", label: "Mobile Number" },

@@ -2,8 +2,9 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Award, RefreshCw, SlidersHorizontal, X } from "lucide-react";
+import { AlertTriangle, Award, CalendarRange, RefreshCw, SlidersHorizontal, X } from "lucide-react";
 import { Select } from "@/components/primitives/field";
+import { cn } from "@/lib/utils";
 import type { DashboardAuditData } from "@/lib/audit/audit-records";
 import {
   auditorInitials,
@@ -29,12 +30,12 @@ type DashboardAnalyticsProps = {
   data: DashboardAuditData;
 };
 
-const PERIODS: { id: DashboardPeriod; label: string }[] = [
-  { id: "today", label: "Today" },
-  { id: "yesterday", label: "Yesterday" },
-  { id: "week", label: "This week" },
-  { id: "month", label: "This month" },
-  { id: "overall", label: "Overall" },
+const PERIODS: { id: DashboardPeriod; label: string; ariaLabel: string }[] = [
+  { id: "today", label: "Today", ariaLabel: "Today" },
+  { id: "yesterday", label: "Yesterday", ariaLabel: "Yesterday" },
+  { id: "week", label: "Week", ariaLabel: "This week" },
+  { id: "month", label: "Month", ariaLabel: "This month" },
+  { id: "overall", label: "Overall", ariaLabel: "All time" },
 ];
 
 const TREND_OPTIONS: { id: TrendGranularity; label: string }[] = [
@@ -166,43 +167,47 @@ export function DashboardAnalytics({ data }: DashboardAnalyticsProps) {
 
       <div className="dash-topbar">
         <div className="dash-topbar__panel dash-topbar__panel--periods">
-          <div className="dash-topbar__label">Period</div>
-          <div className="dash-topbar__controls">
-            <div
-              className="dash-periods"
-              role="tablist"
-              aria-label="Time period"
-            >
-              {PERIODS.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={period === p.id}
-                  className={
-                    period === p.id
-                      ? "dash-periods__btn dash-periods__btn--active"
-                      : "dash-periods__btn"
-                  }
-                  onClick={() => setPeriod(p.id)}
-                >
-                  {p.label}
-                </button>
-              ))}
+          <div className="dash-topbar__label-row">
+            <div className="dash-topbar__label">
+              <CalendarRange size={14} aria-hidden />
+              Period
             </div>
             <button
               type="button"
-              className="dash-refresh"
+              className="dash-refresh dash-refresh--inline"
               onClick={handleRefresh}
               disabled={isRefreshing}
             >
               <RefreshCw
                 className={isRefreshing ? "dash-refresh__icon--spin" : undefined}
-                size={15}
+                size={14}
                 aria-hidden
               />
               Refresh
             </button>
+          </div>
+          <div
+            className="dash-periods"
+            role="tablist"
+            aria-label="Time period"
+          >
+            {PERIODS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                role="tab"
+                aria-selected={period === p.id}
+                aria-label={p.ariaLabel}
+                title={p.ariaLabel}
+                className={cn(
+                  "dash-periods__btn",
+                  period === p.id && "dash-periods__btn--active"
+                )}
+                onClick={() => setPeriod(p.id)}
+              >
+                <span className="dash-periods__btn-label">{p.label}</span>
+              </button>
+            ))}
           </div>
         </div>
 

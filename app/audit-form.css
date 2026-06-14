@@ -263,12 +263,6 @@
   opacity: 0.5;
 }
 
-.audit-form__footer {
-  display: flex;
-  justify-content: center;
-  padding: 8px 0 16px;
-}
-
 .audit-score-row__max-inline {
   font-weight: 400;
   color: var(--color-muted-fg);

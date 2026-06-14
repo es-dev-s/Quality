@@ -1,12 +1,13 @@
 "use client";
 
-import { useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/primitives/button";
 import { Field, Input, Label, Select } from "@/components/primitives/field";
 import { FormStack, Modal, ModalActions } from "@/components/primitives/modal";
 import { useToast } from "@/components/primitives/toast";
 import { createUser, updateUser } from "@/lib/actions/admin";
+import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 
 type Role = {
   id: string;
@@ -28,6 +29,7 @@ type User = {
   name: string | null;
   email: string;
   roleId: string;
+  dateOfJoining?: string | null;
 };
 
 type UserFormDialogProps = {
@@ -46,7 +48,20 @@ export function UserFormDialog({
   const router = useRouter();
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
+  const [roleId, setRoleId] = useState(user?.roleId ?? roles[0]?.id ?? "");
   const isEditing = !!user;
+
+  const selectedRole = useMemo(
+    () => roles.find((role) => role.id === roleId),
+    [roles, roleId]
+  );
+  const isAgentRole = selectedRole?.slug === SYSTEM_ROLE_SLUGS.AGENT;
+
+  useEffect(() => {
+    if (open) {
+      setRoleId(user?.roleId ?? roles[0]?.id ?? "");
+    }
+  }, [open, user, roles]);
 
   function handleSubmit(formData: FormData) {
     startTransition(async () => {
@@ -73,7 +88,7 @@ export function UserFormDialog({
       description={
         isEditing
           ? "Update user details and role assignment."
-          : "Add a new user and assign a role."
+          : "Add a platform user with a system role. Agent users require a joining date."
       }
     >
       <form action={handleSubmit}>
@@ -81,13 +96,14 @@ export function UserFormDialog({
           {isEditing && <input type="hidden" name="id" value={user.id} />}
 
           <Field>
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor="name">Display name</Label>
             <Input
               id="name"
               name="name"
               defaultValue={user?.name ?? ""}
               required
               disabled={isPending}
+              placeholder="Used on audit forms and data filters"
             />
           </Field>
 
@@ -122,9 +138,10 @@ export function UserFormDialog({
             <Select
               id="roleId"
               name="roleId"
-              defaultValue={user?.roleId ?? roles[0]?.id}
+              value={roleId}
               required
               disabled={isPending}
+              onChange={(e) => setRoleId(e.target.value)}
             >
               {roles.map((role) => (
                 <option key={role.id} value={role.id}>
@@ -133,11 +150,26 @@ export function UserFormDialog({
               ))}
             </Select>
             <p className="ui-hint">
-              Use a system role (Agent, Supervisor, Quality Analyst, etc.) for
-              predefined module access. Custom roles need scopes before users can
-              sign in.
+              Agent → audit subject · Supervisor → team view · Quality Analyst →
+              performs audits on forms.
             </p>
           </Field>
+
+          {isAgentRole && (
+            <Field>
+              <Label htmlFor="dateOfJoining">
+                Date of joining {isEditing ? "" : <span aria-hidden>*</span>}
+              </Label>
+              <Input
+                id="dateOfJoining"
+                name="dateOfJoining"
+                type="date"
+                defaultValue={user?.dateOfJoining ?? ""}
+                required={!isEditing}
+                disabled={isPending}
+              />
+            </Field>
+          )}
         </FormStack>
 
         <ModalActions>

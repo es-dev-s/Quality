@@ -1,7 +1,7 @@
 "use server";
 
 import bcrypt from "bcryptjs";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
@@ -12,11 +12,17 @@ import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { SUPERADMIN_ROLE_SLUG } from "@/lib/constants";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 
+const isoDateSchema = z.union([
+  z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date (YYYY-MM-DD)"),
+  z.literal(""),
+]).optional();
+
 const createUserSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.email("Invalid email"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   roleId: z.string().min(1, "Role is required"),
+  dateOfJoining: isoDateSchema,
 });
 
 const updateUserSchema = z.object({
@@ -25,7 +31,22 @@ const updateUserSchema = z.object({
   email: z.email("Invalid email"),
   password: z.string().optional(),
   roleId: z.string().min(1, "Role is required"),
+  dateOfJoining: isoDateSchema,
 });
+
+function normalizeJoiningDate(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function revalidateUserRosterPaths() {
+  revalidateTag("interaction-config", "max");
+  revalidatePath("/settings");
+  revalidatePath("/forms/audit");
+  revalidatePath("/forms");
+  revalidatePath("/audit-logs");
+  revalidatePath("/dashboard");
+}
 
 const createRoleSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -112,6 +133,7 @@ export async function createUser(formData: FormData) {
     email: formData.get("email"),
     password: formData.get("password"),
     roleId: formData.get("roleId"),
+    dateOfJoining: formData.get("dateOfJoining") || undefined,
   });
 
   if (!parsed.success) {
@@ -129,6 +151,13 @@ export async function createUser(formData: FormData) {
     return { error: roleCheck.error };
   }
 
+  const dateOfJoining = normalizeJoiningDate(parsed.data.dateOfJoining);
+  if (roleCheck.role.slug === SYSTEM_ROLE_SLUGS.AGENT && !dateOfJoining) {
+    return {
+      error: "Date of joining is required when creating an Agent user.",
+    };
+  }
+
   const hashedPassword = await bcrypt.hash(parsed.data.password, 12);
 
   try {
@@ -138,6 +167,7 @@ export async function createUser(formData: FormData) {
         email,
         password: hashedPassword,
         roleId: parsed.data.roleId,
+        dateOfJoining,
       },
     });
   } catch (error) {
@@ -147,7 +177,7 @@ export async function createUser(formData: FormData) {
     throw error;
   }
 
-  revalidatePath("/settings");
+  revalidateUserRosterPaths();
   return { success: true };
 }
 
@@ -160,6 +190,7 @@ export async function updateUser(formData: FormData) {
     email: formData.get("email"),
     password: formData.get("password") || undefined,
     roleId: formData.get("roleId"),
+    dateOfJoining: formData.get("dateOfJoining") || undefined,
   });
 
   if (!parsed.success) {
@@ -179,15 +210,24 @@ export async function updateUser(formData: FormData) {
     return { error: roleCheck.error };
   }
 
+  const dateOfJoining = normalizeJoiningDate(parsed.data.dateOfJoining);
+  if (roleCheck.role.slug === SYSTEM_ROLE_SLUGS.AGENT && !dateOfJoining) {
+    return {
+      error: "Date of joining is required for Agent users.",
+    };
+  }
+
   const data: {
     name: string;
     email: string;
     roleId: string;
+    dateOfJoining: string | null;
     password?: string;
   } = {
     name: parsed.data.name,
     email,
     roleId: parsed.data.roleId,
+    dateOfJoining,
   };
 
   if (parsed.data.password) {
@@ -199,8 +239,7 @@ export async function updateUser(formData: FormData) {
     data,
   });
 
-  revalidatePath("/settings");
-  revalidatePath("/settings");
+  revalidateUserRosterPaths();
   return { success: true };
 }
 

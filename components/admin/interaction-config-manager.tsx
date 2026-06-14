@@ -10,9 +10,7 @@ import {
   Grid,
   Plus,
   Search,
-  ShieldCheck,
   Trash2,
-  UserSquare2,
   X,
 } from "lucide-react";
 import { BulkActionBar } from "@/components/admin/bulk-action-bar";
@@ -31,8 +29,6 @@ import { useBulkSelection } from "@/lib/hooks/use-bulk-selection";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { id: "supervisors", label: "Supervisors", icon: UserSquare2 },
-  { id: "auditors", label: "Auditors", icon: ShieldCheck },
   { id: "businessTypes", label: "Business types", icon: Briefcase },
   { id: "lobs", label: "LOBs & reasons", icon: BookOpen },
 ] as const;
@@ -121,7 +117,7 @@ export function InteractionConfigManager({
   const resavePendingRef = useRef(false);
   const savesInFlightRef = useRef(0);
   const configRef = useRef(initialConfig);
-  const [tab, setTab] = useState<TabId>("supervisors");
+  const [tab, setTab] = useState<TabId>("businessTypes");
   const [search, setSearch] = useState("");
   const [newItemText, setNewItemText] = useState("");
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -185,6 +181,8 @@ export function InteractionConfigManager({
     const versionSnapshot = configVersionRef.current;
     const payload = cloneConfig(configRef.current);
     payload.agents = [];
+    payload.supervisors = [];
+    payload.auditors = [];
 
     try {
       for (let attempt = 0; attempt < SAVE_RETRY_ATTEMPTS; attempt += 1) {
@@ -254,16 +252,12 @@ export function InteractionConfigManager({
   }
 
   function listForTab(): string[] {
-    if (tab === "supervisors") return config.supervisors;
-    if (tab === "auditors") return config.auditors;
     return config.businessTypes;
   }
 
   function updateListForTab(values: string[], base = configRef.current) {
     const next = cloneConfig(base);
-    if (tab === "supervisors") next.supervisors = values;
-    else if (tab === "auditors") next.auditors = values;
-    else next.businessTypes = values;
+    next.businessTypes = values;
     return next;
   }
 
@@ -313,19 +307,15 @@ export function InteractionConfigManager({
   }
 
   function requestDeleteListItem(value: string) {
-    if (tab === "supervisors") setDeleteTarget({ type: "supervisor", value });
-    else if (tab === "auditors") setDeleteTarget({ type: "auditor", value });
-    else if (tab === "businessTypes") {
-      if (config.lobs.some((lob) => lob.businessType === value)) {
-        toast("Remove or reassign LOBs under this business type first.", "error");
-        return;
-      }
-      if (config.businessTypes.length <= 1) {
-        toast("At least one business type is required.", "error");
-        return;
-      }
-      setDeleteTarget({ type: "businessType", value });
+    if (config.lobs.some((lob) => lob.businessType === value)) {
+      toast("Remove or reassign LOBs under this business type first.", "error");
+      return;
     }
+    if (config.businessTypes.length <= 1) {
+      toast("At least one business type is required.", "error");
+      return;
+    }
+    setDeleteTarget({ type: "businessType", value });
   }
 
   const filteredList = useMemo(() => {
@@ -479,11 +469,7 @@ export function InteractionConfigManager({
     if (values.size === 0) return;
 
     const next = cloneConfig(configRef.current);
-    if (tab === "supervisors") {
-      next.supervisors = next.supervisors.filter((item) => !values.has(item));
-    } else if (tab === "auditors") {
-      next.auditors = next.auditors.filter((item) => !values.has(item));
-    } else if (tab === "businessTypes") {
+    if (tab === "businessTypes") {
       const blocked = next.lobs.some((lob) => values.has(lob.businessType));
       if (blocked) {
         toast("Remove LOBs under selected business types first.", "error");
@@ -505,11 +491,7 @@ export function InteractionConfigManager({
     if (!deleteTarget) return;
     const next = cloneConfig(configRef.current);
 
-    if (deleteTarget.type === "supervisor") {
-      next.supervisors = next.supervisors.filter((item) => item !== deleteTarget.value);
-    } else if (deleteTarget.type === "auditor") {
-      next.auditors = next.auditors.filter((item) => item !== deleteTarget.value);
-    } else if (deleteTarget.type === "businessType") {
+    if (deleteTarget.type === "businessType") {
       next.businessTypes = next.businessTypes.filter(
         (item) => item !== deleteTarget.value
       );
@@ -639,7 +621,7 @@ export function InteractionConfigManager({
                 <input
                   type="text"
                   className="platform-settings__search"
-                  placeholder={`Add ${tab === "businessTypes" ? "business type" : tab.slice(0, -1)}…`}
+                  placeholder="Add business type…"
                   value={newItemText}
                   disabled={isSaving}
                   onChange={(e) => setNewItemText(e.target.value)}

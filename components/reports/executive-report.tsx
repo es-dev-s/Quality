@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { Calendar, Download, Printer } from "lucide-react";
 import { getReportData, type ReportPageData } from "@/lib/actions/reports";
+import { useStaleRequestGuard } from "@/lib/hooks/use-stale-request-guard";
 
 function defaultRange() {
   const end = new Date();
@@ -61,10 +62,13 @@ export function ExecutiveReport() {
   const [appliedRange, setAppliedRange] = useState(initial);
   const [data, setData] = useState<ReportPageData | null>(null);
   const [isPending, startTransition] = useTransition();
+  const { beginRequest } = useStaleRequestGuard();
 
   function load(start: string, end: string) {
+    const request = beginRequest();
     startTransition(async () => {
       const result = await getReportData(start, end);
+      if (request.isStale()) return;
       setData(result);
     });
   }

@@ -6,10 +6,9 @@ import { requireAuth } from "@/lib/auth";
 import { canManageSettings } from "@/lib/rbac";
 import { normalizeAgentName } from "@/lib/audit/agent-name";
 import {
-  ensureDefaultAgents,
-  fetchAllAgents,
-  fetchAuditCountsByAgentName,
-} from "@/lib/audit/agent-db";
+  fetchAgentRoleUsers,
+} from "@/lib/audit/role-users";
+import { fetchAuditCountsByAgentName } from "@/lib/audit/agent-db";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { prisma } from "@/lib/prisma";
 
@@ -41,11 +40,11 @@ function revalidateAgentPaths() {
 export type AgentListItem = {
   id: string;
   name: string;
+  email: string;
+  hasProfileName: boolean;
   dateOfJoining: string | null;
-  isActive: boolean;
   auditCount: number;
   createdAt: string;
-  updatedAt: string;
 };
 
 export type AgentMutationResult =
@@ -75,21 +74,22 @@ export async function getAgentsForManagement(): Promise<{
   canManage: boolean;
 }> {
   const session = await requireAuth();
-  await ensureDefaultAgents();
 
-  const rows = await fetchAllAgents();
-  const auditCountByAgent = await fetchAuditCountsByAgentName();
+  const [rows, auditCountByAgent] = await Promise.all([
+    fetchAgentRoleUsers(),
+    fetchAuditCountsByAgentName(),
+  ]);
 
   return {
     canManage: canManageSettings(session.user.role),
     agents: rows.map((row) => ({
       id: row.id,
       name: row.name,
+      email: row.email,
+      hasProfileName: row.hasProfileName,
       dateOfJoining: row.dateOfJoining,
-      isActive: row.isActive,
       auditCount: auditCountByAgent.get(row.name) ?? 0,
       createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
     })),
   };
 }

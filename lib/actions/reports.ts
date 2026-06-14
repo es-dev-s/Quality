@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth-guards";
 import { PERMISSIONS } from "@/lib/permissions";
 import { scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
+import { reportDateRangeSchema } from "@/lib/validation/reports";
 
 export type ReportRow = {
   id: string;
@@ -20,11 +21,25 @@ export type ReportRow = {
 export async function getReportData(startDate: string, endDate: string) {
   const session = await requirePermission(PERMISSIONS.REPORTS_READ);
 
+  const parsed = reportDateRangeSchema.safeParse({ startDate, endDate });
+  if (!parsed.success) {
+    return {
+      startDate,
+      endDate,
+      rows: [],
+      stats: { total: 0, avgQuality: 0, passRate: 0, fatals: 0 },
+      generatedAt: new Date().toISOString(),
+      error: parsed.error.issues[0]?.message ?? "Invalid date range.",
+    };
+  }
+
+  const range = parsed.data;
+
   const submissions = await prisma.auditSubmission.findMany({
     where: scopedAuditWhere(session, {
       callDate: {
-        gte: startDate,
-        lte: endDate,
+        gte: range.startDate,
+        lte: range.endDate,
       },
     }),
     select: {
@@ -65,11 +80,12 @@ export async function getReportData(startDate: string, endDate: string) {
   const fatals = rows.filter((r) => r.hasFatal).length;
 
   return {
-    startDate,
-    endDate,
+    startDate: range.startDate,
+    endDate: range.endDate,
     rows,
     stats: { total, avgQuality, passRate, fatals },
     generatedAt: new Date().toISOString(),
+    error: null as string | null,
   };
 }
 

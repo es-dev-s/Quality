@@ -8,6 +8,7 @@ import type {
   UserImportResult,
 } from "@/lib/import/user-import-types";
 import { requirePermission } from "@/lib/auth-guards";
+import { IMPORT_ENABLED } from "@/lib/constants";
 import { PERMISSIONS } from "@/lib/permissions";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { prisma } from "@/lib/prisma";
@@ -31,6 +32,10 @@ export async function importUsers(
   rows: UserImportPayload[],
   options: { updateExisting?: boolean } = {}
 ): Promise<UserImportResult | { error: string }> {
+  if (!IMPORT_ENABLED) {
+    return { error: "Import is not available." };
+  }
+
   await requirePermission(PERMISSIONS.IMPORT_WRITE);
 
   const parsedOptions = importOptionsSchema.safeParse(options);

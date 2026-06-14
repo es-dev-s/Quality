@@ -42,7 +42,7 @@ export function validateAuditFormAgainstConfig(
     formData.auditor &&
     !isAllowedAuditor(formData.auditor, config, users)
   ) {
-    return "Selected auditor is not in the current interaction configuration.";
+    return "Selected quality analyst is not assigned or no longer available.";
   }
 
   const matchedLob = config.lobs.find(

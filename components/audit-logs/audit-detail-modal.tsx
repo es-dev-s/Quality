@@ -5,6 +5,7 @@ import { useEffect, useState, useTransition } from "react";
 import { Pencil, X } from "lucide-react";
 import { getAuditDetail } from "@/lib/actions/audit";
 import type { AuditDetail } from "@/lib/audit/audit-records";
+import { useStaleRequestGuard } from "@/lib/hooks/use-stale-request-guard";
 
 type AuditDetailModalProps = {
   auditId: string | null;
@@ -22,6 +23,7 @@ export function AuditDetailModal({ auditId, onClose }: AuditDetailModalProps) {
   const [detail, setDetail] = useState<AuditDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const { beginRequest } = useStaleRequestGuard();
 
   useEffect(() => {
     if (!auditId) {
@@ -30,9 +32,11 @@ export function AuditDetailModal({ auditId, onClose }: AuditDetailModalProps) {
       return;
     }
 
+    const request = beginRequest();
     startTransition(async () => {
       try {
         const data = await getAuditDetail(auditId);
+        if (request.isStale()) return;
         if (!data) {
           setError("Audit not found.");
           setDetail(null);
@@ -41,11 +45,12 @@ export function AuditDetailModal({ auditId, onClose }: AuditDetailModalProps) {
         setDetail(data);
         setError(null);
       } catch {
+        if (request.isStale()) return;
         setError("Unable to load audit details.");
         setDetail(null);
       }
     });
-  }, [auditId]);
+  }, [auditId, beginRequest]);
 
   if (!auditId) return null;
 

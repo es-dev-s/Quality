@@ -15,6 +15,8 @@ import {
 import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
 import { QmsChartTooltip } from "@/components/analytics/qms-chart-tooltip";
 import {
+  CHART_COLORS,
+  QMS_CHART_TOOLTIP,
   QmsBadge,
   QmsCard,
   QmsEmpty,
@@ -23,6 +25,7 @@ import {
   QmsViewToggle,
   scoreHex,
 } from "@/components/analytics/qms-primitives";
+import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
 
 export function TeamsTab({ data }: { data: QmsAnalyticsData }) {
   const [view, setView] = useState("chart");
@@ -85,7 +88,7 @@ export function TeamsTab({ data }: { data: QmsAnalyticsData }) {
             title="Team performance ranking"
             sub="Sorted by average quality score"
           />
-          <div className="qms-chart qms-chart--xl">
+          <QmsChartFrame className="qms-chart--xl">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={chartData}
@@ -94,35 +97,38 @@ export function TeamsTab({ data }: { data: QmsAnalyticsData }) {
               >
                 <CartesianGrid
                   strokeDasharray="3 3"
-                  stroke="#e2e8f0"
+                  stroke={CHART_COLORS.grid}
                   horizontal={false}
                 />
                 <XAxis
                   type="number"
                   domain={[70, 100]}
-                  tick={{ fill: "#64748b", fontSize: 10 }}
+                  tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
                   tickFormatter={(v) => `${v}%`}
                 />
                 <YAxis
                   type="category"
                   dataKey="team"
-                  tick={{ fill: "#64748b", fontSize: 10 }}
+                  tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
                   width={115}
                 />
-                <Tooltip content={<QmsChartTooltip suffix="%" />} />
+                <Tooltip
+                  {...QMS_CHART_TOOLTIP}
+                  content={<QmsChartTooltip suffix="%" />}
+                />
                 <ReferenceLine
                   x={90}
-                  stroke="#3b82f6"
+                  stroke={CHART_COLORS.accent}
                   strokeDasharray="5 5"
                 />
-                <Bar dataKey="avg" name="Avg score" radius={[0, 4, 4, 0]}>
+                <Bar dataKey="avg" name="Avg score" radius={[0, 4, 4, 0]} isAnimationActive={false}>
                   {chartData.map((row) => (
                     <Cell key={row.team} fill={scoreHex(row.avg)} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          </QmsChartFrame>
         </QmsCard>
       ) : (
         <QmsCard>

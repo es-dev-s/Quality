@@ -5,12 +5,21 @@ import {
   type SystemRoleSlug,
 } from "@/lib/permissions";
 import { isSuperAdmin } from "@/lib/rbac";
+import { resolveRoleUserName } from "@/lib/audit/role-users";
 
 export type DataScopeContext = {
   userId: string;
   userName: string | null | undefined;
+  userEmail?: string | null;
   role: SessionRole;
 };
+
+function effectiveScopeName(ctx: DataScopeContext): string | null {
+  return resolveRoleUserName({
+    name: ctx.userName ?? null,
+    email: ctx.userEmail ?? "",
+  });
+}
 
 const GLOBAL_DATA_ROLES = new Set<SystemRoleSlug>([
   SYSTEM_ROLE_SLUGS.SUPERADMIN,
@@ -29,7 +38,7 @@ export function auditSubmissionScopeWhere(
     return undefined;
   }
 
-  const name = ctx.userName?.trim();
+  const name = effectiveScopeName(ctx);
   if (!name) {
     return { id: "__no_access__" };
   }
@@ -49,11 +58,17 @@ export function auditSubmissionScopeWhere(
 }
 
 export function dataScopeFromSession(session: {
-  user: { id: string; name?: string | null; role: SessionRole };
+  user: {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+    role: SessionRole;
+  };
 }): DataScopeContext {
   return {
     userId: session.user.id,
     userName: session.user.name,
+    userEmail: session.user.email,
     role: session.user.role,
   };
 }

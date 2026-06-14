@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition, useEffect } from "react";
-import { Download, Eye, Pencil, Search, X } from "lucide-react";
+import { ChevronDown, Download, Eye, Pencil, Search, SlidersHorizontal, X } from "lucide-react";
 import { AuditDetailModal } from "@/components/audit-logs/audit-detail-modal";
-import { Field, Input, Label, Select } from "@/components/primitives/field";
+import { Input, Select } from "@/components/primitives/field";
 import { cn } from "@/lib/utils";
 import { updateAuditFeedback } from "@/lib/actions/audit";
 import type { AuditLogEntry } from "@/lib/audit/audit-records";
@@ -42,14 +42,18 @@ const SCORE_PRESETS: { value: ScorePreset; label: string; min: number; max: numb
 
 const GRADES = ["Excellent", "Good", "Needs Improvement", "Failed"] as const;
 
-const DATE_RANGES: { value: DateRangeFilter; label: string }[] = [
-  { value: "all", label: "All time" },
-  { value: "today", label: "Today" },
-  { value: "yesterday", label: "Yesterday" },
-  { value: "week", label: "This week" },
-  { value: "month", label: "This month" },
-  { value: "6m", label: "Last 6 months" },
-  { value: "1y", label: "Last year" },
+const DATE_RANGES: {
+  value: DateRangeFilter;
+  label: string;
+  ariaLabel: string;
+}[] = [
+  { value: "all", label: "All", ariaLabel: "All time" },
+  { value: "today", label: "Today", ariaLabel: "Today" },
+  { value: "yesterday", label: "Yest.", ariaLabel: "Yesterday" },
+  { value: "week", label: "Week", ariaLabel: "This week" },
+  { value: "month", label: "Month", ariaLabel: "This month" },
+  { value: "6m", label: "6 mo", ariaLabel: "Last 6 months" },
+  { value: "1y", label: "1 yr", ariaLabel: "Last year" },
 ];
 
 const FEEDBACK_STATUSES = FEEDBACK_STATUS_OPTIONS;
@@ -180,6 +184,7 @@ export function AuditLogsTable({
   const [lob, setLob] = useState("");
   const [feedbackStatus, setFeedbackStatus] = useState("");
   const [dateRange, setDateRange] = useState<DateRangeFilter>("all");
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
   const [rows, setRows] = useState(submissions);
   const [, startFeedback] = useTransition();
@@ -224,6 +229,76 @@ export function AuditLogsTable({
     businessType !== "" ||
     lob !== "" ||
     feedbackStatus !== "";
+
+  const advancedFilterCount = useMemo(() => {
+    let count = 0;
+    if (dateRange !== "all") count++;
+    if (scorePreset !== "all") count++;
+    if (grade) count++;
+    if (type) count++;
+    if (businessType) count++;
+    if (lob) count++;
+    if (feedbackStatus) count++;
+    return count;
+  }, [dateRange, scorePreset, grade, type, businessType, lob, feedbackStatus]);
+
+  const activeFilterChips = useMemo(() => {
+    const chips: { key: string; label: string; onRemove: () => void }[] = [];
+
+    if (dateRange !== "all") {
+      const item = DATE_RANGES.find((entry) => entry.value === dateRange);
+      chips.push({
+        key: "period",
+        label: item?.ariaLabel ?? "Period",
+        onRemove: () => setDateRange("all"),
+      });
+    }
+    if (scorePreset !== "all") {
+      const preset = SCORE_PRESETS.find((entry) => entry.value === scorePreset);
+      chips.push({
+        key: "score",
+        label: preset?.label ?? "Score",
+        onRemove: () => setScorePreset("all"),
+      });
+    }
+    if (grade) {
+      chips.push({
+        key: "grade",
+        label: `Grade: ${grade}`,
+        onRemove: () => setGrade(""),
+      });
+    }
+    if (type) {
+      chips.push({
+        key: "type",
+        label: `Type: ${type}`,
+        onRemove: () => setType(""),
+      });
+    }
+    if (businessType) {
+      chips.push({
+        key: "business",
+        label: businessType,
+        onRemove: () => setBusinessType(""),
+      });
+    }
+    if (lob) {
+      chips.push({
+        key: "lob",
+        label: `LOB: ${lob}`,
+        onRemove: () => setLob(""),
+      });
+    }
+    if (feedbackStatus) {
+      chips.push({
+        key: "feedback",
+        label: `Feedback: ${feedbackStatus}`,
+        onRemove: () => setFeedbackStatus(""),
+      });
+    }
+
+    return chips;
+  }, [dateRange, scorePreset, grade, type, businessType, lob, feedbackStatus]);
 
   const clearFilters = () => {
     setSearch("");
@@ -322,163 +397,218 @@ export function AuditLogsTable({
       )}
 
       {enableFilters && rows.length > 0 && (
-        <div className="audit-logs__filters">
-          <Field className="audit-logs__filter audit-logs__filter--search">
-            <Label htmlFor="audit-logs-search" className="audit-logs__filter-label">
-              Search
-            </Label>
-            <div className="audit-logs__search-wrap">
+        <section
+          className={cn(
+            "audit-logs__filters-panel",
+            filtersExpanded && "audit-logs__filters-panel--expanded"
+          )}
+          aria-label="Audit log filters"
+        >
+          <div className="audit-logs__filters-bar">
+            <div className="audit-logs__search">
               <Search size={16} className="audit-logs__search-icon" aria-hidden />
               <Input
                 id="audit-logs-search"
                 className="audit-logs__search-input"
-                placeholder="Agent, ID, LOB, reason, auditor…"
+                placeholder="Search agent, audit ID, LOB, reason, auditor…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search audit logs"
               />
             </div>
-          </Field>
-
-          <Field className="audit-logs__filter">
-            <Label htmlFor="audit-logs-period" className="audit-logs__filter-label">
-              Period
-            </Label>
-            <Select
-              id="audit-logs-period"
-              value={dateRange}
-              onChange={(e) =>
-                setDateRange(e.target.value as DateRangeFilter)
-              }
-            >
-              {DATE_RANGES.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <Field className="audit-logs__filter">
-            <Label htmlFor="audit-logs-score" className="audit-logs__filter-label">
-              Score %
-            </Label>
-            <Select
-              id="audit-logs-score"
-              value={scorePreset}
-              onChange={(e) => setScorePreset(e.target.value as ScorePreset)}
-            >
-              {SCORE_PRESETS.map((preset) => (
-                <option key={preset.value} value={preset.value}>
-                  {preset.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <Field className="audit-logs__filter">
-            <Label htmlFor="audit-logs-grade" className="audit-logs__filter-label">
-              Grade
-            </Label>
-            <Select
-              id="audit-logs-grade"
-              value={grade}
-              onChange={(e) => setGrade(e.target.value)}
-            >
-              <option value="">All grades</option>
-              {GRADES.map((g) => (
-                <option key={g} value={g}>
-                  {g}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <Field className="audit-logs__filter">
-            <Label htmlFor="audit-logs-type" className="audit-logs__filter-label">
-              Type
-            </Label>
-            <Select
-              id="audit-logs-type"
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-            >
-              <option value="">All types</option>
-              <option value="Call">Call</option>
-              <option value="Chat">Chat</option>
-            </Select>
-          </Field>
-
-          <Field className="audit-logs__filter">
-            <Label
-              htmlFor="audit-logs-business"
-              className="audit-logs__filter-label"
-            >
-              Business
-            </Label>
-            <Select
-              id="audit-logs-business"
-              value={businessType}
-              onChange={(e) => setBusinessType(e.target.value)}
-            >
-              <option value="">All</option>
-              {businessTypeOptions.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <Field className="audit-logs__filter">
-            <Label htmlFor="audit-logs-lob" className="audit-logs__filter-label">
-              LOB
-            </Label>
-            <Select
-              id="audit-logs-lob"
-              value={lob}
-              onChange={(e) => setLob(e.target.value)}
-            >
-              <option value="">All LOBs</option>
-              {lobs.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <Field className="audit-logs__filter">
-            <Label
-              htmlFor="audit-logs-feedback"
-              className="audit-logs__filter-label"
-            >
-              Feedback
-            </Label>
-            <Select
-              id="audit-logs-feedback"
-              value={feedbackStatus}
-              onChange={(e) => setFeedbackStatus(e.target.value)}
-            >
-              <option value="">All feedback</option>
-              {FEEDBACK_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          {hasActiveFilters && (
             <button
               type="button"
-              className="audit-logs__clear"
-              onClick={clearFilters}
+              className={cn(
+                "audit-logs__filters-toggle",
+                filtersExpanded && "audit-logs__filters-toggle--open",
+                advancedFilterCount > 0 && "audit-logs__filters-toggle--active"
+              )}
+              onClick={() => setFiltersExpanded((open) => !open)}
+              aria-expanded={filtersExpanded}
+              aria-controls="audit-logs-filters-body"
             >
-              <X size={14} aria-hidden />
-              Clear
+              <SlidersHorizontal size={15} aria-hidden />
+              <span className="audit-logs__filters-toggle-text">
+                {filtersExpanded ? "Hide filters" : "More filters"}
+              </span>
+              {!filtersExpanded && advancedFilterCount > 0 ? (
+                <span className="audit-logs__filters-badge" aria-hidden>
+                  {advancedFilterCount}
+                </span>
+              ) : null}
+              <ChevronDown
+                size={16}
+                className={cn(
+                  "audit-logs__filters-chevron",
+                  filtersExpanded && "audit-logs__filters-chevron--open"
+                )}
+                aria-hidden
+              />
             </button>
-          )}
-        </div>
+          </div>
+
+          {activeFilterChips.length > 0 ? (
+            <div className="audit-logs__active-filters">
+              {activeFilterChips.map((chip) => (
+                <button
+                  key={chip.key}
+                  type="button"
+                  className="audit-logs__filter-chip"
+                  onClick={chip.onRemove}
+                  title={`Remove ${chip.label} filter`}
+                >
+                  {chip.label}
+                  <X size={12} aria-hidden />
+                </button>
+              ))}
+              {hasActiveFilters ? (
+                <button
+                  type="button"
+                  className="dash-filter-clear audit-logs__filter-clear"
+                  onClick={clearFilters}
+                >
+                  Clear all
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div
+            id="audit-logs-filters-body"
+            className="audit-logs__filters-body"
+            aria-hidden={!filtersExpanded}
+          >
+            <div className="audit-logs__filters-body-inner">
+              <div className="audit-logs__filters-section">
+                <span className="audit-logs__filters-section-label">Period</span>
+                <div
+                  className="audit-logs__periods"
+                  role="tablist"
+                  aria-label="Call date period"
+                >
+                  {DATE_RANGES.map((item) => (
+                    <button
+                      key={item.value}
+                      type="button"
+                      role="tab"
+                      aria-selected={dateRange === item.value}
+                      aria-label={item.ariaLabel}
+                      title={item.ariaLabel}
+                      className={cn(
+                        "audit-logs__periods-btn",
+                        dateRange === item.value &&
+                          "audit-logs__periods-btn--active"
+                      )}
+                      onClick={() => setDateRange(item.value)}
+                    >
+                      <span className="audit-logs__periods-label">{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="audit-logs__filters-grid">
+                <label className="dash-filter">
+                  <span>Score %</span>
+                  <Select
+                    id="audit-logs-score"
+                    className="dash-select dash-select--filter"
+                    value={scorePreset}
+                    onChange={(e) => setScorePreset(e.target.value as ScorePreset)}
+                  >
+                    {SCORE_PRESETS.map((preset) => (
+                      <option key={preset.value} value={preset.value}>
+                        {preset.label}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+
+                <label className="dash-filter">
+                  <span>Grade</span>
+                  <Select
+                    id="audit-logs-grade"
+                    className="dash-select dash-select--filter"
+                    value={grade}
+                    onChange={(e) => setGrade(e.target.value)}
+                  >
+                    <option value="">All grades</option>
+                    {GRADES.map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+
+                <label className="dash-filter">
+                  <span>Type</span>
+                  <Select
+                    id="audit-logs-type"
+                    className="dash-select dash-select--filter"
+                    value={type}
+                    onChange={(e) => setType(e.target.value)}
+                  >
+                    <option value="">All types</option>
+                    <option value="Call">Call</option>
+                    <option value="Chat">Chat</option>
+                  </Select>
+                </label>
+
+                <label className="dash-filter">
+                  <span>Business</span>
+                  <Select
+                    id="audit-logs-business"
+                    className="dash-select dash-select--filter"
+                    value={businessType}
+                    onChange={(e) => setBusinessType(e.target.value)}
+                  >
+                    <option value="">All business</option>
+                    {businessTypeOptions.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+
+                <label className="dash-filter">
+                  <span>LOB</span>
+                  <Select
+                    id="audit-logs-lob"
+                    className="dash-select dash-select--filter"
+                    value={lob}
+                    onChange={(e) => setLob(e.target.value)}
+                  >
+                    <option value="">All LOBs</option>
+                    {lobs.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+
+                <label className="dash-filter">
+                  <span>Feedback</span>
+                  <Select
+                    id="audit-logs-feedback"
+                    className="dash-select dash-select--filter"
+                    value={feedbackStatus}
+                    onChange={(e) => setFeedbackStatus(e.target.value)}
+                  >
+                    <option value="">All feedback</option>
+                    {FEEDBACK_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              </div>
+            </div>
+          </div>
+        </section>
       )}
 
       {!showSectionHead && enableFilters && rows.length > 0 && (

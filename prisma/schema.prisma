@@ -12,6 +12,7 @@ model User {
   email              String                  @unique
   password           String
   roleId             String
+  dateOfJoining      String?                 @map("date_of_joining")
   role               Role                    @relation(fields: [roleId], references: [id], onDelete: Restrict)
   auditSubmissions   AuditSubmission[]
   templatePreference UserTemplatePreference?
@@ -124,6 +125,7 @@ model SystemMeta {
 model AuditSubmission {
   id             String        @id @default(cuid())
   auditCode      String        @unique
+  submissionKey  String?       @unique @map("submission_key")
   templateId     String?       @map("template_id")
   template       FormTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   submittedById  String

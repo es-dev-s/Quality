@@ -26,6 +26,7 @@ type User = {
   email: string;
   roleId: string;
   role: Role;
+  dateOfJoining?: string | null;
   createdAt: Date;
 };
 
@@ -103,7 +104,8 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
         )}
         {embedded && (
           <p className="admin-section-head__desc">
-            Assign each user to a role defined in the Roles tab.
+            Platform users with assigned roles. Agents, supervisors, and quality
+            analysts on audit forms are derived from these accounts.
           </p>
         )}
         <Button
@@ -143,13 +145,14 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
               <th>Name</th>
               <th>Email</th>
               <th>Role</th>
+              <th>Joined</th>
               <th style={{ textAlign: "right" }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {users.length === 0 ? (
               <tr>
-                <td colSpan={5} className="ui-table__empty">
+                <td colSpan={6} className="ui-table__empty">
                   No users yet. Create your first user.
                 </td>
               </tr>
@@ -170,6 +173,7 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                   <td>
                     <Badge tone="accent">{user.role.name}</Badge>
                   </td>
+                  <td>{user.dateOfJoining ?? "—"}</td>
                   <td>
                     <div className="ui-table__actions">
                       <Button

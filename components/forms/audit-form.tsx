@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/primitives/button";
@@ -134,6 +134,7 @@ export function AuditForm({
   const router = useRouter();
   const { toast } = useToast();
   const [pending, startTransition] = useTransition();
+  const submissionKeyRef = useRef<string | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState(initialTemplateId);
   const [formData, setFormData] = useState<AuditFormData>(() => {
     if (initialFormData) {
@@ -151,6 +152,12 @@ export function AuditForm({
   }, [auditors, formData.auditor, isEditMode]);
 
   const [scores, setScores] = useState<ScoresMap>(() => initialScores ?? {});
+
+  useEffect(() => {
+    if (!isEditMode && !submissionKeyRef.current) {
+      submissionKeyRef.current = crypto.randomUUID();
+    }
+  }, [isEditMode]);
   const config = interactionConfig;
 
   const activeTemplate = useMemo(() => {
@@ -206,6 +213,30 @@ export function AuditForm({
       config.businessTypes.length > 0 ? config.businessTypes : ["Sales", "Support"],
     [config.businessTypes]
   );
+
+  const agentOptions = useMemo(() => {
+    const names = new Set(config.agents);
+    if (formData.agent.trim()) {
+      names.add(formData.agent.trim());
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [config.agents, formData.agent]);
+
+  const supervisorOptions = useMemo(() => {
+    const names = new Set(config.supervisors);
+    if (formData.supervisor.trim()) {
+      names.add(formData.supervisor.trim());
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [config.supervisors, formData.supervisor]);
+
+  const auditorOptions = useMemo(() => {
+    const names = new Set(auditors);
+    if (formData.auditor.trim()) {
+      names.add(formData.auditor.trim());
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [auditors, formData.auditor]);
 
   useEffect(() => {
     if (businessTypes.length === 0) return;
@@ -325,7 +356,9 @@ export function AuditForm({
             scores,
             activeTemplate.id
           )
-        : await saveAuditSubmission(formData, scores, activeTemplate.id);
+        : await saveAuditSubmission(formData, scores, activeTemplate.id, {
+            submissionKey: submissionKeyRef.current ?? undefined,
+          });
 
       if ("error" in res && res.error) {
         toast(res.error, "error");
@@ -490,7 +523,7 @@ export function AuditForm({
                 <div className="audit-details__row">
                   <Field className="audit-field">
                     <Label htmlFor="agent">
-                      Agent Name <span className="audit-required">*</span>
+                      Agent <span className="audit-required">*</span>
                     </Label>
                     <Select
                       id="agent"
@@ -500,7 +533,7 @@ export function AuditForm({
                       onChange={(e) => updateForm({ agent: e.target.value })}
                     >
                       <option value="">Select Agent</option>
-                      {config.agents.map((a) => (
+                      {agentOptions.map((a) => (
                         <option key={a} value={a}>
                           {a}
                         </option>
@@ -522,7 +555,7 @@ export function AuditForm({
                       }
                     >
                       <option value="">Select Supervisor</option>
-                      {config.supervisors.map((s) => (
+                      {supervisorOptions.map((s) => (
                         <option key={s} value={s}>
                           {s}
                         </option>
@@ -532,7 +565,7 @@ export function AuditForm({
 
                   <Field className="audit-field">
                     <Label htmlFor="auditor">
-                      Quality Auditor <span className="audit-required">*</span>
+                      Quality Analyst <span className="audit-required">*</span>
                     </Label>
                     <Select
                       id="auditor"
@@ -541,8 +574,8 @@ export function AuditForm({
                       required
                       onChange={(e) => updateForm({ auditor: e.target.value })}
                     >
-                      <option value="">Select Auditor</option>
-                      {auditors.map((a) => (
+                      <option value="">Select Quality Analyst</option>
+                      {auditorOptions.map((a) => (
                         <option key={a} value={a}>
                           {a}
                         </option>
@@ -975,12 +1008,6 @@ export function AuditForm({
               </div>
             </div>
           </section>
-
-          <div className="audit-form__footer">
-            <Button size="md" onClick={handleCalculate} disabled={!canCalculate}>
-              Generate Quality Output
-            </Button>
-          </div>
         </div>
           </div>
         </div>

@@ -52,8 +52,11 @@
 .platform-report {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-space-4);
   min-width: 0;
+  max-width: var(--content-max);
+  width: 100%;
+  margin-inline: auto;
 }
 
 .platform-report__toolbar {
@@ -160,11 +163,21 @@
 .platform-modal {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: var(--ds-z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: var(--ds-space-5);
+  animation: platform-modal-in var(--ds-duration-normal) var(--ds-ease-out);
+}
+
+@keyframes platform-modal-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .platform-modal__backdrop {
@@ -172,8 +185,18 @@
   inset: 0;
   border: 0;
   background: rgb(15 23 42 / 0.45);
-  backdrop-filter: blur(3px);
+  backdrop-filter: blur(4px);
   cursor: pointer;
+  animation: platform-modal-backdrop var(--ds-duration-normal) var(--ds-ease-out);
+}
+
+@keyframes platform-modal-backdrop {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .platform-modal__panel {
@@ -183,10 +206,22 @@
   display: flex;
   flex-direction: column;
   border: 1px solid var(--color-border);
-  border-radius: calc(var(--radius) + 6px);
+  border-radius: calc(var(--ds-radius-md) + 6px);
   background: var(--color-surface);
-  box-shadow: 0 24px 48px rgb(15 23 42 / 0.18);
+  box-shadow: var(--ds-shadow-lg);
   overflow: hidden;
+  animation: platform-modal-panel var(--ds-duration-slow) var(--ds-ease-out);
+}
+
+@keyframes platform-modal-panel {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .platform-modal__panel--wide {
@@ -226,12 +261,17 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: var(--touch-target);
+  height: var(--touch-target);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius);
+  border-radius: var(--ds-radius-sm);
   background: var(--color-surface);
   cursor: pointer;
+  transition: background var(--ds-duration-fast) var(--ds-ease-out);
+}
+
+.platform-modal__close:hover {
+  background: var(--color-muted);
 }
 
 .platform-modal__body {

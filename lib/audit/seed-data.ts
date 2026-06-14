@@ -257,9 +257,9 @@ function buildLobs(): LOBConfig[] {
 }
 
 export const DEFAULT_INTERACTION_CONFIG: InteractionConfig = {
-  agents: [...AGENTS],
-  supervisors: [...SUPERVISORS],
-  auditors: [...AUDITORS],
+  agents: [],
+  supervisors: [],
+  auditors: [],
   businessTypes: [...DEFAULT_BUSINESS_TYPES],
   lobs: buildLobs(),
 };

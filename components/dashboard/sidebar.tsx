@@ -11,7 +11,6 @@ import {
   Plus,
   ScrollText,
   Settings,
-  Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -36,12 +35,6 @@ const mainNav = [
     href: "/audit-logs",
     icon: ScrollText,
     permission: PERMISSIONS.AUDIT_LOGS_READ,
-  },
-  {
-    title: "Import",
-    href: "/import",
-    icon: Upload,
-    permission: PERMISSIONS.IMPORT_WRITE,
   },
   {
     title: "Analytics",

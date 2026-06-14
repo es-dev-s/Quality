@@ -1,4 +1,4 @@
-import { SUPERADMIN_ROLE_SLUG } from "@/lib/constants";
+import { IMPORT_ENABLED, SUPERADMIN_ROLE_SLUG } from "@/lib/constants";
 import {
   PERMISSIONS,
   resolveRoutePermission,
@@ -52,6 +52,13 @@ export function canAccessPath(
   role: SessionRole | null | undefined,
   pathname: string
 ): boolean {
+  if (
+    !IMPORT_ENABLED &&
+    (pathname === "/import" || pathname.startsWith("/import/"))
+  ) {
+    return false;
+  }
+
   const permission = resolveRoutePermission(pathname);
   if (!permission) return true;
   return hasScope(role, permission);
@@ -109,6 +116,7 @@ export function canWriteAnalytics(role?: SessionRole | null): boolean {
 }
 
 export function canImportData(role?: SessionRole | null): boolean {
+  if (!IMPORT_ENABLED) return false;
   return hasScope(role, PERMISSIONS.IMPORT_WRITE);
 }
 

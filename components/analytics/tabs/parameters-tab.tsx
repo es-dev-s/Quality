@@ -5,10 +5,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  PolarAngleAxis,
-  PolarGrid,
-  Radar,
-  RadarChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -19,6 +15,7 @@ import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
 import { QmsChartTooltip } from "@/components/analytics/qms-chart-tooltip";
 import {
   CHART_COLORS,
+  QMS_CHART_TOOLTIP,
   QmsBadge,
   QmsCard,
   QmsEmpty,
@@ -26,6 +23,8 @@ import {
   QmsSparkline,
   scoreHex,
 } from "@/components/analytics/qms-primitives";
+import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
+import { ParameterRadarChart } from "@/components/analytics/parameter-radar-chart";
 
 export function ParametersTab({ data }: { data: QmsAnalyticsData }) {
   if (data.params.length === 0) {
@@ -35,10 +34,6 @@ export function ParametersTab({ data }: { data: QmsAnalyticsData }) {
   }
 
   const sorted = [...data.params].sort((a, b) => a.score - b.score);
-  const radarData = data.params.map((p) => ({
-    subject: p.name.length > 14 ? `${p.name.slice(0, 14)}…` : p.name,
-    A: p.score,
-  }));
 
   return (
     <div className="qms-tab">
@@ -48,58 +43,45 @@ export function ParametersTab({ data }: { data: QmsAnalyticsData }) {
             title="Quality parameter scores"
             sub="All parameters vs 90% target"
           />
-          <div className="qms-chart qms-chart--tall">
+          <QmsChartFrame className="qms-chart--tall">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={sorted} margin={{ top: 10, right: 20, left: 0, bottom: 80 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} vertical={false} />
                 <XAxis
                   dataKey="name"
                   tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
                   angle={-40}
                   textAnchor="end"
                   interval={0}
+                  height={72}
                 />
                 <YAxis
                   domain={[0, 110]}
                   tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
                   tickFormatter={(v) => `${v}%`}
                 />
-                <Tooltip content={<QmsChartTooltip suffix="%" />} />
+                <Tooltip
+                  {...QMS_CHART_TOOLTIP}
+                  content={<QmsChartTooltip suffix="%" />}
+                />
                 <ReferenceLine
                   y={90}
                   stroke={CHART_COLORS.accent}
                   strokeDasharray="5 5"
                 />
-                <Bar dataKey="score" name="Score" radius={[4, 4, 0, 0]}>
+                <Bar dataKey="score" name="Score" radius={[4, 4, 0, 0]} isAnimationActive={false}>
                   {sorted.map((row) => (
                     <Cell key={row.name} fill={scoreHex(row.score)} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          </QmsChartFrame>
         </QmsCard>
 
         <QmsCard className="qms-card--chart">
           <QmsSectionTitle title="Radar view" sub="Parameter coverage map" />
-          <div className="qms-chart qms-chart--tall">
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart data={radarData}>
-                <PolarGrid stroke={CHART_COLORS.grid} />
-                <PolarAngleAxis
-                  dataKey="subject"
-                  tick={{ fill: CHART_COLORS.text, fontSize: 9 }}
-                />
-                <Radar
-                  name="Score"
-                  dataKey="A"
-                  stroke={CHART_COLORS.accent}
-                  fill={CHART_COLORS.accent}
-                  fillOpacity={0.2}
-                />
-              </RadarChart>
-            </ResponsiveContainer>
-          </div>
+          <ParameterRadarChart params={data.params} />
         </QmsCard>
       </div>
 

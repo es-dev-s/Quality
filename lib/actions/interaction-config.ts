@@ -14,9 +14,13 @@ import {
   fetchInteractionConfigRow,
   rowToInteractionConfig,
 } from "@/lib/audit/interaction-config-db";
-import { fetchActiveAgentNames } from "@/lib/audit/agent-db";
+import {
+  enrichInteractionConfigWithRoleUsers,
+  stripInteractionPeopleLists,
+} from "@/lib/audit/interaction-config-people";
 import { toIsoTimestamp } from "@/lib/db/to-iso-timestamp";
 import { withDbRetry } from "@/lib/db/with-db-retry";
+import { assertWriteRateLimit } from "@/lib/server/rate-limit";
 import { prisma } from "@/lib/prisma";
 import type { InteractionConfig } from "@/lib/audit/types";
 
@@ -38,8 +42,8 @@ const lobConfigSchema = z.object({
 
 const interactionConfigSchema = z.object({
   agents: stringListSchema.optional(),
-  supervisors: stringListSchema,
-  auditors: stringListSchema,
+  supervisors: stringListSchema.optional(),
+  auditors: stringListSchema.optional(),
   businessTypes: stringListSchema.min(
     1,
     "At least one business type is required"
@@ -57,23 +61,20 @@ function revalidateInteractionPaths() {
 
 export async function getInteractionConfig(): Promise<InteractionConfig> {
   await requireAuth();
-  const [row, agentNames] = await Promise.all([
-    fetchInteractionConfigRow(),
-    fetchActiveAgentNames(),
-  ]);
+  const row = await fetchInteractionConfigRow();
   const config = rowToInteractionConfig(row);
-  return { ...config, agents: agentNames };
+  return enrichInteractionConfigWithRoleUsers(config);
 }
 
 export async function getInteractionConfigManagerData() {
   const session = await requirePermission(PERMISSIONS.SETTINGS_READ);
-  const [row, agentNames] = await Promise.all([
-    fetchInteractionConfigRow(),
-    fetchActiveAgentNames(),
-  ]);
+  const row = await fetchInteractionConfigRow();
+  const config = await enrichInteractionConfigWithRoleUsers(
+    rowToInteractionConfig(row)
+  );
 
   return {
-    config: { ...rowToInteractionConfig(row), agents: agentNames },
+    config,
     canManage: canManageSettings(session.user.role),
     updatedAt: toIsoTimestamp(row.updatedAt),
     configVersion: row.configVersion,
@@ -96,6 +97,15 @@ export async function saveInteractionConfig(
     };
   }
 
+  const rateLimited = assertWriteRateLimit(
+    session.user.id,
+    "interaction-config:save",
+    { limit: 20, windowMs: 60_000 }
+  );
+  if (rateLimited) {
+    return { ok: false, error: rateLimited.error };
+  }
+
   const parsed = interactionConfigSchema.safeParse(config);
   if (!parsed.success) {
     const message =
@@ -106,8 +116,10 @@ export async function saveInteractionConfig(
   const normalized = sanitizeInteractionConfig({
     ...parsed.data,
     agents: parsed.data.agents ?? [],
+    supervisors: parsed.data.supervisors ?? [],
+    auditors: parsed.data.auditors ?? [],
   });
-  const { agents: _agents, ...configForStorage } = normalized;
+  const configForStorage = stripInteractionPeopleLists(normalized);
   const structureError = validateInteractionConfigStructure(normalized);
   if (structureError) {
     return { ok: false, error: structureError.message };

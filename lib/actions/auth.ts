@@ -2,6 +2,7 @@
 
 import { AuthError } from "next-auth";
 import { signIn } from "@/lib/auth";
+import { loginSchema } from "@/lib/validation/auth";
 
 export type LoginState = {
   error?: string;
@@ -21,13 +22,19 @@ export async function loginAction(
   _prev: LoginState,
   formData: FormData
 ): Promise<LoginState> {
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const password = String(formData.get("password") ?? "");
-  const callbackUrl = String(formData.get("callbackUrl") ?? "/dashboard");
+  const parsed = loginSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password"),
+    callbackUrl: formData.get("callbackUrl") ?? "/dashboard",
+  });
 
-  if (!email || !password) {
-    return { error: "Email and password are required." };
+  if (!parsed.success) {
+    return {
+      error: parsed.error.issues[0]?.message ?? "Invalid login details.",
+    };
   }
+
+  const { email, password, callbackUrl } = parsed.data;
 
   try {
     await signIn("credentials", {

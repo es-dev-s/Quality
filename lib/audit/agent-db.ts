@@ -1,6 +1,7 @@
 import { cache } from "react";
 import type { Agent as PrismaAgent } from "@prisma/client";
 import { normalizeAgentName } from "@/lib/audit/agent-name";
+import { fetchActiveAgentUserNames } from "@/lib/audit/agent-users";
 import { prisma } from "@/lib/prisma";
 import { AGENTS } from "@/lib/audit/seed-data";
 import {
@@ -64,13 +65,7 @@ export const ensureDefaultAgents = cache(async (): Promise<void> => {
 });
 
 export async function fetchActiveAgentNames(): Promise<string[]> {
-  await ensureDefaultAgents();
-  const rows = await prisma.agent.findMany({
-    where: { isActive: true },
-    orderBy: { name: "asc" },
-    select: { name: true },
-  });
-  return rows.map((row) => row.name);
+  return fetchActiveAgentUserNames();
 }
 
 export async function fetchAllAgents(): Promise<AgentRow[]> {

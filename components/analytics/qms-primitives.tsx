@@ -1,11 +1,19 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { BarChart3 } from "lucide-react";
 import {
   scoreColorClass,
   scoreStatusLabel,
 } from "@/lib/audit/analytics-metrics";
 
+/** Shared Recharts tooltip config — prevents clip and animation flicker. */
+export const QMS_CHART_TOOLTIP = {
+  wrapperStyle: { zIndex: 500, outline: "none" },
+  isAnimationActive: false,
+} as const;
+
+/** Hex values aligned with design tokens — Recharts SVG requires literal colors. */
 export const CHART_COLORS = {
   grid: "#e2e8f0",
   text: "#64748b",
@@ -156,7 +164,12 @@ export function QmsGauge({ value, label }: { value: number; label: string }) {
 }
 
 export function QmsEmpty({ message }: { message: string }) {
-  return <p className="qms-empty">{message}</p>;
+  return (
+    <div className="qms-empty" role="status">
+      <BarChart3 className="qms-empty__icon" size={26} strokeWidth={1.75} aria-hidden />
+      <p className="qms-empty__text">{message}</p>
+    </div>
+  );
 }
 
 export function QmsViewToggle({

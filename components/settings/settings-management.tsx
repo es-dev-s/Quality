@@ -22,6 +22,7 @@ type User = {
   email: string;
   roleId: string;
   role: RoleOption;
+  dateOfJoining?: string | null;
   createdAt: Date;
 };
 
@@ -105,7 +106,7 @@ export function SettingsManagement({
           }
           onClick={() => setTab("agents")}
         >
-          Agents
+          Agent users
           <span className="access-tabs__count">{agents.length}</span>
         </button>
         <button
@@ -160,6 +161,8 @@ export function SettingsManagement({
           <AgentsTable
             agents={agents}
             canManage={canManageAgents}
+            canManageUsers={canManageUsers}
+            onOpenUsersTab={canManageUsers ? () => setTab("users") : undefined}
             embedded
           />
         )}

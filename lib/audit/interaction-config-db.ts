@@ -5,7 +5,6 @@ import { prisma } from "@/lib/prisma";
 import {
   DEFAULT_BUSINESS_TYPES,
   DEFAULT_INTERACTION_CONFIG,
-  SUPERVISORS,
 } from "@/lib/audit/seed-data";
 import type { InteractionConfig, LOBConfig } from "@/lib/audit/types";
 import { ensureLobFlatLists } from "@/lib/audit/lob-flat-lists";
@@ -104,7 +103,6 @@ async function maybeBackfillInteractionConfig(
     return row;
   }
 
-  const parsed = rowToInteractionConfig(row);
   const raw = row.config;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     await setSystemMeta(META_INTERACTION_BACKFILL, "true");
@@ -114,21 +112,18 @@ async function maybeBackfillInteractionConfig(
   const configRecord = raw as Record<string, unknown>;
   const needsBusinessTypes =
     parseStringArray(configRecord.businessTypes).length === 0;
-  const rawSupervisors = parseStringArray(configRecord.supervisors);
-  const needsSupervisors =
-    rawSupervisors.length === 0 && parsed.supervisors.length === 0;
 
-  if (!needsBusinessTypes && !needsSupervisors) {
+  if (!needsBusinessTypes) {
     await setSystemMeta(META_INTERACTION_BACKFILL, "true");
     return row;
   }
 
   const merged = {
     ...configRecord,
-    ...(needsBusinessTypes
-      ? { businessTypes: [...DEFAULT_BUSINESS_TYPES] }
-      : {}),
-    ...(needsSupervisors ? { supervisors: [...SUPERVISORS] } : {}),
+    businessTypes: [...DEFAULT_BUSINESS_TYPES],
+    agents: [],
+    supervisors: [],
+    auditors: [],
   };
 
   const updated = await withDbRetry(() =>
