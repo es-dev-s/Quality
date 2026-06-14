@@ -1,8 +1,8 @@
 import { Suspense } from "react";
-import { notFound } from "next/navigation";
 import { PageFrame } from "@/components/dashboard/page-frame";
 import { AuditFormSkeleton } from "@/components/dashboard/page-skeletons";
 import { AuditForm } from "@/components/forms/audit-form";
+import { QmsEmpty } from "@/components/analytics/qms-primitives";
 import { requirePageAccess } from "@/lib/auth-guards";
 import { getAuditors } from "@/lib/actions/audit";
 import { getInteractionConfig } from "@/lib/actions/interaction-config";
@@ -36,7 +36,9 @@ async function AuditFormContent({
   ]);
 
   if (workbench.templates.length === 0) {
-    notFound();
+    return (
+      <QmsEmpty message="No audit templates are available for your role. Run npm run db:seed on the server, or ask an admin to assign template access." />
+    );
   }
 
   const initialTemplateId = resolveAuditFormTemplateId(

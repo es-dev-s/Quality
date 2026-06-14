@@ -125,3 +125,31 @@ Look for `Invalid origin`, database connection errors, or `Unauthorized`.
 ### 5. Always use the same URL
 
 Open the app as **`http://10.80.80.221:4782`** everywhere (bookmark, audit links, login). Mixing `localhost` on the server with `10.80.80.221` on other devices breaks cookies and Server Actions.
+
+### 6. Health check (on the server)
+
+After deploy, open:
+
+`http://10.80.80.221:4782/api/health`
+
+You should see JSON like:
+
+```json
+{
+  "ok": true,
+  "appUrl": "http://10.80.80.221:4782",
+  "allowedOrigins": ["10.80.80.221:4782", "..."],
+  "templateCount": 2,
+  "database": "ok"
+}
+```
+
+If `templateCount` is 0 → run `npm run db:seed`. If `database` fails → server cannot reach Supabase (firewall or wrong `DATABASE_URL`).
+
+### 7. Role must allow Audit Form
+
+Only these roles can open `/forms/audit`: **Quality Analyst**, **Quality Manager**, **Admin**, **Super Admin**.
+
+**Agent** and **Supervisor** cannot — they get redirected to Dashboard or Access Denied. Log in as `admin@example.com` (superadmin) or a Quality Analyst account.
+
+After changing roles or running seed, **sign out and sign in again** so the session picks up permissions.
