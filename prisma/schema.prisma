@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                 String                  @id @default(cuid())
+  name               String?
+  email              String                  @unique
+  password           String
+  roleId             String
+  role               Role                    @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  auditSubmissions   AuditSubmission[]
+  templatePreference UserTemplatePreference?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+}
+
+model Role {
+  id          String             @id @default(cuid())
+  name        String             @unique
+  slug        String             @unique
+  description String?
+  isSystem    Boolean            @default(false)
+  users       User[]
+  scopes      RoleScope[]
+  templates   RoleFormTemplate[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+model Scope {
+  id          String      @id @default(cuid())
+  name        String      @unique
+  slug        String      @unique
+  description String?
+  roles       RoleScope[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model RoleScope {
+  roleId     String
+  scopeId    String
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  scope      Scope    @relation(fields: [scopeId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+
+  @@id([roleId, scopeId])
+}
+
+model FormTemplate {
+  id          String   @id
+  name        String
+  type        String
+  lob         String   @default("")
+  description String   @default("")
+  isDefault   Boolean  @default(false) @map("is_default")
+  sections    Json
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  preferences UserTemplatePreference[]
+  submissions AuditSubmission[]
+  roles       RoleFormTemplate[]
+
+  @@map("form_templates")
+}
+
+model RoleFormTemplate {
+  roleId     String       @map("role_id")
+  templateId String       @map("template_id")
+  role       Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  template   FormTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  assignedAt DateTime     @default(now()) @map("assigned_at")
+
+  @@id([roleId, templateId])
+  @@map("role_form_templates")
+}
+
+model UserTemplatePreference {
+  userId           String       @id @map("user_id")
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeTemplateId String       @map("active_template_id")
+  activeTemplate   FormTemplate @relation(fields: [activeTemplateId], references: [id], onDelete: Restrict)
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  @@map("user_template_preferences")
+}
+
+model InteractionConfig {
+  id            String   @id @default("default")
+  config        Json
+  configVersion Int      @default(0) @map("config_version")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("interaction_configs")
+}
+
+model Agent {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  nameKey       String   @unique @map("name_key")
+  dateOfJoining String?  @map("date_of_joining")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive])
+  @@map("agents")
+}
+
+model SystemMeta {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_meta")
+}
+
+model AuditSubmission {
+  id             String        @id @default(cuid())
+  auditCode      String        @unique
+  templateId     String?       @map("template_id")
+  template       FormTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  submittedById  String
+  submittedBy    User          @relation(fields: [submittedById], references: [id], onDelete: Restrict)
+  agent          String
+  supervisor     String?
+  auditor        String?
+  type           String
+  businessType   String
+  callDate       String
+  auditDate      String
+  lob            String
+  sublob         String?
+  reason         String?
+  mobile         String?
+  response       String?
+  qualityPct     Int
+  finalPct       Int
+  grade          String
+  hasFatal       Boolean  @default(false)
+  fatalList      Json     @default("[]")
+  feedbackStatus   String   @default("Pending")
+  feedbackSecurity String   @default("NA")
+  feedbackDate     String?
+  agentFeedback    String   @default("")
+  totalScored    Float
+  totalMax       Float
+  scores         Json
+  catScores      Json
+  rows           Json
+  record         Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([agent])
+  @@index([lob])
+  @@index([grade])
+  @@index([createdAt])
+}

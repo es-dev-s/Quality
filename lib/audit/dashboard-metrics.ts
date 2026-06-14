@@ -1,0 +1,530 @@
+export type DashboardAuditRecord = {
+  id: string;
+  agent: string;
+  supervisor: string | null;
+  auditor: string | null;
+  lob: string;
+  type: string;
+  callDate: string;
+  qualityPct: number;
+  finalPct: number;
+  hasFatal: boolean;
+  fatalList: string[];
+};
+
+export type TopAgentRow = {
+  name: string;
+  avg: number;
+  count: number;
+};
+
+export type TopFatalRow = {
+  name: string;
+  count: number;
+};
+
+export type DashboardIncludeFilters = {
+  teamName: string;
+  lob: string;
+  auditor: string;
+  auditType: string;
+};
+
+export const EMPTY_INCLUDE_FILTERS: DashboardIncludeFilters = {
+  teamName: "",
+  lob: "",
+  auditor: "",
+  auditType: "",
+};
+
+export type DashboardFilterOptions = {
+  teamNames: string[];
+  lobs: string[];
+  auditors: string[];
+  auditTypes: string[];
+};
+
+export function extractFilterOptions(
+  records: DashboardAuditRecord[]
+): DashboardFilterOptions {
+  const teamNames = new Set<string>();
+  const lobs = new Set<string>();
+  const auditors = new Set<string>();
+  const auditTypes = new Set<string>();
+
+  for (const record of records) {
+    if (record.supervisor) teamNames.add(record.supervisor);
+    if (record.lob) lobs.add(record.lob);
+    if (record.auditor) auditors.add(record.auditor);
+    if (record.type) auditTypes.add(record.type);
+  }
+
+  const sort = (values: Set<string>) =>
+    Array.from(values).sort((a, b) => a.localeCompare(b));
+
+  return {
+    teamNames: sort(teamNames),
+    lobs: sort(lobs),
+    auditors: sort(auditors),
+    auditTypes: sort(auditTypes),
+  };
+}
+
+export function filterByIncludeFilters(
+  records: DashboardAuditRecord[],
+  filters: DashboardIncludeFilters
+): DashboardAuditRecord[] {
+  return records.filter((record) => {
+    if (filters.teamName && record.supervisor !== filters.teamName) {
+      return false;
+    }
+    if (filters.lob && record.lob !== filters.lob) {
+      return false;
+    }
+    if (filters.auditor && record.auditor !== filters.auditor) {
+      return false;
+    }
+    if (filters.auditType && record.type !== filters.auditType) {
+      return false;
+    }
+    return true;
+  });
+}
+
+export function hasActiveIncludeFilters(filters: DashboardIncludeFilters): boolean {
+  return Boolean(
+    filters.teamName ||
+      filters.lob ||
+      filters.auditor ||
+      filters.auditType
+  );
+}
+
+export type DashboardPeriod =
+  | "today"
+  | "yesterday"
+  | "week"
+  | "month"
+  | "overall";
+
+export type TrendGranularity = "day" | "week" | "month";
+
+export type ScoreBucket = {
+  key: "excellent" | "good" | "average" | "poor";
+  label: string;
+  range: string;
+  count: number;
+  pct: number;
+};
+
+export type TrendPoint = {
+  id: string;
+  name: string;
+  score: number;
+  count: number;
+};
+
+export type AgentTargetRow = {
+  name: string;
+  achieved: number;
+  target: number;
+  pct: number;
+};
+
+export type AuditorTargetRow = {
+  name: string;
+  achieved: number;
+  target: number;
+  pct: number;
+};
+
+function parseCallDate(callDate: string): Date {
+  const [y, m, d] = callDate.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function isSameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function isSameMonth(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+}
+
+function startOfWeekMonday(date: Date): Date {
+  const d = startOfDay(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function formatWeekLabel(weekStart: Date): string {
+  const m = String(weekStart.getMonth() + 1).padStart(2, "0");
+  const d = String(weekStart.getDate()).padStart(2, "0");
+  return `W/${m}-${d}`;
+}
+
+const MONTH_LABELS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+function formatMonthLabel(date: Date): string {
+  return MONTH_LABELS[date.getMonth()] ?? "—";
+}
+
+function formatDayLabel(date: Date): string {
+  return `${MONTH_LABELS[date.getMonth()] ?? "—"} ${date.getDate()}`;
+}
+
+export function filterByPeriod(
+  records: DashboardAuditRecord[],
+  period: DashboardPeriod,
+  now = new Date()
+): DashboardAuditRecord[] {
+  const today = startOfDay(now);
+  const yesterday = addDays(today, -1);
+
+  return records.filter((record) => {
+    const date = parseCallDate(record.callDate);
+    if (period === "today") return isSameDay(date, today);
+    if (period === "yesterday") return isSameDay(date, yesterday);
+    if (period === "week") {
+      const weekStart = startOfWeekMonday(now);
+      const weekEnd = addDays(weekStart, 7);
+      return date >= weekStart && date < weekEnd;
+    }
+    if (period === "month") return isSameMonth(date, now);
+    return true;
+  });
+}
+
+export function filterCurrentMonth(
+  records: DashboardAuditRecord[],
+  now = new Date()
+): DashboardAuditRecord[] {
+  return records.filter((r) =>
+    isSameMonth(parseCallDate(r.callDate), now)
+  );
+}
+
+function finalScore(record: DashboardAuditRecord): number {
+  return record.finalPct ?? (record.hasFatal ? 0 : record.qualityPct);
+}
+
+export function computePeriodStats(records: DashboardAuditRecord[]) {
+  const total = records.length;
+  const fatals = records.filter((r) => r.hasFatal).length;
+  const uniqueAgents = new Set(records.map((r) => r.agent)).size;
+
+  const avgQualityExclFatal =
+    total > 0
+      ? Math.round(
+          records.reduce((sum, r) => sum + r.qualityPct, 0) / total
+        )
+      : 0;
+
+  const avgFinalInclFatal =
+    total > 0
+      ? Math.round(
+          records.reduce((sum, r) => sum + finalScore(r), 0) / total
+        )
+      : 0;
+
+  const passCount = records.filter(
+    (r) => !r.hasFatal && r.qualityPct >= 75
+  ).length;
+  const passRate = total > 0 ? Math.round((passCount / total) * 100) : 0;
+
+  const fatalRate = total > 0 ? Math.round((fatals / total) * 100) : 0;
+
+  const excellentCount = records.filter(
+    (r) => !r.hasFatal && r.qualityPct >= 90
+  ).length;
+
+  return {
+    total,
+    avgQualityExclFatal,
+    passRate,
+    avgFinalInclFatal,
+    fatals,
+    fatalRate,
+    uniqueAgents,
+    excellentCount,
+  };
+}
+
+export function computeScoreDistribution(
+  records: DashboardAuditRecord[]
+): ScoreBucket[] {
+  const total = records.length;
+  const buckets = [
+    {
+      key: "excellent" as const,
+      label: "Excellent",
+      range: "≥90%",
+      count: 0,
+    },
+    {
+      key: "good" as const,
+      label: "Good",
+      range: "75–89%",
+      count: 0,
+    },
+    {
+      key: "average" as const,
+      label: "Average",
+      range: "60–74%",
+      count: 0,
+    },
+    {
+      key: "poor" as const,
+      label: "Poor",
+      range: "<60%",
+      count: 0,
+    },
+  ];
+
+  for (const record of records) {
+    if (record.hasFatal) continue;
+    const q = record.qualityPct;
+    if (q >= 90) buckets[0].count++;
+    else if (q >= 75) buckets[1].count++;
+    else if (q >= 60) buckets[2].count++;
+    else buckets[3].count++;
+  }
+
+  const scoredTotal = buckets.reduce((sum, b) => sum + b.count, 0);
+
+  return buckets.map((b) => ({
+    ...b,
+    pct:
+      scoredTotal > 0 ? Math.round((b.count / scoredTotal) * 100) : 0,
+  }));
+}
+
+export function computeTrendData(
+  records: DashboardAuditRecord[],
+  granularity: TrendGranularity,
+  now = new Date()
+): TrendPoint[] {
+  if (granularity === "month") {
+    return Array.from({ length: 6 }).map((_, i) => {
+      const date = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+      const filtered = records.filter((r) =>
+        isSameMonth(parseCallDate(r.callDate), date)
+      );
+      const score =
+        filtered.length > 0
+          ? Math.round(
+              filtered.reduce((s, r) => s + r.qualityPct, 0) / filtered.length
+            )
+          : 0;
+      return {
+        id: `m-${date.getFullYear()}-${date.getMonth()}`,
+        name: formatMonthLabel(date),
+        score,
+        count: filtered.length,
+      };
+    });
+  }
+
+  if (granularity === "week") {
+    return Array.from({ length: 8 }).map((_, i) => {
+      const anchor = addDays(now, -7 * (7 - i));
+      const weekStart = startOfWeekMonday(anchor);
+      const weekEnd = addDays(weekStart, 7);
+      const filtered = records.filter((r) => {
+        const d = parseCallDate(r.callDate);
+        return d >= weekStart && d < weekEnd;
+      });
+      const score =
+        filtered.length > 0
+          ? Math.round(
+              filtered.reduce((s, r) => s + r.qualityPct, 0) / filtered.length
+            )
+          : 0;
+      return {
+        id: `w-${weekStart.getFullYear()}-${weekStart.getMonth()}-${weekStart.getDate()}`,
+        name: formatWeekLabel(weekStart),
+        score,
+        count: filtered.length,
+      };
+    });
+  }
+
+  return Array.from({ length: 14 }).map((_, i) => {
+    const date = addDays(now, -(13 - i));
+    const filtered = records.filter((r) =>
+      isSameDay(parseCallDate(r.callDate), date)
+    );
+    const score =
+      filtered.length > 0
+        ? Math.round(
+            filtered.reduce((s, r) => s + r.qualityPct, 0) / filtered.length
+          )
+        : 0;
+    return {
+      id: `d-${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`,
+      name: formatDayLabel(date),
+      score,
+      count: filtered.length,
+    };
+  });
+}
+
+export function computeAgentTargets(
+  allRecords: DashboardAuditRecord[],
+  monthRecords: DashboardAuditRecord[],
+  targetPerAgent: number
+): {
+  agents: AgentTargetRow[];
+  cumulativeAchieved: number;
+  cumulativeTarget: number;
+  cumulativePct: number;
+} {
+  const agentNames = Array.from(
+    new Set(allRecords.map((r) => r.agent))
+  ).sort((a, b) => a.localeCompare(b));
+
+  const monthByAgent = monthRecords.reduce<Record<string, number>>(
+    (acc, r) => {
+      acc[r.agent] = (acc[r.agent] ?? 0) + 1;
+      return acc;
+    },
+    {}
+  );
+
+  const agents = agentNames.map((name) => {
+    const achieved = monthByAgent[name] ?? 0;
+    const pct =
+      targetPerAgent > 0
+        ? Math.round((achieved / targetPerAgent) * 100)
+        : 0;
+    return { name, achieved, target: targetPerAgent, pct };
+  });
+
+  const cumulativeAchieved = monthRecords.length;
+  const cumulativeTarget = agentNames.length * targetPerAgent;
+  const cumulativePct =
+    cumulativeTarget > 0
+      ? Math.round((cumulativeAchieved / cumulativeTarget) * 100)
+      : 0;
+
+  return {
+    agents,
+    cumulativeAchieved,
+    cumulativeTarget,
+    cumulativePct,
+  };
+}
+
+export function computeAuditorTargets(
+  allRecords: DashboardAuditRecord[],
+  monthRecords: DashboardAuditRecord[],
+  totalMonthlyTarget: number
+): {
+  auditors: AuditorTargetRow[];
+  perAuditorTarget: number;
+  activeAuditors: number;
+} {
+  const auditorNames = Array.from(
+    new Set(
+      allRecords
+        .map((r) => r.auditor)
+        .filter((name): name is string => Boolean(name))
+    )
+  ).sort((a, b) => a.localeCompare(b));
+
+  const activeAuditors = auditorNames.length || 1;
+  const perAuditorTarget = Math.ceil(totalMonthlyTarget / activeAuditors);
+
+  const monthByAuditor = monthRecords.reduce<Record<string, number>>(
+    (acc, r) => {
+      if (!r.auditor) return acc;
+      acc[r.auditor] = (acc[r.auditor] ?? 0) + 1;
+      return acc;
+    },
+    {}
+  );
+
+  const auditors = auditorNames.map((name) => {
+    const achieved = monthByAuditor[name] ?? 0;
+    const pct =
+      perAuditorTarget > 0
+        ? Math.round((achieved / perAuditorTarget) * 100)
+        : 0;
+    return { name, achieved, target: perAuditorTarget, pct };
+  });
+
+  return { auditors, perAuditorTarget, activeAuditors };
+}
+
+export function auditorInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+export function computeTopAgents(records: DashboardAuditRecord[]): TopAgentRow[] {
+  const byAgent: Record<string, { sum: number; cnt: number }> = {};
+
+  for (const record of records) {
+    if (!byAgent[record.agent]) {
+      byAgent[record.agent] = { sum: 0, cnt: 0 };
+    }
+    byAgent[record.agent].sum += record.qualityPct;
+    byAgent[record.agent].cnt += 1;
+  }
+
+  return Object.entries(byAgent)
+    .map(([name, data]) => ({
+      name,
+      avg: data.cnt > 0 ? Math.round(data.sum / data.cnt) : 0,
+      count: data.cnt,
+    }))
+    .sort((a, b) => b.avg - a.avg)
+    .slice(0, 5);
+}
+
+export function computeTopFatals(records: DashboardAuditRecord[]): TopFatalRow[] {
+  const errorMap: Record<string, number> = {};
+
+  for (const record of records) {
+    for (const err of record.fatalList) {
+      errorMap[err] = (errorMap[err] ?? 0) + 1;
+    }
+  }
+
+  return Object.entries(errorMap)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+}

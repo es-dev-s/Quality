@@ -1,0 +1,6 @@
+{
+  "name": "QualityAudit Pro",
+  "description": "A comprehensive quality monitoring and audit tool for call and chat interactions with weighted scoring, fatal error tracking, analytics, and template management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

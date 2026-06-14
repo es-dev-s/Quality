@@ -1,0 +1,998 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/primitives/button";
+import { Field, Input, Label, Select } from "@/components/primitives/field";
+import { useToast } from "@/components/primitives/toast";
+import { saveAuditSubmission, updateAuditSubmission } from "@/lib/actions/audit";
+import { calculateResults } from "@/lib/audit/calculate-results";
+import { getScoringOptions } from "@/lib/audit/scoring-options";
+import { getEffectiveScore } from "@/lib/audit/score-state";
+import {
+  getLobDffOptions,
+  getLobSubReasonOptions,
+} from "@/lib/audit/interaction-options";
+import { isInteractionDetailsComplete } from "@/lib/audit/validate-interaction-details";
+import { getScoreTone, toneClass } from "@/lib/audit/score-visual";
+import type { TemplateListItem } from "@/lib/actions/templates";
+import type {
+  AuditFormData,
+  BusinessType,
+  InteractionConfig,
+  InteractionType,
+  ScoresMap,
+} from "@/lib/audit/types";
+import { cn } from "@/lib/utils";
+import { MessageSquare, Phone } from "lucide-react";
+import {
+  FEEDBACK_SECURITY_OPTIONS,
+  FEEDBACK_STATUS_OPTIONS,
+  defaultAuditFeedback,
+} from "@/lib/audit/feedback";
+import type { FeedbackSecurity, FeedbackStatus } from "@/lib/audit/feedback";
+import { AuditScorePanel } from "@/components/forms/audit-score-panel";
+
+function templateInteractionType(templateId: string): InteractionType | null {
+  if (templateId === "chat") return "Chat";
+  if (templateId === "call" || templateId === "default") return "Call";
+  return null;
+}
+
+function resolveInteractionType(
+  templateId: string,
+  templates: TemplateListItem[],
+  fallback: InteractionType
+): InteractionType {
+  const fromBuiltin = templateInteractionType(templateId);
+  if (fromBuiltin) return fromBuiltin;
+
+  const row = templates.find((template) => template.id === templateId);
+  if (row?.type === "Chat" || row?.type === "Call") {
+    return row.type;
+  }
+
+  return fallback;
+}
+
+function templateIdForType(
+  type: InteractionType,
+  templates: TemplateListItem[]
+): string {
+  const preferred = type === "Chat" ? "chat" : "call";
+  if (templates.some((template) => template.id === preferred)) {
+    return preferred;
+  }
+
+  const byType = templates.find((template) => template.type === type);
+  if (byType) return byType.id;
+
+  return templates[0]?.id ?? preferred;
+}
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function createInitialFormData(): AuditFormData {
+  return {
+    agent: "",
+    supervisor: "",
+    auditor: "",
+    type: "Call",
+    businessType: "Sales",
+    callDate: todayISO(),
+    auditDate: todayISO(),
+    lob: "",
+    sublob: "",
+    mobile: "",
+    reason: "",
+    subReason: "",
+    response: "",
+    ...defaultAuditFeedback(),
+    agentFeedback: "",
+  };
+}
+
+type AuditFormProps = {
+  auditors: string[];
+  interactionConfig: InteractionConfig;
+  templates: TemplateListItem[];
+  initialTemplateId: string;
+  initialType?: InteractionType;
+  editAuditId?: string;
+  editAuditCode?: string;
+  initialFormData?: AuditFormData;
+  initialScores?: ScoresMap;
+  successRedirect?: string;
+  cancelHref?: string;
+};
+
+function scoringMaxForTemplate(template: TemplateListItem): number {
+  return template.sections
+    .filter((section) => !section.isFatal)
+    .flatMap((section) => section.params)
+    .filter((param) => param.scoring !== "Y/N-CMM")
+    .reduce((sum, param) => sum + param.max, 0);
+}
+
+export function AuditForm({
+  auditors,
+  interactionConfig,
+  templates,
+  initialTemplateId,
+  initialType = "Call",
+  editAuditId,
+  editAuditCode,
+  initialFormData,
+  initialScores,
+  successRedirect = "/dashboard",
+  cancelHref,
+}: AuditFormProps) {
+  const isEditMode = Boolean(editAuditId);
+  const router = useRouter();
+  const { toast } = useToast();
+  const [pending, startTransition] = useTransition();
+  const [selectedTemplateId, setSelectedTemplateId] = useState(initialTemplateId);
+  const [formData, setFormData] = useState<AuditFormData>(() => {
+    if (initialFormData) {
+      return initialFormData;
+    }
+    return {
+      ...createInitialFormData(),
+      type: resolveInteractionType(initialTemplateId, templates, initialType),
+    };
+  });
+
+  useEffect(() => {
+    if (isEditMode || formData.auditor || auditors.length === 0) return;
+    setFormData((prev) => ({ ...prev, auditor: auditors[0] }));
+  }, [auditors, formData.auditor, isEditMode]);
+
+  const [scores, setScores] = useState<ScoresMap>(() => initialScores ?? {});
+  const config = interactionConfig;
+
+  const activeTemplate = useMemo(() => {
+    return (
+      templates.find((template) => template.id === selectedTemplateId) ??
+      templates[0]
+    );
+  }, [templates, selectedTemplateId]);
+
+  const templateMaxScore = useMemo(
+    () => (activeTemplate ? scoringMaxForTemplate(activeTemplate) : 0),
+    [activeTemplate]
+  );
+
+  const previewRecordContext = useMemo(
+    () => ({
+      id: editAuditCode ?? "AUD-PREVIEW",
+      feedbackSecurity: formData.feedbackSecurity,
+      feedbackStatus: formData.feedbackStatus,
+      feedbackDate: formData.feedbackDate,
+    }),
+    [
+      editAuditCode,
+      formData.feedbackSecurity,
+      formData.feedbackStatus,
+      formData.feedbackDate,
+    ]
+  );
+
+  const isCallInteraction = formData.type === "Call";
+  const feedbackDateRequired = formData.feedbackStatus !== "Pending";
+
+  const selectableLOBs = useMemo(
+    () =>
+      config.lobs.filter(
+        (lob) => (lob.businessType || "Sales") === formData.businessType
+      ),
+    [config.lobs, formData.businessType]
+  );
+
+  const matchedLOB = useMemo(
+    () =>
+      config.lobs.find(
+        (l) =>
+          l.name === formData.lob && l.businessType === formData.businessType
+      ),
+    [config.lobs, formData.lob, formData.businessType]
+  );
+
+  const subLOBs = matchedLOB?.sublobs ?? [];
+  const businessTypes = useMemo(
+    () =>
+      config.businessTypes.length > 0 ? config.businessTypes : ["Sales", "Support"],
+    [config.businessTypes]
+  );
+
+  useEffect(() => {
+    if (businessTypes.length === 0) return;
+    if (!businessTypes.includes(formData.businessType)) {
+      setFormData((prev) => ({
+        ...prev,
+        businessType: businessTypes[0],
+        lob: "",
+        sublob: "",
+        reason: "",
+        subReason: "",
+      }));
+    }
+  }, [businessTypes, formData.businessType]);
+
+  const reasons = useMemo(
+    () => getLobSubReasonOptions(matchedLOB),
+    [matchedLOB]
+  );
+
+  const subReasons = useMemo(
+    () => getLobDffOptions(matchedLOB),
+    [matchedLOB]
+  );
+
+  const interactionValidationContext = useMemo(
+    () => ({ subReasonRequired: subReasons.length > 0 }),
+    [subReasons.length]
+  );
+
+  const updateForm = useCallback((patch: Partial<AuditFormData>) => {
+    setFormData((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const handleBusinessType = (businessType: BusinessType) => {
+    updateForm({ businessType, lob: "", sublob: "", reason: "", subReason: "" });
+  };
+
+  const handleLOB = (lob: string) => {
+    updateForm({ lob, sublob: "", reason: "", subReason: "" });
+  };
+
+  const handleSubLOB = (sublob: string) => {
+    updateForm({ sublob });
+  };
+
+  const handleReason = (reason: string) => {
+    updateForm({ reason });
+  };
+
+  const handleFeedbackStatus = (feedbackStatus: FeedbackStatus) => {
+    if (feedbackStatus === "Pending") {
+      updateForm({ feedbackStatus, feedbackDate: "" });
+      return;
+    }
+
+    updateForm({
+      feedbackStatus,
+      feedbackDate: formData.feedbackDate || todayISO(),
+    });
+  };
+
+  const handleScore = (paramId: string, value: string) => {
+    if (!isInteractionDetailsComplete(formData)) return;
+    setScores((prev) => ({ ...prev, [paramId]: value }));
+  };
+
+  const handleResetScores = () => {
+    setScores({});
+  };
+
+  const handleInteractionType = (type: InteractionType) => {
+    if (type === formData.type || isEditMode) return;
+    setScores({});
+    updateForm({ type });
+    setSelectedTemplateId(templateIdForType(type, templates));
+  };
+
+  const handleCalculate = () => {
+    const calc = calculateResults(
+      formData,
+      scores,
+      activeTemplate,
+      previewRecordContext,
+      interactionValidationContext
+    );
+    if (!calc.ok) {
+      toast(calc.error, "error");
+      return;
+    }
+    const { record } = calc;
+    const label =
+      record.totalMax === 0 && !record.hasFatal
+        ? "Rate scoring parameters to compute quality %"
+        : `${record.finalPct}% — ${record.grade}`;
+    toast(`Score calculated: ${label}`);
+  };
+
+  const handleSave = () => {
+    startTransition(async () => {
+      const calc = calculateResults(
+        formData,
+        scores,
+        activeTemplate,
+        previewRecordContext,
+        interactionValidationContext
+      );
+      if (!calc.ok) {
+        toast(calc.error, "error");
+        return;
+      }
+
+      const res = isEditMode
+        ? await updateAuditSubmission(
+            editAuditId!,
+            formData,
+            scores,
+            activeTemplate.id
+          )
+        : await saveAuditSubmission(formData, scores, activeTemplate.id);
+
+      if ("error" in res && res.error) {
+        toast(res.error, "error");
+        return;
+      }
+
+      toast(isEditMode ? "Audit updated successfully" : "Audit saved successfully");
+      router.push(successRedirect);
+      router.refresh();
+    });
+  };
+
+  const scoringParamCount = useMemo(
+    () =>
+      activeTemplate.sections
+        .filter((s) => !s.isFatal)
+        .reduce(
+          (n, s) => n + s.params.filter((p) => p.scoring !== "Y/N-CMM").length,
+          0
+        ),
+    [activeTemplate.sections]
+  );
+
+  const ratedScoringCount = useMemo(() => {
+    let count = 0;
+    for (const sec of activeTemplate.sections) {
+      if (sec.isFatal) continue;
+      for (const param of sec.params) {
+        if (param.scoring === "Y/N-CMM") continue;
+        const val = getEffectiveScore(scores, param.id, false);
+        if (val !== "NA") count++;
+      }
+    }
+    return count;
+  }, [scores, activeTemplate.sections]);
+
+  const canCalculate = isInteractionDetailsComplete(
+    formData,
+    interactionValidationContext
+  );
+
+  const liveResult = useMemo(() => {
+    if (!canCalculate || !activeTemplate) return null;
+    const calc = calculateResults(
+      formData,
+      scores,
+      activeTemplate,
+      previewRecordContext,
+      interactionValidationContext
+    );
+    return calc.ok ? calc.record : null;
+  }, [
+    canCalculate,
+    formData,
+    scores,
+    activeTemplate,
+    interactionValidationContext,
+    previewRecordContext,
+  ]);
+
+  if (!activeTemplate) {
+    return null;
+  }
+
+  return (
+    <div className="audit-form-page audit-form-page--fixed-aside">
+      <div className="audit-form-page__chrome">
+        <div className="audit-form-page__inner">
+      <header className="audit-form__toolbar audit-form__toolbar--compact">
+        <div className="audit-form__toolbar-left">
+          <h2 className="audit-form__toolbar-title">
+            {isEditMode ? `Edit audit · ${editAuditCode}` : "Quality audit"}
+          </h2>
+          <p className="audit-form__toolbar-hint">
+            {formData.type} · {activeTemplate.name}
+            {templateMaxScore > 0 ? ` · ${templateMaxScore} pts` : ""}
+          </p>
+        </div>
+        <div className="audit-form__toolbar-actions">
+          {cancelHref ? (
+            <Link href={cancelHref} className="ui-btn ui-btn--ghost ui-btn--sm">
+              Cancel
+            </Link>
+          ) : null}
+          <Button variant="ghost" size="sm" onClick={handleResetScores}>
+            Reset
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleCalculate}
+            disabled={!canCalculate}
+          >
+            Calculate Score
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={pending || !canCalculate}>
+            {pending
+              ? isEditMode
+                ? "Saving…"
+                : "Saving…"
+              : isEditMode
+                ? "Save changes"
+                : "Save to History"}
+          </Button>
+        </div>
+      </header>
+        </div>
+      </div>
+
+      <div className="audit-form-page__workspace">
+        <div className="audit-form-scroll">
+          <div className="audit-form-page__inner">
+        <div className="audit-form">
+          <section className="audit-panel">
+            <header className="audit-panel__head">
+              <span className="audit-panel__step">01</span>
+              <div className="audit-panel__head-main">
+                <div className="audit-panel__head-row">
+                  <h2 className="audit-panel__title">Interaction Details</h2>
+                </div>
+              </div>
+            </header>
+
+            <div className="audit-panel__body">
+              <div className="audit-details">
+                <div className="audit-details__row audit-details__row--full">
+                  <div className="audit-type-switch">
+                    <span className="audit-type-switch__label">Interaction type</span>
+                    <div
+                      className="audit-segment audit-segment--details"
+                      role="group"
+                      aria-label="Interaction type"
+                    >
+                      {(["Call", "Chat"] as InteractionType[]).map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          className={cn(
+                            "audit-segment__btn",
+                            formData.type === type && "audit-segment__btn--active"
+                          )}
+                          disabled={isEditMode || pending}
+                          onClick={() => handleInteractionType(type)}
+                        >
+                          {type === "Call" ? (
+                            <Phone size={15} aria-hidden />
+                          ) : (
+                            <MessageSquare size={15} aria-hidden />
+                          )}
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="audit-type-switch__hint">
+                      {isCallInteraction
+                        ? "Call rubric — voice interaction scoring parameters below."
+                        : "Chat rubric — messaging interaction scoring parameters below."}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="audit-details__row">
+                  <Field className="audit-field">
+                    <Label htmlFor="agent">
+                      Agent Name <span className="audit-required">*</span>
+                    </Label>
+                    <Select
+                      id="agent"
+                      className="audit-control"
+                      value={formData.agent}
+                      required
+                      onChange={(e) => updateForm({ agent: e.target.value })}
+                    >
+                      <option value="">Select Agent</option>
+                      {config.agents.map((a) => (
+                        <option key={a} value={a}>
+                          {a}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+
+                  <Field className="audit-field">
+                    <Label htmlFor="supervisor">
+                      Supervisor Name <span className="audit-required">*</span>
+                    </Label>
+                    <Select
+                      id="supervisor"
+                      className="audit-control"
+                      value={formData.supervisor}
+                      required
+                      onChange={(e) =>
+                        updateForm({ supervisor: e.target.value })
+                      }
+                    >
+                      <option value="">Select Supervisor</option>
+                      {config.supervisors.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+
+                  <Field className="audit-field">
+                    <Label htmlFor="auditor">
+                      Quality Auditor <span className="audit-required">*</span>
+                    </Label>
+                    <Select
+                      id="auditor"
+                      className="audit-control"
+                      value={formData.auditor}
+                      required
+                      onChange={(e) => updateForm({ auditor: e.target.value })}
+                    >
+                      <option value="">Select Auditor</option>
+                      {auditors.map((a) => (
+                        <option key={a} value={a}>
+                          {a}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+
+                <div className="audit-details__row">
+                  <Field className="audit-field">
+                    <Label htmlFor="callDate">
+                      {isCallInteraction ? "Call Date" : "Chat Date"}{" "}
+                      <span className="audit-required">*</span>
+                    </Label>
+                    <Input
+                      id="callDate"
+                      className="audit-control"
+                      type="date"
+                      value={formData.callDate}
+                      required
+                      onChange={(e) => updateForm({ callDate: e.target.value })}
+                    />
+                  </Field>
+
+                  <Field className="audit-field">
+                    <Label htmlFor="auditDate">
+                      Audit Date <span className="audit-required">*</span>
+                    </Label>
+                    <Input
+                      id="auditDate"
+                      className="audit-control"
+                      type="date"
+                      value={formData.auditDate}
+                      required
+                      onChange={(e) => updateForm({ auditDate: e.target.value })}
+                    />
+                  </Field>
+
+                  <Field className="audit-field">
+                    <Label htmlFor="businessType">
+                      Business Type <span className="audit-required">*</span>
+                    </Label>
+                    <Select
+                      id="businessType"
+                      className="audit-control"
+                      value={formData.businessType}
+                      required
+                      onChange={(e) => handleBusinessType(e.target.value)}
+                    >
+                      <option value="">Select Business Type</option>
+                      {businessTypes.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+
+                <div className="audit-details__row">
+                  <Field className="audit-field">
+                    <Label htmlFor="lob">
+                      LOB <span className="audit-required">*</span>
+                    </Label>
+                    <Select
+                      id="lob"
+                      className="audit-control"
+                      value={formData.lob}
+                      disabled={!formData.businessType}
+                      required
+                      onChange={(e) => handleLOB(e.target.value)}
+                    >
+                      <option value="">
+                        {formData.businessType
+                          ? "Select LOB"
+                          : "Select business type first"}
+                      </option>
+                      {selectableLOBs.map((l) => (
+                        <option
+                          key={`${l.businessType}-${l.name}`}
+                          value={l.name}
+                        >
+                          {l.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+
+                  <Field className="audit-field">
+                    <Label htmlFor="sublob">
+                      Reason <span className="audit-required">*</span>
+                    </Label>
+                    <Select
+                      id="sublob"
+                      className="audit-control"
+                      value={formData.sublob}
+                      disabled={!formData.lob}
+                      required
+                      onChange={(e) => handleSubLOB(e.target.value)}
+                    >
+                      <option value="">
+                        {formData.lob ? "Select Reason" : "Select LOB first"}
+                      </option>
+                      {subLOBs.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+
+                  <Field className="audit-field">
+                    <Label htmlFor="reason">
+                      Sub-reason <span className="audit-required">*</span>
+                    </Label>
+                    <Select
+                      id="reason"
+                      className="audit-control"
+                      value={formData.reason}
+                      disabled={!formData.lob}
+                      required
+                      onChange={(e) => handleReason(e.target.value)}
+                    >
+                      <option value="">
+                        {formData.lob ? "Select Sub-reason" : "Select LOB first"}
+                      </option>
+                      {reasons.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+
+                <div className="audit-details__row audit-details__row--pair">
+                  <Field className="audit-field">
+                    <Label htmlFor="subReason">
+                      DFF
+                      {subReasons.length > 0 ? (
+                        <span className="audit-required"> *</span>
+                      ) : null}
+                    </Label>
+                    <Select
+                      id="subReason"
+                      className="audit-control"
+                      value={formData.subReason}
+                      disabled={!formData.lob || subReasons.length === 0}
+                      required={subReasons.length > 0}
+                      onChange={(e) =>
+                        updateForm({ subReason: e.target.value })
+                      }
+                    >
+                      <option value="">
+                        {!formData.lob
+                          ? "Select LOB first"
+                          : subReasons.length === 0
+                            ? "No DFF configured"
+                            : "Select DFF"}
+                      </option>
+                      {subReasons.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+
+                  <Field className="audit-field">
+                    <Label htmlFor="mobile">
+                      {isCallInteraction ? "Mobile Number" : "Chat Reference"}{" "}
+                      <span className="audit-required">*</span>
+                    </Label>
+                    <Input
+                      id="mobile"
+                      className="audit-control"
+                      placeholder={
+                        isCallInteraction
+                          ? "Phone number or CRM URL"
+                          : "Chat ID, ticket URL, or CRM link"
+                      }
+                      value={formData.mobile}
+                      required
+                      onChange={(e) => updateForm({ mobile: e.target.value })}
+                    />
+                  </Field>
+                </div>
+
+                <div className="audit-details__row audit-details__row--full">
+                  <Field className="audit-field">
+                    <Label htmlFor="response">
+                      Agent&apos;s Response{" "}
+                      <span className="audit-required">*</span>
+                    </Label>
+                    <textarea
+                      id="response"
+                      className="audit-control audit-textarea"
+                      rows={3}
+                      placeholder="Briefly describe the outcome..."
+                      value={formData.response}
+                      required
+                      onChange={(e) => updateForm({ response: e.target.value })}
+                    />
+                  </Field>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {!canCalculate && (
+            <div className="audit-form__alert" role="status">
+              <p>
+                Complete all required Interaction Details fields above before
+                scoring parameters below.
+              </p>
+            </div>
+          )}
+
+          {activeTemplate.sections.map((section, index) => {
+            const sectionMax = section.params.reduce((sum, p) => sum + p.max, 0);
+            const sectionRated = section.isFatal
+              ? section.params.filter(
+                  (p) => getEffectiveScore(scores, p.id, true) === "Y"
+                ).length
+              : section.params.filter(
+                  (p) => getEffectiveScore(scores, p.id, false) !== "NA"
+                ).length;
+
+            return (
+              <section
+                key={`${selectedTemplateId}-${section.id}`}
+                className={cn(
+                  "audit-panel",
+                  sectionRated > 0 && "audit-panel--rated",
+                  !canCalculate && "audit-panel--locked"
+                )}
+              >
+                <header className="audit-panel__head">
+                  <span className="audit-panel__step">
+                    {String(index + 2).padStart(2, "0")}
+                  </span>
+                  <div className="audit-panel__head-main">
+                    <div className="audit-panel__head-row">
+                      <h2 className="audit-panel__title">{section.name}</h2>
+                      {section.isFatal ? (
+                        <span className="audit-panel__tag audit-panel__tag--fatal">
+                          Fatal
+                        </span>
+                      ) : section.params.every((p) => p.scoring === "Y/N-CMM") ? (
+                        <span className="audit-panel__tag">
+                          No score impact
+                        </span>
+                      ) : (
+                        <span className="audit-panel__tag">
+                          MAX: {sectionMax} PTS
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </header>
+
+                <div className="audit-score-list">
+                  <div className="audit-score-list__head">
+                    <span>Parameter</span>
+                    <span>Score</span>
+                  </div>
+                  {section.params.map((param) => {
+                    const options = getScoringOptions(param.scoring, param.max, {
+                      points: param.points,
+                      fatalOptionLabel: param.fatalOptionLabel,
+                    });
+                    const current = getEffectiveScore(
+                      scores,
+                      param.id,
+                      section.isFatal
+                    );
+                    const tone = getScoreTone(
+                      current,
+                      param.scoring,
+                      param.max,
+                      section.isFatal
+                    );
+                    const isRated =
+                      section.isFatal || current !== "NA";
+
+                    return (
+                      <div
+                        key={param.id}
+                        className={cn(
+                          "audit-score-row",
+                          toneClass(tone, "audit-score-row"),
+                          isRated && tone !== "na" && "audit-score-row--active"
+                        )}
+                      >
+                        <div className="audit-score-row__info">
+                          <span className="audit-score-row__name">
+                            {param.name}
+                            {param.max > 0 && (
+                              <span className="audit-score-row__max-inline">
+                                {" "}
+                                (max {param.max})
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        <div className="audit-score-row__field">
+                          <span className="audit-score-row__field-label">
+                            Score
+                          </span>
+                          <Select
+                            className={cn(
+                              "audit-control audit-score-row__select",
+                              toneClass(tone, "audit-control")
+                            )}
+                            value={current}
+                            disabled={!canCalculate}
+                            onChange={(e) =>
+                              handleScore(param.id, e.target.value)
+                            }
+                          >
+                            {options.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+
+          <section className="audit-panel">
+            <header className="audit-panel__head">
+              <span className="audit-panel__step">
+                {String(activeTemplate.sections.length + 2).padStart(2, "0")}
+              </span>
+              <div className="audit-panel__head-main">
+                <div className="audit-panel__head-row">
+                  <h2 className="audit-panel__title">Feedback</h2>
+                </div>
+              </div>
+            </header>
+
+            <div className="audit-panel__body">
+              <div className="audit-details">
+                <div className="audit-details__row">
+                  <Field className="audit-field">
+                    <Label htmlFor="feedbackSecurity">Security</Label>
+                    <Select
+                      id="feedbackSecurity"
+                      className="audit-control"
+                      value={formData.feedbackSecurity}
+                      onChange={(e) =>
+                        updateForm({
+                          feedbackSecurity: e.target.value as FeedbackSecurity,
+                        })
+                      }
+                    >
+                      {FEEDBACK_SECURITY_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+
+                  <Field className="audit-field">
+                    <Label htmlFor="feedbackStatus">Feedback Status</Label>
+                    <Select
+                      id="feedbackStatus"
+                      className="audit-control"
+                      value={formData.feedbackStatus}
+                      onChange={(e) =>
+                        handleFeedbackStatus(e.target.value as FeedbackStatus)
+                      }
+                    >
+                      {FEEDBACK_STATUS_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+
+                  <Field className="audit-field">
+                    <Label htmlFor="feedbackDate">
+                      Feedback Date
+                      {feedbackDateRequired ? (
+                        <span className="audit-required"> *</span>
+                      ) : null}
+                    </Label>
+                    <Input
+                      id="feedbackDate"
+                      className="audit-control"
+                      type="date"
+                      value={formData.feedbackDate}
+                      disabled={formData.feedbackStatus === "Pending"}
+                      required={feedbackDateRequired}
+                      onChange={(e) =>
+                        updateForm({ feedbackDate: e.target.value })
+                      }
+                    />
+                    <p className="audit-field__hint">
+                      {formData.feedbackStatus === "Pending"
+                        ? "Set when feedback is shared with the agent."
+                        : "Date feedback was shared or acknowledged."}
+                    </p>
+                  </Field>
+                </div>
+
+                <div className="audit-details__row audit-details__row--full">
+                  <Field className="audit-field">
+                    <Label htmlFor="agentFeedback">Feedback for the agent</Label>
+                    <textarea
+                      id="agentFeedback"
+                      className="audit-control audit-textarea"
+                      rows={4}
+                      placeholder="Write feedback to share with the agent..."
+                      value={formData.agentFeedback}
+                      onChange={(e) =>
+                        updateForm({ agentFeedback: e.target.value })
+                      }
+                    />
+                  </Field>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div className="audit-form__footer">
+            <Button size="md" onClick={handleCalculate} disabled={!canCalculate}>
+              Generate Quality Output
+            </Button>
+          </div>
+        </div>
+          </div>
+        </div>
+
+        <AuditScorePanel
+          result={liveResult}
+          ratedCount={ratedScoringCount}
+          totalScoringParams={scoringParamCount}
+          canCalculate={canCalculate}
+          fixed
+        />
+      </div>
+    </div>
+  );
+}
