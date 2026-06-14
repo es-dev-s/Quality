@@ -22,10 +22,10 @@ export function getLanIpv4Hosts(): string[] {
 export function collectAllowedOrigins(): string[] {
   const origins = new Set(collectConfiguredOrigins());
 
-  if (!isProduction()) {
-    for (const host of getLanIpv4Hosts()) {
-      origins.add(host);
-    }
+  // Include this machine's LAN IPs in production too (e.g. http://10.80.80.221:4782).
+  // Without this, Server Actions fail on LAN-hosted Windows Server builds.
+  for (const host of getLanIpv4Hosts()) {
+    origins.add(host);
   }
 
   return Array.from(origins);

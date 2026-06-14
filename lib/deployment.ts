@@ -32,9 +32,16 @@ export function shouldTrustHost(): boolean {
 }
 
 export function shouldUseSecureCookies(): boolean {
+  const explicit = process.env.AUTH_SECURE_COOKIES?.trim().toLowerCase();
+  if (explicit === "true") return true;
+  if (explicit === "false") return false;
+
   const url = getAppUrl();
   if (url) return url.startsWith("https://");
-  return isProduction();
+
+  // Production over plain HTTP (LAN / Windows Server without TLS): secure cookies
+  // are dropped by browsers and login loops back to /login.
+  return false;
 }
 
 function hostsFromUrl(url: string): string[] {
