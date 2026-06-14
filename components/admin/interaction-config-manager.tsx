@@ -18,11 +18,14 @@ import { Modal } from "@/components/primitives/modal";
 import { useToast } from "@/components/primitives/toast";
 import { saveInteractionConfig } from "@/lib/actions/interaction-config";
 import {
+  addSubReasonToReason,
   addToLobStringList,
   ensureLobFlatLists,
   getLobDffOptions,
-  getLobSubReasonOptions,
+  getSubReasonsForReason,
+  prepareLobReasonMap,
   removeFromLobStringList,
+  removeSubReasonFromReason,
 } from "@/lib/audit/lob-flat-lists";
 import type { BusinessType, InteractionConfig, LOBConfig } from "@/lib/audit/types";
 import { useBulkSelection } from "@/lib/hooks/use-bulk-selection";
@@ -48,8 +51,8 @@ type DeleteTarget =
   | { type: "businessType"; value: string }
   | { type: "lob"; businessType: BusinessType; name: string }
   | { type: "sublob"; lobIndex: number; name: string }
-  | { type: "reason"; lobIndex: number; name: string }
-  | { type: "subReason"; lobIndex: number; name: string };
+  | { type: "subReason"; lobIndex: number; reasonName: string; name: string }
+  | { type: "dff"; lobIndex: number; name: string };
 
 function sortNames(values: string[]) {
   return [...values].sort((a, b) => a.localeCompare(b));
@@ -62,13 +65,18 @@ function cloneConfig(config: InteractionConfig): InteractionConfig {
     auditors: [...config.auditors],
     businessTypes: [...config.businessTypes],
     lobs: config.lobs.map((lob) => {
-      const flat = ensureLobFlatLists(lob);
+      const prepared = prepareLobReasonMap(lob);
       return {
-        ...flat,
-        sublobs: [...flat.sublobs],
-        subReasonsList: [...(flat.subReasonsList ?? [])],
-        dffList: [...(flat.dffList ?? [])],
-        sublobReasons: {},
+        ...prepared,
+        sublobs: [...prepared.sublobs],
+        sublobReasons: Object.fromEntries(
+          Object.entries(prepared.sublobReasons ?? {}).map(([key, values]) => [
+            key,
+            [...values],
+          ])
+        ),
+        subReasonsList: [...(prepared.subReasonsList ?? [])],
+        dffList: [...(prepared.dffList ?? [])],
         sublobReasonSubReasons: undefined,
         reasonSubReasons: undefined,
         reasons: undefined,
@@ -89,9 +97,9 @@ function deleteTargetLabel(target: DeleteTarget): string {
       return `LOB "${target.name}" (${target.businessType})`;
     case "sublob":
       return `reason "${target.name}"`;
-    case "reason":
-      return `sub-reason "${target.name}"`;
     case "subReason":
+      return `sub-reason "${target.name}" under "${target.reasonName}"`;
+    case "dff":
       return `DFF "${target.name}"`;
   }
 }
@@ -130,6 +138,7 @@ export function InteractionConfigManager({
   const [newSublobText, setNewSublobText] = useState("");
   const [newReasonText, setNewReasonText] = useState("");
   const [newSubReasonText, setNewSubReasonText] = useState("");
+  const [selectedReasonName, setSelectedReasonName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [bulkListDeleteOpen, setBulkListDeleteOpen] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("saved");
@@ -350,13 +359,28 @@ export function InteractionConfigManager({
   const activeLob = lobsForType[selectedLobIndex] ?? lobsForType[0] ?? null;
 
   const activeLobFlat = useMemo(
-    () => (activeLob ? ensureLobFlatLists(activeLob) : null),
+    () => (activeLob ? prepareLobReasonMap(activeLob) : null),
     [activeLob]
   );
 
+  useEffect(() => {
+    if (!activeLobFlat) {
+      setSelectedReasonName("");
+      return;
+    }
+    if (
+      selectedReasonName &&
+      activeLobFlat.sublobs.includes(selectedReasonName)
+    ) {
+      return;
+    }
+    setSelectedReasonName(activeLobFlat.sublobs[0] ?? "");
+  }, [activeLobFlat, selectedReasonName]);
+
   const activeSubReasonsList = useMemo(
-    () => getLobSubReasonOptions(activeLobFlat ?? undefined),
-    [activeLobFlat]
+    () =>
+      getSubReasonsForReason(activeLobFlat ?? undefined, selectedReasonName),
+    [activeLobFlat, selectedReasonName]
   );
 
   const activeDffList = useMemo(
@@ -387,14 +411,16 @@ export function InteractionConfigManager({
       return;
     }
     const next = cloneConfig(configRef.current);
-    next.lobs.push({
-      name,
-      businessType,
-      sublobs: [],
-      subReasonsList: [],
-      dffList: [],
-      sublobReasons: {},
-    });
+    next.lobs.push(
+      prepareLobReasonMap({
+        name,
+        businessType,
+        sublobs: [],
+        sublobReasons: {},
+        subReasonsList: [],
+        dffList: [],
+      })
+    );
     persist(next);
     setNewLobName("");
     setSelectedLobIndex(lobsForType.length);
@@ -417,30 +443,41 @@ export function InteractionConfigManager({
     const value = newSublobText.trim();
     if (!value || globalLobIndex < 0) return;
     updateLobAt(globalLobIndex, (lob) => {
-      const flat = ensureLobFlatLists(lob);
-      const nextList = addToLobStringList(flat.sublobs, value);
+      const prepared = prepareLobReasonMap(lob);
+      const nextList = addToLobStringList(prepared.sublobs, value);
       if (!nextList) {
         toast("Reason already exists.", "error");
         return null;
       }
-      return { ...flat, sublobs: nextList };
+      return {
+        ...prepared,
+        sublobs: nextList,
+        sublobReasons: {
+          ...(prepared.sublobReasons ?? {}),
+          [value]: prepared.sublobReasons?.[value] ?? [],
+        },
+      };
     });
     setNewSublobText("");
+    setSelectedReasonName(value);
   }
 
   function handleAddReason(e: React.FormEvent) {
     e.preventDefault();
     const value = newReasonText.trim();
     if (!value || globalLobIndex < 0) return;
+    if (!selectedReasonName) {
+      toast("Select a reason first.", "error");
+      return;
+    }
     updateLobAt(globalLobIndex, (lob) => {
-      const flat = ensureLobFlatLists(lob);
-      const current = flat.subReasonsList ?? [];
-      const nextList = addToLobStringList(current, value);
-      if (!nextList) {
-        toast("Sub-reason already exists.", "error");
+      const prepared = prepareLobReasonMap(lob);
+      const updated = addSubReasonToReason(prepared, selectedReasonName, value);
+      if (!updated) {
+        toast("Sub-reason already exists for this reason.", "error");
         return null;
       }
-      return { ...flat, subReasonsList: nextList };
+      return updated;
     });
     setNewReasonText("");
   }
@@ -510,25 +547,32 @@ export function InteractionConfigManager({
     } else if (deleteTarget.type === "sublob") {
       const lob = next.lobs[deleteTarget.lobIndex];
       if (lob) {
-        const flat = ensureLobFlatLists(lob);
-        next.lobs[deleteTarget.lobIndex] = {
-          ...flat,
-          sublobs: removeFromLobStringList(flat.sublobs, deleteTarget.name),
-        };
-      }
-    } else if (deleteTarget.type === "reason") {
-      const lob = next.lobs[deleteTarget.lobIndex];
-      if (lob) {
-        const flat = ensureLobFlatLists(lob);
-        next.lobs[deleteTarget.lobIndex] = {
-          ...flat,
-          subReasonsList: removeFromLobStringList(
-            flat.subReasonsList ?? [],
+        const prepared = prepareLobReasonMap(lob);
+        const { [deleteTarget.name]: _removed, ...remainingReasons } =
+          prepared.sublobReasons ?? {};
+        next.lobs[deleteTarget.lobIndex] = prepareLobReasonMap({
+          ...prepared,
+          sublobs: removeFromLobStringList(prepared.sublobs, deleteTarget.name),
+          sublobReasons: remainingReasons,
+        });
+        if (selectedReasonName === deleteTarget.name) {
+          const remaining = removeFromLobStringList(
+            prepared.sublobs,
             deleteTarget.name
-          ),
-        };
+          );
+          setSelectedReasonName(remaining[0] ?? "");
+        }
       }
     } else if (deleteTarget.type === "subReason") {
+      const lob = next.lobs[deleteTarget.lobIndex];
+      if (lob) {
+        next.lobs[deleteTarget.lobIndex] = removeSubReasonFromReason(
+          prepareLobReasonMap(lob),
+          deleteTarget.reasonName,
+          deleteTarget.name
+        );
+      }
+    } else if (deleteTarget.type === "dff") {
       const lob = next.lobs[deleteTarget.lobIndex];
       if (lob) {
         const flat = ensureLobFlatLists(lob);
@@ -868,11 +912,21 @@ export function InteractionConfigManager({
                     ) : (
                       activeLobFlat.sublobs.map((sublob) => (
                         <li key={sublob} className="platform-settings__reason-item">
-                          <span className="platform-settings__reason-label">{sublob}</span>
+                          <button
+                            type="button"
+                            className={cn(
+                              "platform-settings__reason-select",
+                              selectedReasonName === sublob &&
+                                "platform-settings__reason-select--active"
+                            )}
+                            onClick={() => setSelectedReasonName(sublob)}
+                          >
+                            {sublob}
+                          </button>
                           {canManage && (
                             <button
                               type="button"
-                              className="platform-settings__icon-btn platform-settings__icon-btn--danger"
+                              className="platform-settings__icon-btn platform-settings__icon-btn--danger platform-settings__icon-btn--compact"
                               aria-label={`Delete reason ${sublob}`}
                               onClick={() =>
                                 setDeleteTarget({
@@ -894,6 +948,11 @@ export function InteractionConfigManager({
                 <section className="platform-settings__sub-section">
                   <div className="platform-settings__section-head">
                     <h4>Sub-reason</h4>
+                    {selectedReasonName ? (
+                      <span className="platform-settings__section-context">
+                        {selectedReasonName}
+                      </span>
+                    ) : null}
                   </div>
                   {canManage && (
                     <form
@@ -903,35 +962,51 @@ export function InteractionConfigManager({
                       <input
                         type="text"
                         className="platform-settings__search"
-                        placeholder="Add sub-reason…"
+                        placeholder={
+                          selectedReasonName
+                            ? `Add sub-reason for "${selectedReasonName}"…`
+                            : "Select a reason first…"
+                        }
                         value={newReasonText}
+                        disabled={!selectedReasonName || isSaving}
                         onChange={(e) => setNewReasonText(e.target.value)}
                       />
-                      <button type="submit" className="ui-btn ui-btn--secondary ui-btn--sm">
+                      <button
+                        type="submit"
+                        className="ui-btn ui-btn--secondary ui-btn--sm"
+                        disabled={!selectedReasonName || isSaving}
+                      >
                         <Plus size={14} />
                         Add
                       </button>
                     </form>
                   )}
                   <ul className="platform-settings__reason-list">
-                    {activeSubReasonsList.length === 0 ? (
+                    {!selectedReasonName ? (
                       <li className="platform-settings__empty platform-settings__empty--list">
-                        No sub-reasons yet.
+                        Select a reason to manage sub-reasons.
+                      </li>
+                    ) : activeSubReasonsList.length === 0 ? (
+                      <li className="platform-settings__empty platform-settings__empty--list">
+                        No sub-reasons for this reason yet.
                       </li>
                     ) : (
-                      activeSubReasonsList.map((reason) => (
-                        <li key={reason} className="platform-settings__reason-item">
-                          <span className="platform-settings__reason-label">{reason}</span>
+                      activeSubReasonsList.map((subReason) => (
+                        <li key={subReason} className="platform-settings__reason-item">
+                          <span className="platform-settings__reason-label">
+                            {subReason}
+                          </span>
                           {canManage && (
                             <button
                               type="button"
                               className="platform-settings__icon-btn platform-settings__icon-btn--danger"
-                              aria-label={`Delete sub-reason ${reason}`}
+                              aria-label={`Delete sub-reason ${subReason}`}
                               onClick={() =>
                                 setDeleteTarget({
-                                  type: "reason",
+                                  type: "subReason",
                                   lobIndex: globalLobIndex,
-                                  name: reason,
+                                  reasonName: selectedReasonName,
+                                  name: subReason,
                                 })
                               }
                             >
@@ -984,7 +1059,7 @@ export function InteractionConfigManager({
                               aria-label={`Delete DFF ${subReason}`}
                               onClick={() =>
                                 setDeleteTarget({
-                                  type: "subReason",
+                                  type: "dff",
                                   lobIndex: globalLobIndex,
                                   name: subReason,
                                 })

@@ -25,8 +25,10 @@ async function AuditFormContent({
 }: {
   searchParams: Promise<{ type?: string; template?: string }>;
 }) {
-  await requirePageAccess("/forms/audit");
+  const session = await requirePageAccess("/forms/audit");
   const params = await searchParams;
+  const currentAuditorName =
+    session.user.name?.trim() || session.user.email || "";
   const initialType = parseInitialType(params.type);
 
   const [auditors, interactionConfig, workbench] = await Promise.all([
@@ -53,6 +55,7 @@ async function AuditFormContent({
   return (
     <AuditForm
       auditors={auditors}
+      currentAuditorName={currentAuditorName}
       interactionConfig={interactionConfig}
       templates={workbench.templates}
       initialTemplateId={initialTemplateId}

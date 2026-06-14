@@ -1,6 +1,6 @@
 import {
   getLobDffOptions,
-  getLobSubReasonOptions,
+  getSubReasonsForReason,
 } from "@/lib/audit/lob-flat-lists";
 import { isAllowedAuditor } from "@/lib/audit/auditors";
 import type { AuditFormData, InteractionConfig } from "@/lib/audit/types";
@@ -61,9 +61,12 @@ export function validateAuditFormAgainstConfig(
   }
 
   if (matchedLob && formData.reason) {
-    const subReasons = getLobSubReasonOptions(matchedLob);
-    if (!includesOption(subReasons, formData.reason)) {
-      return "Selected sub-reason is not valid for this LOB.";
+    if (!formData.sublob) {
+      return "Select a reason before choosing a sub-reason.";
+    }
+    const subReasons = getSubReasonsForReason(matchedLob, formData.sublob);
+    if (subReasons.length > 0 && !includesOption(subReasons, formData.reason)) {
+      return "Selected sub-reason is not valid for this reason.";
     }
   }
 

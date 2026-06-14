@@ -15,19 +15,35 @@ function dedupeSortPreserveCase(values: string[]): string[] {
   return result.sort((a, b) => a.localeCompare(b));
 }
 
+function sanitizeSublobReasons(lob: LOBConfig): Record<string, string[]> {
+  const prepared = ensureLobFlatLists(lob);
+  const result: Record<string, string[]> = {};
+
+  for (const reason of prepared.sublobs) {
+    result[reason] = dedupeSortPreserveCase(
+      prepared.sublobReasons?.[reason] ?? []
+    );
+  }
+
+  return result;
+}
+
 export function sanitizeLob(lob: LOBConfig): LOBConfig {
   const withFlat = ensureLobFlatLists(lob);
   const sublobs = dedupeSortPreserveCase(withFlat.sublobs);
-  const subReasonsList = dedupeSortPreserveCase(withFlat.subReasonsList ?? []);
+  const sublobReasons = sanitizeSublobReasons({ ...withFlat, sublobs });
+  const subReasonsList = dedupeSortPreserveCase(
+    Object.values(sublobReasons).flat()
+  );
   const dffList = dedupeSortPreserveCase(withFlat.dffList ?? []);
 
   return {
     name: lob.name.trim(),
     businessType: lob.businessType.trim(),
     sublobs,
+    sublobReasons,
     subReasonsList,
     dffList,
-    sublobReasons: {},
     sublobReasonSubReasons: undefined,
     reasonSubReasons: undefined,
     reasons: undefined,

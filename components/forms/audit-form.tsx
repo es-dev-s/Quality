@@ -12,7 +12,7 @@ import { getScoringOptions } from "@/lib/audit/scoring-options";
 import { getEffectiveScore } from "@/lib/audit/score-state";
 import {
   getLobDffOptions,
-  getLobSubReasonOptions,
+  getSubReasonsForReason,
 } from "@/lib/audit/interaction-options";
 import { isInteractionDetailsComplete } from "@/lib/audit/validate-interaction-details";
 import { getScoreTone, toneClass } from "@/lib/audit/score-visual";
@@ -33,6 +33,7 @@ import {
 } from "@/lib/audit/feedback";
 import type { FeedbackSecurity, FeedbackStatus } from "@/lib/audit/feedback";
 import { AuditScorePanel } from "@/components/forms/audit-score-panel";
+import { resolveAuditorNameForSession } from "@/lib/audit/auditor-name";
 import { createRandomUUID } from "@/lib/random-id";
 
 function templateInteractionType(templateId: string): InteractionType | null {
@@ -82,7 +83,7 @@ function createInitialFormData(): AuditFormData {
     supervisor: "",
     auditor: "",
     type: "Call",
-    businessType: "Sales",
+    businessType: "",
     callDate: todayISO(),
     auditDate: todayISO(),
     lob: "",
@@ -98,6 +99,8 @@ function createInitialFormData(): AuditFormData {
 
 type AuditFormProps = {
   auditors: string[];
+  /** Logged-in user display name — pre-fills Quality Analyst on new audits. */
+  currentAuditorName?: string;
   interactionConfig: InteractionConfig;
   templates: TemplateListItem[];
   initialTemplateId: string;
@@ -120,6 +123,7 @@ function scoringMaxForTemplate(template: TemplateListItem): number {
 
 export function AuditForm({
   auditors,
+  currentAuditorName = "",
   interactionConfig,
   templates,
   initialTemplateId,
@@ -141,16 +145,15 @@ export function AuditForm({
     if (initialFormData) {
       return initialFormData;
     }
+    const auditor = currentAuditorName
+      ? resolveAuditorNameForSession(currentAuditorName, auditors)
+      : "";
     return {
       ...createInitialFormData(),
       type: resolveInteractionType(initialTemplateId, templates, initialType),
+      auditor,
     };
   });
-
-  useEffect(() => {
-    if (isEditMode || formData.auditor || auditors.length === 0) return;
-    setFormData((prev) => ({ ...prev, auditor: auditors[0] }));
-  }, [auditors, formData.auditor, isEditMode]);
 
   const [scores, setScores] = useState<ScoresMap>(() => initialScores ?? {});
 
@@ -241,10 +244,11 @@ export function AuditForm({
 
   useEffect(() => {
     if (businessTypes.length === 0) return;
+    if (!formData.businessType.trim()) return;
     if (!businessTypes.includes(formData.businessType)) {
       setFormData((prev) => ({
         ...prev,
-        businessType: businessTypes[0],
+        businessType: "",
         lob: "",
         sublob: "",
         reason: "",
@@ -254,8 +258,8 @@ export function AuditForm({
   }, [businessTypes, formData.businessType]);
 
   const reasons = useMemo(
-    () => getLobSubReasonOptions(matchedLOB),
-    [matchedLOB]
+    () => getSubReasonsForReason(matchedLOB, formData.sublob),
+    [matchedLOB, formData.sublob]
   );
 
   const subReasons = useMemo(
@@ -281,11 +285,11 @@ export function AuditForm({
   };
 
   const handleSubLOB = (sublob: string) => {
-    updateForm({ sublob });
+    updateForm({ sublob, reason: "", subReason: "" });
   };
 
   const handleReason = (reason: string) => {
-    updateForm({ reason });
+    updateForm({ reason, subReason: "" });
   };
 
   const handleFeedbackStatus = (feedbackStatus: FeedbackStatus) => {
@@ -696,12 +700,16 @@ export function AuditForm({
                       id="reason"
                       className="audit-control"
                       value={formData.reason}
-                      disabled={!formData.lob}
-                      required
+                      disabled={!formData.sublob || reasons.length === 0}
+                      required={reasons.length > 0}
                       onChange={(e) => handleReason(e.target.value)}
                     >
                       <option value="">
-                        {formData.lob ? "Select Sub-reason" : "Select LOB first"}
+                        {!formData.sublob
+                          ? "Select Reason first"
+                          : reasons.length === 0
+                            ? "No sub-reasons for this reason"
+                            : "Select Sub-reason"}
                       </option>
                       {reasons.map((r) => (
                         <option key={r} value={r}>

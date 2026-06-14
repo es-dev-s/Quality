@@ -2,14 +2,14 @@ import type { LOBConfig } from "@/lib/audit/types";
 import {
   getLobDffOptions,
   getLobSubReasonOptions,
+  getSubReasonsForReason,
 } from "@/lib/audit/lob-flat-lists";
 
-/** @deprecated Use getLobSubReasonOptions for flat lists. Kept for legacy callers. */
 export function getReasonOptions(
   lob: LOBConfig | undefined,
-  _sublob: string
+  sublob: string
 ): string[] {
-  return getLobSubReasonOptions(lob);
+  return getSubReasonsForReason(lob, sublob);
 }
 
 /** @deprecated Use getLobDffOptions for flat lists. Kept for legacy callers. */
@@ -21,4 +21,8 @@ export function getSubReasonOptions(
   return getLobDffOptions(lob);
 }
 
-export { getLobDffOptions, getLobSubReasonOptions } from "@/lib/audit/lob-flat-lists";
+export {
+  getLobDffOptions,
+  getLobSubReasonOptions,
+  getSubReasonsForReason,
+} from "@/lib/audit/lob-flat-lists";
