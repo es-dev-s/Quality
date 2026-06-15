@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { Calendar, Download, Printer } from "lucide-react";
 import { getReportData, type ReportPageData } from "@/lib/actions/reports";
+import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
 import { useStaleRequestGuard } from "@/lib/hooks/use-stale-request-guard";
 
 function defaultRange() {
@@ -22,25 +23,78 @@ function gradeClass(grade: string) {
   return "dash-grade dash-grade--needs";
 }
 
+function formatDateTime(value: string | null | undefined): string {
+  if (!value?.trim()) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toISOString();
+}
+
 function exportCsv(rows: ReportPageData["rows"]) {
   const headers = [
     "Audit ID",
     "Agent",
+    "Supervisor",
     "Auditor",
+    "Type",
+    "Business Type",
     "Call Date",
+    "Audit Date",
+    "LOB",
+    "Sub-LOB",
+    "Reason",
+    "Sub-reason",
+    "Mobile",
+    "Response",
     "Quality %",
     "Final %",
     "Grade",
+    "Has Fatal",
+    "Fatal Parameters",
+    "Points Scored",
+    "Points Max",
+    "Feedback Security",
+    "Feedback Status",
+    "Feedback Date",
+    "Acknowledged/Disputed At",
+    "Agent Feedback",
+    "Supervisor Remarks",
+    "Submitted By",
+    "Submitted At",
+    "Parameter Scores",
   ];
   const lines = rows.map((r) =>
     [
       r.auditCode,
       r.agent,
+      r.supervisor ?? "",
       r.auditor ?? "",
+      r.type,
+      r.businessType,
       r.callDate,
+      r.auditDate,
+      r.lob,
+      r.sublob ?? "",
+      r.reason ?? "",
+      r.subReason ?? "",
+      r.mobile ?? "",
+      r.response ?? "",
       r.qualityPct,
       r.hasFatal ? 0 : r.finalPct,
       r.grade,
+      r.hasFatal ? "Yes" : "No",
+      r.fatalList.join("; "),
+      r.totalScored,
+      r.totalMax,
+      r.feedbackSecurity,
+      r.feedbackStatus,
+      r.feedbackDate ?? "",
+      formatDateTime(r.feedbackStatusAt),
+      r.agentFeedback,
+      r.supervisorRemarks,
+      r.submittedBy,
+      r.createdAt,
+      r.parameterSummary,
     ]
       .map((v) => `"${String(v).replace(/"/g, '""')}"`)
       .join(",")
@@ -86,7 +140,7 @@ export function ExecutiveReport() {
       <div className="platform-report__toolbar">
         <div className="platform-report__dates">
           <label className="platform-report__date-field">
-            <span>Start date</span>
+            <span>Start date (audit)</span>
             <div className="platform-report__date-input">
               <Calendar size={15} aria-hidden />
               <input
@@ -99,7 +153,7 @@ export function ExecutiveReport() {
             </div>
           </label>
           <label className="platform-report__date-field">
-            <span>End date</span>
+            <span>End date (audit)</span>
             <div className="platform-report__date-input">
               <Calendar size={15} aria-hidden />
               <input
@@ -148,7 +202,8 @@ export function ExecutiveReport() {
 
       {data && data.stats.total === 0 && (
         <p className="platform-empty">
-          No audits found between {data.startDate} and {data.endDate}.
+          No audits found between {data.startDate} and {data.endDate} (by audit
+          date).
         </p>
       )}
 
@@ -170,6 +225,9 @@ export function ExecutiveReport() {
               <p className="platform-kpi__value platform-kpi__value--success">
                 {data.stats.passRate}%
               </p>
+              <p className="platform-kpi__hint">
+                target ≥{PASS_RATE_TARGET_PCT}%
+              </p>
             </article>
             <article className="platform-kpi">
               <p className="platform-kpi__label">Fatal audits</p>
@@ -185,7 +243,9 @@ export function ExecutiveReport() {
                 <tr>
                   <th>Agent</th>
                   <th>Auditor</th>
-                  <th>Call date</th>
+                  <th>Audit date</th>
+                  <th>Type</th>
+                  <th>LOB</th>
                   <th>Quality</th>
                   <th>Final</th>
                   <th>Grade</th>
@@ -196,7 +256,12 @@ export function ExecutiveReport() {
                   <tr key={row.id}>
                     <td className="platform-cell-strong">{row.agent}</td>
                     <td>{row.auditor ?? "—"}</td>
-                    <td>{row.callDate}</td>
+                    <td>{row.auditDate}</td>
+                    <td>
+                      {row.type}
+                      <span className="dash-cell-muted"> · {row.businessType}</span>
+                    </td>
+                    <td>{row.lob}</td>
                     <td className="platform-cell-accent">{row.qualityPct}%</td>
                     <td>
                       {row.hasFatal ? (

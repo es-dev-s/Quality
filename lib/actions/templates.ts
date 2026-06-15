@@ -9,6 +9,7 @@ import { canManageSettings, canWriteAuditTemplates, hasScope, isSuperAdmin } fro
 import { PERMISSIONS } from "@/lib/permissions";
 import {
   ensureDefaultTemplate,
+  fetchAuditTemplateForEdit,
   rowToAuditTemplate,
 } from "@/lib/audit/template-db";
 import type { AuditTemplate } from "@/lib/audit/types";
@@ -243,6 +244,31 @@ export async function listTemplates(): Promise<TemplateListItem[]> {
 export async function listAllTemplates(): Promise<TemplateListItem[]> {
   const { templates } = await getTemplatesManagerData();
   return templates;
+}
+
+export async function getAuditFormWorkbenchForEdit(requiredTemplateId: string) {
+  const workbench = await getAuditFormWorkbench();
+  if (workbench.templates.some((template) => template.id === requiredTemplateId)) {
+    return workbench;
+  }
+
+  const row = await prisma.formTemplate.findUnique({
+    where: { id: requiredTemplateId },
+    include: {
+      roles: {
+        include: { role: { select: { id: true, name: true, slug: true } } },
+      },
+    },
+  });
+
+  if (!row) {
+    return workbench;
+  }
+
+  return {
+    ...workbench,
+    templates: [...workbench.templates, mapTemplateRow(row)],
+  };
 }
 
 export async function getTemplateById(

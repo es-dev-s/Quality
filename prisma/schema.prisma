@@ -150,7 +150,9 @@ model AuditSubmission {
   feedbackStatus   String   @default("Pending")
   feedbackSecurity String   @default("NA")
   feedbackDate     String?
+  feedbackStatusAt String?  @map("feedback_status_at")
   agentFeedback    String   @default("")
+  supervisorRemarks String  @default("") @map("supervisor_remarks")
   totalScored    Float
   totalMax       Float
   scores         Json

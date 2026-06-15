@@ -6,6 +6,7 @@ import { AlertTriangle, Award, CalendarRange, RefreshCw, SlidersHorizontal, X } 
 import { Select } from "@/components/primitives/field";
 import { cn } from "@/lib/utils";
 import type { DashboardAuditData } from "@/lib/audit/audit-records";
+import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
 import {
   auditorInitials,
   computeAgentTargets,
@@ -311,7 +312,7 @@ export function DashboardAnalytics({ data }: DashboardAnalyticsProps) {
           <p className={`dash-kpi__value ${scoreTone(stats.passRate)}`}>
             {stats.passRate}%
           </p>
-          <p className="dash-kpi__hint">quality ≥75%</p>
+          <p className="dash-kpi__hint">quality ≥{PASS_RATE_TARGET_PCT}%</p>
         </article>
         <article className="dash-kpi">
           <p className="dash-kpi__label">Avg final score</p>

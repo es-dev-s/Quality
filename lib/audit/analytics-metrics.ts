@@ -1,3 +1,5 @@
+import { PASS_RATE_QUALITY_THRESHOLD } from "@/lib/audit/metrics-config";
+import { resolveMetricDate } from "@/lib/audit/metric-dates";
 import type { AuditRow } from "@/lib/audit/types";
 
 export type AnalyticsAuditRecord = {
@@ -7,6 +9,7 @@ export type AnalyticsAuditRecord = {
   auditor: string | null;
   type: string;
   callDate: string;
+  auditDate: string;
   qualityPct: number;
   finalPct: number;
   hasFatal: boolean;
@@ -36,6 +39,8 @@ export type QmsAgentStat = {
 export type QmsAuditorStat = {
   name: string;
   count: number;
+  avg: number;
+  passRate: number;
 };
 
 export type QmsKpis = {
@@ -101,9 +106,15 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
-function parseCallDate(callDate: string): Date {
-  const [y, m, d] = callDate.split("-").map(Number);
+function parseMetricDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split("-").map(Number);
   return new Date(y, m - 1, d);
+}
+
+function recordMetricDate(record: AnalyticsAuditRecord): Date {
+  return parseMetricDate(
+    resolveMetricDate(record.auditDate, record.callDate)
+  );
 }
 
 function computeParameterStats(records: AnalyticsAuditRecord[]): QmsParameterStat[] {
@@ -185,15 +196,28 @@ function computeTeamStats(records: AnalyticsAuditRecord[]): QmsTeamStat[] {
 }
 
 function computeAuditorStats(records: AnalyticsAuditRecord[]): QmsAuditorStat[] {
-  const counts = new Map<string, number>();
+  const byAuditor = new Map<string, { scores: number[]; pass: number }>();
 
   for (const record of records) {
     if (!record.auditor) continue;
-    counts.set(record.auditor, (counts.get(record.auditor) ?? 0) + 1);
+    const entry = byAuditor.get(record.auditor) ?? { scores: [], pass: 0 };
+    entry.scores.push(record.qualityPct);
+    if (!record.hasFatal && record.qualityPct >= PASS_RATE_QUALITY_THRESHOLD) {
+      entry.pass += 1;
+    }
+    byAuditor.set(record.auditor, entry);
   }
 
-  return Array.from(counts.entries())
-    .map(([name, count]) => ({ name, count }))
+  return Array.from(byAuditor.entries())
+    .map(([name, data]) => ({
+      name,
+      count: data.scores.length,
+      avg: round1(avg(data.scores)),
+      passRate:
+        data.scores.length > 0
+          ? Math.round((data.pass / data.scores.length) * 100)
+          : 0,
+    }))
     .sort((a, b) => b.count - a.count);
 }
 
@@ -229,7 +253,7 @@ function computeWeekSplit(records: AnalyticsAuditRecord[], now = new Date()) {
   let week2 = 0;
 
   for (const record of records) {
-    const date = parseCallDate(record.callDate);
+    const date = recordMetricDate(record);
     if (date.getMonth() !== month || date.getFullYear() !== year) continue;
     if (date.getDate() <= 15) week1++;
     else week2++;

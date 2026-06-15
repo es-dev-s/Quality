@@ -1,4 +1,5 @@
 import { IMPORT_ENABLED, SUPERADMIN_ROLE_SLUG } from "@/lib/constants";
+import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import {
   PERMISSIONS,
   resolveRoutePermission,
@@ -103,6 +104,11 @@ export function canWriteAuditLogs(role?: SessionRole | null): boolean {
   return hasScope(role, PERMISSIONS.AUDIT_LOGS_WRITE);
 }
 
+/** Edit saved audits from Audit Logs — needs log write + audit form write. */
+export function canEditAuditSubmissions(role?: SessionRole | null): boolean {
+  return canWriteAuditForm(role) && canWriteAuditLogs(role);
+}
+
 export function canReadAuditLogs(role?: SessionRole | null): boolean {
   return hasScope(role, PERMISSIONS.AUDIT_LOGS_READ);
 }
@@ -134,6 +140,21 @@ export function canEditFeedbackStatus(role?: SessionRole | null): boolean {
 
 export function canEditFeedbackFully(role?: SessionRole | null): boolean {
   return hasScope(role, PERMISSIONS.FEEDBACK_WRITE);
+}
+
+/** Feedback date is set by QA/QM when sharing — not editable by agents. */
+export function canEditFeedbackDate(role?: SessionRole | null): boolean {
+  return canEditFeedbackFully(role);
+}
+
+/** Supervisor (and QM) remarks on viewed audits. */
+export function canEditSupervisorRemarks(role?: SessionRole | null): boolean {
+  if (!role) return false;
+  if (isSuperAdmin(role)) return true;
+  return (
+    role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR ||
+    role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
+  );
 }
 
 export function canReadFeedback(role?: SessionRole | null): boolean {

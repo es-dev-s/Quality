@@ -19,6 +19,7 @@ import {
   matchesDateRange,
   type DateRangeFilter,
 } from "@/lib/audit/date-filters";
+import { resolveMetricDate } from "@/lib/audit/metric-dates";
 
 type AuditLogsTableProps = {
   submissions: AuditLogEntry[];
@@ -26,6 +27,8 @@ type AuditLogsTableProps = {
   enableFilters?: boolean;
   canEditFeedbackStatus?: boolean;
   canEditFeedbackFully?: boolean;
+  canEditFeedbackDate?: boolean;
+  canEditSupervisorRemarks?: boolean;
   canEditAudits?: boolean;
   canDeleteAudits?: boolean;
 };
@@ -176,6 +179,8 @@ export function AuditLogsTable({
   enableFilters = true,
   canEditFeedbackStatus = false,
   canEditFeedbackFully = false,
+  canEditFeedbackDate = false,
+  canEditSupervisorRemarks = false,
   canEditAudits = false,
   canDeleteAudits = false,
 }: AuditLogsTableProps) {
@@ -233,7 +238,7 @@ export function AuditLogsTable({
     return rows.filter((row) => {
       if (!matchesSearch(row, search)) return false;
       if (!matchesScore(row, scorePreset)) return false;
-      if (!matchesDateRange(row.callDate, dateRange)) return false;
+      if (!matchesDateRange(resolveMetricDate(row.auditDate, row.callDate), dateRange)) return false;
       if (grade && row.grade !== grade) return false;
       if (type && row.type !== type) return false;
       if (businessType && row.businessType !== businessType) return false;
@@ -598,7 +603,7 @@ export function AuditLogsTable({
                 <div
                   className="audit-logs__periods"
                   role="tablist"
-                  aria-label="Call date period"
+                  aria-label="Audit date period"
                 >
                   {DATE_RANGES.map((item) => (
                     <button
@@ -750,7 +755,7 @@ export function AuditLogsTable({
               ) : null}
               <th>Agent</th>
               <th>Type / LOB</th>
-              <th>Call date</th>
+              <th>Audit date</th>
               <th>Auditor</th>
               <th>Score</th>
               <th>Grade</th>
@@ -828,7 +833,7 @@ export function AuditLogsTable({
                     </span>
                     <div className="dash-cell-muted">{row.lob}</div>
                   </td>
-                  <td>{row.callDate}</td>
+                  <td>{row.auditDate}</td>
                   <td>{row.auditor ?? "—"}</td>
                   <td>
                     <span
@@ -908,7 +913,7 @@ export function AuditLogsTable({
                     )}
                   </td>
                   <td>
-                    {canEditFeedbackStatus || canEditFeedbackFully ? (
+                    {canEditFeedbackDate ? (
                       <Input
                         className="audit-logs__feedback-date"
                         type="date"
@@ -972,7 +977,12 @@ export function AuditLogsTable({
         </table>
       </div>
 
-      <AuditDetailModal auditId={viewId} onClose={() => setViewId(null)} />
+      <AuditDetailModal
+        auditId={viewId}
+        canEditAudits={canEditAudits}
+        canEditSupervisorRemarks={canEditSupervisorRemarks}
+        onClose={() => setViewId(null)}
+      />
 
       {deleteConfirm ? (
         <div className="platform-modal" role="dialog" aria-modal="true">

@@ -9,7 +9,7 @@ import {
   requirePermission,
 } from "@/lib/auth-guards";
 import { PERMISSIONS } from "@/lib/permissions";
-import { canEditFeedbackFully, hasScope, isSuperAdmin } from "@/lib/rbac";
+import { canEditFeedbackFully, canEditSupervisorRemarks, hasScope, isSuperAdmin } from "@/lib/rbac";
 import { scopedAuditByIdWhere, scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
 import { calculateResults } from "@/lib/audit/calculate-results";
 import { getInteractionConfig } from "@/lib/actions/interaction-config";
@@ -17,6 +17,7 @@ import { getLobDffOptions } from "@/lib/audit/interaction-options";
 import { validateAuditFormAgainstConfig } from "@/lib/audit/validate-audit-form-config";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { getTemplateById } from "@/lib/actions/templates";
+import { fetchAuditTemplateForEdit } from "@/lib/audit/template-db";
 import { withDbRetry } from "@/lib/db/with-db-retry";
 import { assertWriteRateLimit } from "@/lib/server/rate-limit";
 import {
@@ -25,6 +26,7 @@ import {
   saveAuditSubmissionSchema,
   updateAuditFeedbackSchema,
   updateAuditSubmissionSchema,
+  updateSupervisorRemarksSchema,
 } from "@/lib/validation/audit";
 import { paginationLimitSchema } from "@/lib/validation/common";
 import {
@@ -324,7 +326,9 @@ function mapAuditSubmission(
     feedbackSecurity: parseFeedbackSecurity(s.feedbackSecurity),
     feedbackStatus: parseFeedbackStatus(s.feedbackStatus),
     feedbackDate: s.feedbackDate,
+    feedbackStatusAt: s.feedbackStatusAt,
     agentFeedback: s.agentFeedback ?? "",
+    supervisorRemarks: s.supervisorRemarks ?? "",
     submittedBy: s.submittedBy.name ?? s.submittedBy.email,
     createdAt: s.createdAt.toISOString(),
   };
@@ -404,7 +408,9 @@ export async function getAuditDetail(id: string) {
     feedbackSecurity: parseFeedbackSecurity(submission.feedbackSecurity),
     feedbackStatus: parseFeedbackStatus(submission.feedbackStatus),
     feedbackDate: submission.feedbackDate,
+    feedbackStatusAt: submission.feedbackStatusAt,
     agentFeedback: submission.agentFeedback ?? "",
+    supervisorRemarks: submission.supervisorRemarks ?? "",
     totalScored: submission.totalScored,
     totalMax: submission.totalMax,
     catScores: parseCatScores(submission.catScores),
@@ -489,7 +495,10 @@ export async function getAuditForEdit(id: string): Promise<AuditEditPayload | nu
     submission.templateId,
     submission.type
   );
-  const template = await getTemplateById(templateId);
+  const template = await fetchAuditTemplateForEdit(
+    templateId,
+    submission.type
+  );
   if (!template) return null;
 
   const formData = submissionToFormData(submission);
@@ -550,7 +559,10 @@ export async function updateAuditSubmission(
     return { error: "Audit not found." };
   }
 
-  const template = await getTemplateById(validTemplateId);
+  const template = await fetchAuditTemplateForEdit(
+    validTemplateId,
+    validFormData.type
+  );
   if (!template) {
     return { error: "Audit template not found." };
   }
@@ -697,6 +709,7 @@ export async function updateAuditFeedback(
     select: {
       id: true,
       feedbackSecurity: true,
+      feedbackStatus: true,
       feedbackDate: true,
     },
   });
@@ -710,7 +723,7 @@ export async function updateAuditFeedback(
     : {
         feedbackSecurity: parseFeedbackSecurity(existing.feedbackSecurity),
         feedbackStatus: parsed.data.feedbackStatus,
-        feedbackDate: parsed.data.feedbackDate,
+        feedbackDate: existing.feedbackDate ?? "",
       };
 
   const feedbackError = validateFeedbackForSave(payload);
@@ -719,6 +732,13 @@ export async function updateAuditFeedback(
   }
 
   const feedback = normalizeFeedbackForSave(payload);
+  const previousStatus = parseFeedbackStatus(existing.feedbackStatus);
+  const nextStatus = feedback.feedbackStatus;
+  const feedbackStatusAt =
+    (nextStatus === "Acknowledged" || nextStatus === "Disputed") &&
+    nextStatus !== previousStatus
+      ? new Date().toISOString()
+      : undefined;
 
   const updated = await prisma.auditSubmission.updateMany({
     where: scopedAuditByIdWhere(session, parsed.data.id),
@@ -726,6 +746,7 @@ export async function updateAuditFeedback(
       feedbackSecurity: feedback.feedbackSecurity,
       feedbackStatus: feedback.feedbackStatus,
       feedbackDate: feedback.feedbackDate || null,
+      ...(feedbackStatusAt ? { feedbackStatusAt } : {}),
     },
   });
 
@@ -737,6 +758,45 @@ export async function updateAuditFeedback(
   revalidatePath("/analytics");
   revalidatePath("/reports");
 
+  return { success: true as const };
+}
+
+export async function updateSupervisorRemarks(
+  id: string,
+  supervisorRemarks: string
+) {
+  const session = await requireAuth();
+  if (!canEditSupervisorRemarks(session.user.role)) {
+    return permissionError();
+  }
+
+  const rateLimited = assertWriteRateLimit(
+    session.user.id,
+    "audit:supervisor-remarks",
+    { limit: 30, windowMs: 60_000 }
+  );
+  if (rateLimited) return rateLimited;
+
+  const parsed = updateSupervisorRemarksSchema.safeParse({
+    id,
+    supervisorRemarks,
+  });
+  if (!parsed.success) {
+    return validationError(
+      parsed.error.issues[0]?.message ?? "Invalid remarks."
+    );
+  }
+
+  const updated = await prisma.auditSubmission.updateMany({
+    where: scopedAuditByIdWhere(session, parsed.data.id),
+    data: { supervisorRemarks: parsed.data.supervisorRemarks },
+  });
+
+  if (updated.count === 0) {
+    return { error: "Audit not found." };
+  }
+
+  revalidatePath("/audit-logs");
   return { success: true as const };
 }
 
@@ -812,6 +872,7 @@ async function fetchDashboardAuditRecords(
       lob: true,
       type: true,
       callDate: true,
+      auditDate: true,
       qualityPct: true,
       finalPct: true,
       hasFatal: true,
@@ -838,6 +899,7 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
         lob: s.lob,
         type: s.type,
         callDate: s.callDate,
+        auditDate: s.auditDate,
         qualityPct: s.qualityPct,
         finalPct: s.finalPct,
         hasFatal: s.hasFatal,

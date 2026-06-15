@@ -183,6 +183,19 @@ assert(
   fatalResolution.ok && fatalResolution.record.hasFatal,
   "Correct Resolution FATAL marks audit failed"
 );
+assert(
+  fatalResolution.ok && fatalResolution.record.finalPct === 0,
+  "FATAL forces final score to 0%"
+);
+assert(
+  fatalResolution.ok && fatalResolution.record.qualityPct === 100,
+  "FATAL does not deduct from points total when other params are perfect"
+);
+assert(
+  fatalResolution.ok &&
+    fatalResolution.record.totalScored === fatalResolution.record.totalMax,
+  "FATAL keeps full points total"
+);
 
 for (const [template, probingId, preferredId] of [
   [CALL_AUDIT_TEMPLATE, "call-probing", "call-language"],

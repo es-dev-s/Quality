@@ -54,6 +54,11 @@ export const auditIdSchema = z.object({
   id: cuidSchema,
 });
 
+export const updateSupervisorRemarksSchema = z.object({
+  id: cuidSchema,
+  supervisorRemarks: z.string().trim().max(4000),
+});
+
 export const deleteAuditSubmissionsSchema = z.object({
   ids: z.array(cuidSchema).min(1, "Select at least one audit.").max(100),
 });

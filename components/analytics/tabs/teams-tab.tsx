@@ -40,7 +40,7 @@ export function TeamsTab({ data }: { data: QmsAnalyticsData }) {
   const below90 = data.teams.filter((t) => t.avg < 90).length;
   const topTeam = data.teams[0];
   const weakTeam = data.teams[data.teams.length - 1];
-  const chartData = [...data.teams].reverse();
+  const chartData = data.teams;
 
   return (
     <div className="qms-tab">
@@ -90,38 +90,40 @@ export function TeamsTab({ data }: { data: QmsAnalyticsData }) {
           />
           <QmsChartFrame className="qms-chart--xl">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={chartData}
-                layout="vertical"
-                margin={{ left: 120, right: 50 }}
-              >
+              <BarChart data={chartData} margin={{ bottom: 48, left: 4, right: 8 }}>
                 <CartesianGrid
                   strokeDasharray="3 3"
                   stroke={CHART_COLORS.grid}
-                  horizontal={false}
+                  vertical={false}
                 />
                 <XAxis
-                  type="number"
+                  dataKey="team"
+                  tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
+                  angle={-25}
+                  textAnchor="end"
+                  interval={0}
+                  height={56}
+                />
+                <YAxis
                   domain={[70, 100]}
                   tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
                   tickFormatter={(v) => `${v}%`}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="team"
-                  tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
-                  width={115}
                 />
                 <Tooltip
                   {...QMS_CHART_TOOLTIP}
                   content={<QmsChartTooltip suffix="%" />}
                 />
                 <ReferenceLine
-                  x={90}
+                  y={90}
                   stroke={CHART_COLORS.accent}
                   strokeDasharray="5 5"
                 />
-                <Bar dataKey="avg" name="Avg score" radius={[0, 4, 4, 0]} isAnimationActive={false}>
+                <Bar
+                  dataKey="avg"
+                  name="Avg score"
+                  radius={[4, 4, 0, 0]}
+                  isAnimationActive={false}
+                >
                   {chartData.map((row) => (
                     <Cell key={row.team} fill={scoreHex(row.avg)} />
                   ))}

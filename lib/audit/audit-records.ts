@@ -27,7 +27,9 @@ export type AuditLogEntry = {
   feedbackSecurity: FeedbackSecurity;
   feedbackStatus: FeedbackStatus;
   feedbackDate: string | null;
+  feedbackStatusAt: string | null;
   agentFeedback: string;
+  supervisorRemarks: string;
   submittedBy: string;
   createdAt: string;
 };
@@ -57,7 +59,9 @@ export type AuditDetail = {
   feedbackSecurity: FeedbackSecurity;
   feedbackStatus: FeedbackStatus;
   feedbackDate: string | null;
+  feedbackStatusAt: string | null;
   agentFeedback: string;
+  supervisorRemarks: string;
   totalScored: number;
   totalMax: number;
   catScores: Record<string, CategoryScore>;
@@ -82,6 +86,7 @@ export type DashboardAuditRecord = {
   lob: string;
   type: string;
   callDate: string;
+  auditDate: string;
   qualityPct: number;
   finalPct: number;
   hasFatal: boolean;

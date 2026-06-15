@@ -24,6 +24,29 @@ export function rowToAuditTemplate(row: FormTemplate): AuditTemplate {
   });
 }
 
+/** Load the rubric used by an existing audit — not gated by template role access. */
+export async function fetchAuditTemplateForEdit(
+  templateId: string | null | undefined,
+  interactionType: string
+): Promise<AuditTemplate | null> {
+  await ensureDefaultTemplate();
+
+  const fallbackId = interactionType === "Chat" ? "chat" : "call";
+  const resolvedId = templateId?.trim() || fallbackId;
+
+  let row = await prisma.formTemplate.findUnique({
+    where: { id: resolvedId },
+  });
+
+  if (!row && resolvedId !== fallbackId) {
+    row = await prisma.formTemplate.findUnique({
+      where: { id: fallbackId },
+    });
+  }
+
+  return row ? rowToAuditTemplate(row) : null;
+}
+
 /** Seeds built-in templates once — does not overwrite existing rows on every read. */
 export const ensureDefaultTemplate = cache(async (): Promise<void> => {
   for (const template of BUILTIN_AUDIT_TEMPLATES) {

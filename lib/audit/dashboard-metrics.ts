@@ -1,3 +1,6 @@
+import { PASS_RATE_QUALITY_THRESHOLD } from "@/lib/audit/metrics-config";
+import { resolveMetricDate } from "@/lib/audit/metric-dates";
+
 export type DashboardAuditRecord = {
   id: string;
   agent: string;
@@ -6,6 +9,7 @@ export type DashboardAuditRecord = {
   lob: string;
   type: string;
   callDate: string;
+  auditDate: string;
   qualityPct: number;
   finalPct: number;
   hasFatal: boolean;
@@ -138,9 +142,15 @@ export type AuditorTargetRow = {
   pct: number;
 };
 
-function parseCallDate(callDate: string): Date {
-  const [y, m, d] = callDate.split("-").map(Number);
+function parseMetricDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split("-").map(Number);
   return new Date(y, m - 1, d);
+}
+
+function recordMetricDate(record: DashboardAuditRecord): Date {
+  return parseMetricDate(
+    resolveMetricDate(record.auditDate, record.callDate)
+  );
 }
 
 function startOfDay(date: Date): Date {
@@ -211,7 +221,7 @@ export function filterByPeriod(
   const yesterday = addDays(today, -1);
 
   return records.filter((record) => {
-    const date = parseCallDate(record.callDate);
+    const date = recordMetricDate(record);
     if (period === "today") return isSameDay(date, today);
     if (period === "yesterday") return isSameDay(date, yesterday);
     if (period === "week") {
@@ -228,9 +238,7 @@ export function filterCurrentMonth(
   records: DashboardAuditRecord[],
   now = new Date()
 ): DashboardAuditRecord[] {
-  return records.filter((r) =>
-    isSameMonth(parseCallDate(r.callDate), now)
-  );
+  return records.filter((r) => isSameMonth(recordMetricDate(r), now));
 }
 
 function finalScore(record: DashboardAuditRecord): number {
@@ -257,7 +265,7 @@ export function computePeriodStats(records: DashboardAuditRecord[]) {
       : 0;
 
   const passCount = records.filter(
-    (r) => !r.hasFatal && r.qualityPct >= 75
+    (r) => !r.hasFatal && r.qualityPct >= PASS_RATE_QUALITY_THRESHOLD
   ).length;
   const passRate = total > 0 ? Math.round((passCount / total) * 100) : 0;
 
@@ -287,25 +295,25 @@ export function computeScoreDistribution(
     {
       key: "excellent" as const,
       label: "Excellent",
-      range: "≥90%",
+      range: "≥95%",
       count: 0,
     },
     {
       key: "good" as const,
       label: "Good",
-      range: "75–89%",
+      range: "90–94%",
       count: 0,
     },
     {
       key: "average" as const,
       label: "Average",
-      range: "60–74%",
+      range: "75–89%",
       count: 0,
     },
     {
       key: "poor" as const,
       label: "Poor",
-      range: "<60%",
+      range: "<75%",
       count: 0,
     },
   ];
@@ -313,9 +321,9 @@ export function computeScoreDistribution(
   for (const record of records) {
     if (record.hasFatal) continue;
     const q = record.qualityPct;
-    if (q >= 90) buckets[0].count++;
-    else if (q >= 75) buckets[1].count++;
-    else if (q >= 60) buckets[2].count++;
+    if (q >= 95) buckets[0].count++;
+    else if (q >= 90) buckets[1].count++;
+    else if (q >= 75) buckets[2].count++;
     else buckets[3].count++;
   }
 
@@ -337,7 +345,7 @@ export function computeTrendData(
     return Array.from({ length: 6 }).map((_, i) => {
       const date = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
       const filtered = records.filter((r) =>
-        isSameMonth(parseCallDate(r.callDate), date)
+        isSameMonth(recordMetricDate(r), date)
       );
       const score =
         filtered.length > 0
@@ -360,7 +368,7 @@ export function computeTrendData(
       const weekStart = startOfWeekMonday(anchor);
       const weekEnd = addDays(weekStart, 7);
       const filtered = records.filter((r) => {
-        const d = parseCallDate(r.callDate);
+        const d = recordMetricDate(r);
         return d >= weekStart && d < weekEnd;
       });
       const score =
@@ -381,7 +389,7 @@ export function computeTrendData(
   return Array.from({ length: 14 }).map((_, i) => {
     const date = addDays(now, -(13 - i));
     const filtered = records.filter((r) =>
-      isSameDay(parseCallDate(r.callDate), date)
+      isSameDay(recordMetricDate(r), date)
     );
     const score =
       filtered.length > 0
