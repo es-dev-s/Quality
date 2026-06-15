@@ -6,6 +6,7 @@ import { ChevronDown, Pencil, X } from "lucide-react";
 import { getAuditDetail, updateSupervisorRemarks } from "@/lib/actions/audit";
 import type { AuditDetail } from "@/lib/audit/audit-records";
 import type { AuditRow } from "@/lib/audit/types";
+import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
 import { useStaleRequestGuard } from "@/lib/hooks/use-stale-request-guard";
 import { cn } from "@/lib/utils";
 
@@ -24,13 +25,7 @@ function gradeClass(grade: string) {
 }
 
 function formatDateTime(value: string | null | undefined): string {
-  if (!value?.trim()) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  return formatFeedbackDateTime(value);
 }
 
 function groupRowsByCategory(rows: AuditRow[]): Map<string, AuditRow[]> {
@@ -267,18 +262,21 @@ export function AuditDetailModal({
                     <p>{detail.feedbackStatus}</p>
                   </div>
                   <div>
-                    <span className="audit-detail__field-label">Feedback date</span>
-                    <p>{detail.feedbackDate ?? "—"}</p>
+                    <span className="audit-detail__field-label">
+                      Feedback date &amp; time
+                    </span>
+                    <p>{formatFeedbackDateTime(detail.feedbackDate)}</p>
                   </div>
                   {(detail.feedbackStatus === "Acknowledged" ||
-                    detail.feedbackStatus === "Disputed") && (
+                    detail.feedbackStatus === "Disputed" ||
+                    detail.feedbackStatusAt) && (
                     <div>
                       <span className="audit-detail__field-label">
-                        {detail.feedbackStatus === "Acknowledged"
-                          ? "Acknowledged at"
-                          : "Disputed at"}
+                        {detail.feedbackStatus === "Disputed"
+                          ? "Disputed date & time"
+                          : "Acknowledged date & time"}
                       </span>
-                      <p>{formatDateTime(detail.feedbackStatusAt)}</p>
+                      <p>{formatFeedbackDateTime(detail.feedbackStatusAt)}</p>
                     </div>
                   )}
                 </div>

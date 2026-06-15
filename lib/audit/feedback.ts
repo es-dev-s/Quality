@@ -1,3 +1,8 @@
+import {
+  localDateTimeToIso,
+  nowLocalDateTime,
+} from "@/lib/audit/feedback-datetime";
+
 export type FeedbackSecurity = "Low" | "Medium" | "Critical" | "NA";
 
 export type FeedbackStatus =
@@ -23,8 +28,10 @@ export const FEEDBACK_STATUS_OPTIONS: FeedbackStatus[] = [
 export type AuditFeedbackFields = {
   feedbackSecurity: FeedbackSecurity;
   feedbackStatus: FeedbackStatus;
-  /** ISO date (YYYY-MM-DD) when feedback was shared; empty while pending. */
+  /** ISO or YYYY-MM-DD — when feedback was shared. */
   feedbackDate: string;
+  /** ISO datetime when agent acknowledged or disputed. */
+  feedbackStatusAt?: string;
 };
 
 export function defaultAuditFeedback(): AuditFeedbackFields {
@@ -32,6 +39,7 @@ export function defaultAuditFeedback(): AuditFeedbackFields {
     feedbackSecurity: "NA",
     feedbackStatus: "Pending",
     feedbackDate: "",
+    feedbackStatusAt: "",
   };
 }
 
@@ -59,38 +67,70 @@ export function parseFeedbackStatus(value: unknown): FeedbackStatus {
   return "Pending";
 }
 
-/** Normalize feedback before save — auto-set date when status moves off Pending. */
+/** Normalize feedback before save — auto-set timestamps when status moves off Pending. */
 export function normalizeFeedbackForSave(
-  feedback: AuditFeedbackFields,
-  todayISO: () => string = () => new Date().toISOString().slice(0, 10)
+  feedback: AuditFeedbackFields
 ): AuditFeedbackFields {
   const feedbackStatus = parseFeedbackStatus(feedback.feedbackStatus);
   const feedbackSecurity = parseFeedbackSecurity(feedback.feedbackSecurity);
   let feedbackDate = feedback.feedbackDate.trim();
+  let feedbackStatusAt = feedback.feedbackStatusAt?.trim() ?? "";
 
   if (feedbackStatus === "Pending") {
     return {
       feedbackSecurity,
       feedbackStatus,
       feedbackDate: "",
+      feedbackStatusAt: "",
     };
   }
 
-  if (!feedbackDate) {
-    feedbackDate = todayISO();
+  if (feedbackStatus === "Shared" && !feedbackDate) {
+    feedbackDate = localDateTimeToIso(nowLocalDateTime()) || nowLocalDateTime();
+  }
+
+  if (
+    (feedbackStatus === "Acknowledged" || feedbackStatus === "Disputed") &&
+    !feedbackStatusAt
+  ) {
+    feedbackStatusAt = new Date().toISOString();
+  }
+
+  if (feedbackDate) {
+    feedbackDate = localDateTimeToIso(feedbackDate) || feedbackDate;
+  }
+
+  if (feedbackStatusAt) {
+    feedbackStatusAt =
+      localDateTimeToIso(feedbackStatusAt) || feedbackStatusAt;
   }
 
   return {
     feedbackSecurity,
     feedbackStatus,
     feedbackDate,
+    feedbackStatusAt,
   };
 }
 
-export function validateFeedbackForSave(feedback: AuditFeedbackFields): string | null {
+export function validateFeedbackForSave(
+  feedback: AuditFeedbackFields
+): string | null {
   const normalized = normalizeFeedbackForSave(feedback);
-  if (normalized.feedbackStatus !== "Pending" && !normalized.feedbackDate) {
-    return "Feedback date is required when feedback status is not Pending.";
+  const status = normalized.feedbackStatus;
+
+  if (status === "Pending") return null;
+
+  if (status === "Shared" && !normalized.feedbackDate) {
+    return "Feedback date & time is required when status is Shared.";
   }
+
+  if (
+    (status === "Acknowledged" || status === "Disputed") &&
+    !normalized.feedbackStatusAt
+  ) {
+    return `${status} date & time is required.`;
+  }
+
   return null;
 }

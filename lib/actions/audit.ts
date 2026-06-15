@@ -11,6 +11,11 @@ import {
 import { PERMISSIONS } from "@/lib/permissions";
 import { canEditFeedbackFully, canEditSupervisorRemarks, hasScope, isSuperAdmin } from "@/lib/rbac";
 import { scopedAuditByIdWhere, scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
+import { resolveStatusTimestamps } from "@/lib/audit/feedback-datetime";
+import {
+  assertFeedbackStatusChangeAllowed,
+  canChangeFeedbackStatusInAuditLogs,
+} from "@/lib/audit/feedback-status-access";
 import { calculateResults } from "@/lib/audit/calculate-results";
 import { getInteractionConfig } from "@/lib/actions/interaction-config";
 import { getLobDffOptions } from "@/lib/audit/interaction-options";
@@ -37,6 +42,7 @@ import {
   validateFeedbackForSave,
   type FeedbackSecurity,
   type FeedbackStatus,
+  type AuditFeedbackFields,
 } from "@/lib/audit/feedback";
 import type {
   AuditDetail,
@@ -223,6 +229,7 @@ export async function saveAuditSubmission(
     feedbackStatus: feedback.feedbackStatus,
     feedbackSecurity: feedback.feedbackSecurity,
     feedbackDate: feedback.feedbackDate || null,
+    feedbackStatusAt: feedback.feedbackStatusAt || null,
     agentFeedback: validFormData.agentFeedback.trim(),
     totalScored: record.totalScored,
     totalMax: record.totalMax,
@@ -646,6 +653,7 @@ export async function updateAuditSubmission(
         feedbackStatus: feedback.feedbackStatus,
         feedbackSecurity: feedback.feedbackSecurity,
         feedbackDate: feedback.feedbackDate || null,
+        feedbackStatusAt: feedback.feedbackStatusAt || null,
         agentFeedback: validFormData.agentFeedback.trim(),
         totalScored: record.totalScored,
         totalMax: record.totalMax,
@@ -683,11 +691,14 @@ export async function updateAuditFeedback(
     feedbackSecurity: FeedbackSecurity;
     feedbackStatus: FeedbackStatus;
     feedbackDate: string;
+    feedbackStatusAt?: string;
   }
 ) {
   const session = await requirePermission(PERMISSIONS.AUDIT_LOGS_READ);
-  if (!hasScope(session.user.role, PERMISSIONS.FEEDBACK_STATUS) &&
-      !hasScope(session.user.role, PERMISSIONS.FEEDBACK_WRITE)) {
+  if (
+    !canChangeFeedbackStatusInAuditLogs(session.user.role) &&
+    !canEditFeedbackFully(session.user.role)
+  ) {
     return permissionError();
   }
 
@@ -711,20 +722,65 @@ export async function updateAuditFeedback(
       feedbackSecurity: true,
       feedbackStatus: true,
       feedbackDate: true,
+      feedbackStatusAt: true,
     },
   });
   if (!existing) {
     return { error: "Audit not found." };
   }
 
+  const previousStatus = parseFeedbackStatus(existing.feedbackStatus);
+  const nextStatusParsed = parseFeedbackStatus(parsed.data.feedbackStatus);
+
+  if (!canEditFeedbackFully(session.user.role)) {
+    const statusError = assertFeedbackStatusChangeAllowed(
+      session.user.role,
+      previousStatus,
+      nextStatusParsed
+    );
+    if (statusError) {
+      return { error: statusError };
+    }
+  }
+
   const canEditAllFeedback = canEditFeedbackFully(session.user.role);
-  const payload = canEditAllFeedback
-    ? parsed.data
+
+  const merged = canEditAllFeedback
+    ? {
+        feedbackSecurity: parsed.data.feedbackSecurity,
+        feedbackStatus: parsed.data.feedbackStatus,
+        feedbackDate: parsed.data.feedbackDate,
+        feedbackStatusAt: parsed.data.feedbackStatusAt ?? "",
+      }
     : {
         feedbackSecurity: parseFeedbackSecurity(existing.feedbackSecurity),
         feedbackStatus: parsed.data.feedbackStatus,
-        feedbackDate: existing.feedbackDate ?? "",
+        feedbackDate:
+          parsed.data.feedbackStatus === "Shared"
+            ? parsed.data.feedbackDate
+            : (existing.feedbackDate ?? ""),
+        feedbackStatusAt:
+          parsed.data.feedbackStatus === "Acknowledged" ||
+          parsed.data.feedbackStatus === "Disputed"
+            ? (parsed.data.feedbackStatusAt ?? existing.feedbackStatusAt ?? "")
+            : (existing.feedbackStatusAt ?? ""),
       };
+
+  const timestamps = resolveStatusTimestamps({
+    feedbackStatus: parseFeedbackStatus(merged.feedbackStatus),
+    feedbackDate: merged.feedbackDate,
+    feedbackStatusAt: merged.feedbackStatusAt ?? "",
+    previousStatus,
+    existingFeedbackDate: existing.feedbackDate,
+    existingFeedbackStatusAt: existing.feedbackStatusAt,
+  });
+
+  const payload: AuditFeedbackFields = {
+    feedbackSecurity: parseFeedbackSecurity(merged.feedbackSecurity),
+    feedbackStatus: parseFeedbackStatus(merged.feedbackStatus),
+    feedbackDate: timestamps.feedbackDate ?? "",
+    feedbackStatusAt: timestamps.feedbackStatusAt ?? "",
+  };
 
   const feedbackError = validateFeedbackForSave(payload);
   if (feedbackError) {
@@ -732,13 +788,6 @@ export async function updateAuditFeedback(
   }
 
   const feedback = normalizeFeedbackForSave(payload);
-  const previousStatus = parseFeedbackStatus(existing.feedbackStatus);
-  const nextStatus = feedback.feedbackStatus;
-  const feedbackStatusAt =
-    (nextStatus === "Acknowledged" || nextStatus === "Disputed") &&
-    nextStatus !== previousStatus
-      ? new Date().toISOString()
-      : undefined;
 
   const updated = await prisma.auditSubmission.updateMany({
     where: scopedAuditByIdWhere(session, parsed.data.id),
@@ -746,7 +795,7 @@ export async function updateAuditFeedback(
       feedbackSecurity: feedback.feedbackSecurity,
       feedbackStatus: feedback.feedbackStatus,
       feedbackDate: feedback.feedbackDate || null,
-      ...(feedbackStatusAt ? { feedbackStatusAt } : {}),
+      feedbackStatusAt: feedback.feedbackStatusAt || null,
     },
   });
 
@@ -758,7 +807,12 @@ export async function updateAuditFeedback(
   revalidatePath("/analytics");
   revalidatePath("/reports");
 
-  return { success: true as const };
+  return {
+    success: true as const,
+    feedbackDate: feedback.feedbackDate || null,
+    feedbackStatusAt: feedback.feedbackStatusAt || null,
+    feedbackStatus: feedback.feedbackStatus,
+  };
 }
 
 export async function updateSupervisorRemarks(
@@ -856,6 +910,7 @@ export async function updateAuditFeedbackStatus(
     feedbackSecurity: parseFeedbackSecurity(existing.feedbackSecurity),
     feedbackStatus,
     feedbackDate: existing.feedbackDate ?? "",
+    feedbackStatusAt: "",
   });
 }
 

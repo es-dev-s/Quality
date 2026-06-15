@@ -48,6 +48,7 @@ export const updateAuditFeedbackSchema = z.object({
   feedbackSecurity: z.enum(FEEDBACK_SECURITY_OPTIONS),
   feedbackStatus: z.enum(FEEDBACK_STATUS_OPTIONS),
   feedbackDate: z.string(),
+  feedbackStatusAt: z.string().optional(),
 });
 
 export const auditIdSchema = z.object({

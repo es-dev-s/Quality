@@ -4,6 +4,12 @@ import Link from "next/link";
 import { useMemo, useState, useTransition, useEffect } from "react";
 import { ChevronDown, Download, Eye, Pencil, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { AuditDetailModal } from "@/components/audit-logs/audit-detail-modal";
+import {
+  applyFeedbackDateTimeChange,
+  applyFeedbackStatusChange,
+  FeedbackStatusDateTimeCell,
+} from "@/components/audit-logs/feedback-status-datetime";
+import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
 import { Input, Select } from "@/components/primitives/field";
 import { useToast } from "@/components/primitives/toast";
 import { cn } from "@/lib/utils";
@@ -19,18 +25,25 @@ import {
   matchesDateRange,
   type DateRangeFilter,
 } from "@/lib/audit/date-filters";
+import {
+  FeedbackStatusSelect,
+  feedbackStatusClass,
+} from "@/components/audit-logs/feedback-status-select";
+import { canEditFeedbackDateTimeForStatus } from "@/lib/audit/feedback-status-access";
 import { resolveMetricDate } from "@/lib/audit/metric-dates";
+import type { SessionRole } from "@/lib/rbac";
 
 type AuditLogsTableProps = {
   submissions: AuditLogEntry[];
   showSectionHead?: boolean;
   enableFilters?: boolean;
-  canEditFeedbackStatus?: boolean;
+  feedbackStatusRole?: SessionRole | null;
   canEditFeedbackFully?: boolean;
   canEditFeedbackDate?: boolean;
   canEditSupervisorRemarks?: boolean;
   canEditAudits?: boolean;
   canDeleteAudits?: boolean;
+  isSuperAdmin?: boolean;
 };
 
 type ScorePreset = "all" | "90+" | "75-89" | "50-74" | "1-49" | "0";
@@ -79,10 +92,7 @@ function gradeClass(grade: string) {
 }
 
 function feedbackClass(status: FeedbackStatus) {
-  if (status === "Pending") return "audit-logs__feedback--pending";
-  if (status === "Shared") return "audit-logs__feedback--shared";
-  if (status === "Acknowledged") return "audit-logs__feedback--acknowledged";
-  return "audit-logs__feedback--disputed";
+  return feedbackStatusClass(status);
 }
 
 function agentInitials(name: string) {
@@ -139,7 +149,8 @@ function exportCsv(rows: AuditLogEntry[]) {
     "Grade",
     "Security",
     "Feedback Status",
-    "Feedback Date",
+    "Feedback Date & Time",
+    "Acknowledged/Disputed Date & Time",
     "Feedback for the agent",
   ];
   const lines = rows.map((r) =>
@@ -156,7 +167,8 @@ function exportCsv(rows: AuditLogEntry[]) {
       r.grade,
       r.feedbackSecurity,
       r.feedbackStatus,
-      r.feedbackDate ?? "",
+      r.feedbackDate ? formatFeedbackDateTime(r.feedbackDate) : "",
+      r.feedbackStatusAt ? formatFeedbackDateTime(r.feedbackStatusAt) : "",
       r.agentFeedback,
     ]
       .map((v) => `"${String(v).replace(/"/g, '""')}"`)
@@ -177,12 +189,13 @@ export function AuditLogsTable({
   submissions,
   showSectionHead = true,
   enableFilters = true,
-  canEditFeedbackStatus = false,
+  feedbackStatusRole = null,
   canEditFeedbackFully = false,
   canEditFeedbackDate = false,
   canEditSupervisorRemarks = false,
   canEditAudits = false,
   canDeleteAudits = false,
+  isSuperAdmin = false,
 }: AuditLogsTableProps) {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
@@ -411,50 +424,82 @@ export function AuditLogsTable({
     patch: Partial<
       Pick<
         AuditLogEntry,
-        "feedbackSecurity" | "feedbackStatus" | "feedbackDate"
+        | "feedbackSecurity"
+        | "feedbackStatus"
+        | "feedbackDate"
+        | "feedbackStatusAt"
       >
     >
   ) {
     let nextRow: AuditLogEntry | undefined;
+    let previousRow: AuditLogEntry | undefined;
 
     setRows((current) =>
       current.map((row) => {
         if (row.id !== id) return row;
+        previousRow = row;
 
-        const feedbackStatus = patch.feedbackStatus ?? row.feedbackStatus;
-        let feedbackDate =
-          patch.feedbackDate !== undefined ? patch.feedbackDate : row.feedbackDate;
+        let next: AuditLogEntry = { ...row, ...patch };
 
-        if (feedbackStatus === "Pending") {
-          feedbackDate = null;
-        } else if (
-          patch.feedbackStatus &&
-          patch.feedbackStatus !== "Pending" &&
-          !feedbackDate
-        ) {
-          feedbackDate = new Date().toISOString().slice(0, 10);
+        if (patch.feedbackStatus && patch.feedbackStatus !== row.feedbackStatus) {
+          next = { ...next, ...applyFeedbackStatusChange(row, patch.feedbackStatus) };
         }
 
-        nextRow = {
-          ...row,
-          ...patch,
-          feedbackStatus,
-          feedbackDate,
-        };
-        return nextRow;
+        if (patch.feedbackDate !== undefined || patch.feedbackStatusAt !== undefined) {
+          const localValue =
+            patch.feedbackStatusAt !== undefined
+              ? (patch.feedbackStatusAt ?? "")
+              : (patch.feedbackDate ?? "");
+          next = {
+            ...next,
+            ...applyFeedbackDateTimeChange(next, localValue),
+          };
+        }
+
+        nextRow = next;
+        return next;
       })
     );
 
-    if (!nextRow) return;
+    if (!nextRow || !previousRow) return;
 
     startFeedback(async () => {
-      await updateAuditFeedback(id, {
+      const result = await updateAuditFeedback(id, {
         feedbackSecurity: nextRow!.feedbackSecurity,
         feedbackStatus: nextRow!.feedbackStatus,
         feedbackDate: nextRow!.feedbackDate ?? "",
+        feedbackStatusAt: nextRow!.feedbackStatusAt ?? "",
       });
+
+      if ("error" in result && result.error) {
+        toast(result.error, "error");
+        setRows((current) =>
+          current.map((row) => (row.id === id ? previousRow! : row))
+        );
+        return;
+      }
+
+      if ("success" in result && result.success) {
+        setRows((current) =>
+          current.map((row) =>
+            row.id === id
+              ? {
+                  ...row,
+                  feedbackStatus: result.feedbackStatus ?? row.feedbackStatus,
+                  feedbackDate: result.feedbackDate ?? null,
+                  feedbackStatusAt: result.feedbackStatusAt ?? null,
+                }
+              : row
+          )
+        );
+      }
     });
   }
+
+  const canEditRowFeedbackDateTime = (row: AuditLogEntry) =>
+    isSuperAdmin ||
+    canEditFeedbackFully ||
+    canEditFeedbackDateTimeForStatus(feedbackStatusRole, row.feedbackStatus);
 
   const resultLabel =
     rows.length === 0
@@ -761,7 +806,7 @@ export function AuditLogsTable({
               <th>Grade</th>
               <th>Security</th>
               <th>Feedback</th>
-              <th>Feedback date</th>
+              <th>Date &amp; time</th>
               <th>Feedback for the agent</th>
               <th aria-label="Actions" />
             </tr>
@@ -881,7 +926,7 @@ export function AuditLogsTable({
                     )}
                   </td>
                   <td>
-                    {canEditFeedbackStatus || canEditFeedbackFully ? (
+                    {isSuperAdmin || canEditFeedbackFully ? (
                       <Select
                         className={cn(
                           "audit-logs__feedback",
@@ -902,33 +947,24 @@ export function AuditLogsTable({
                         ))}
                       </Select>
                     ) : (
-                      <span
-                        className={cn(
-                          "audit-logs__feedback",
-                          feedbackClass(row.feedbackStatus)
-                        )}
-                      >
-                        {row.feedbackStatus}
-                      </span>
+                      <FeedbackStatusSelect
+                        role={feedbackStatusRole}
+                        value={row.feedbackStatus}
+                        onChange={(feedbackStatus) =>
+                          patchRowFeedback(row.id, { feedbackStatus })
+                        }
+                        ariaLabel={`Feedback status for ${row.agent}`}
+                      />
                     )}
                   </td>
                   <td>
-                    {canEditFeedbackDate ? (
-                      <Input
-                        className="audit-logs__feedback-date"
-                        type="date"
-                        value={row.feedbackDate ?? ""}
-                        disabled={row.feedbackStatus === "Pending"}
-                        onChange={(e) =>
-                          patchRowFeedback(row.id, {
-                            feedbackDate: e.target.value || null,
-                          })
-                        }
-                        aria-label={`Feedback date for ${row.agent}`}
-                      />
-                    ) : (
-                      <span>{row.feedbackDate ?? "—"}</span>
-                    )}
+                    <FeedbackStatusDateTimeCell
+                      row={row}
+                      editable={canEditRowFeedbackDateTime(row)}
+                      onChange={(datetimePatch) =>
+                        patchRowFeedback(row.id, datetimePatch)
+                      }
+                    />
                   </td>
                   <td>
                     <span

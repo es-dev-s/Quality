@@ -513,8 +513,9 @@
   border-color: var(--color-border);
 }
 
-.audit-logs__feedback-date {
-  min-width: 9.5rem;
+.audit-logs__feedback-date,
+.audit-logs__feedback-datetime {
+  min-width: 11.5rem;
   min-height: 32px;
   padding: 4px 8px;
   font-size: 0.8125rem;
@@ -523,9 +524,21 @@
   background: var(--color-surface);
 }
 
-.audit-logs__feedback-date:disabled {
+.audit-logs__feedback-date:disabled,
+.audit-logs__feedback-datetime:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.audit-logs__datetime-read {
+  display: block;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.audit-logs__datetime-muted {
+  color: var(--color-muted-fg);
 }
 
 .audit-logs__agent-feedback {
