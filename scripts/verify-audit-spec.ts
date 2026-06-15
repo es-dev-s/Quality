@@ -141,6 +141,92 @@ const grammarOpts = getScoringOptions("EE/ME/BE/NA", 5, {
 });
 assert(grammarOpts[1].label === "ME — 3", "chat grammar ME label");
 
+for (const [template, paramId] of [
+  [CALL_AUDIT_TEMPLATE, "call-correct"],
+  [CALL_AUDIT_TEMPLATE, "call-complete"],
+  [CALL_AUDIT_TEMPLATE, "call-alltagged"],
+  [CALL_AUDIT_TEMPLATE, "call-correcttag"],
+  [CHAT_AUDIT_TEMPLATE, "chat-correct"],
+  [CHAT_AUDIT_TEMPLATE, "chat-complete"],
+  [CHAT_AUDIT_TEMPLATE, "chat-alltagged"],
+  [CHAT_AUDIT_TEMPLATE, "chat-correcttag"],
+] as const) {
+  const param = template.sections
+    .flatMap((section) => section.params)
+    .find((item) => item.id === paramId);
+  assert(!!param, `${paramId} exists in ${template.id} template`);
+  if (!param) continue;
+  assert(param.scoring === "Y/Fatal/NA", `${paramId} uses Y/Fatal/NA`);
+  const opts = getScoringOptions(param.scoring, param.max, {
+    points: param.points,
+    fatalOptionLabel: param.fatalOptionLabel,
+  });
+  assert(
+    opts.some((opt) => opt.label === "FATAL" && opt.value === "Fatal"),
+    `${paramId} shows FATAL option`
+  );
+  assert(
+    !opts.some((opt) => opt.label === "N — 0"),
+    `${paramId} no longer shows N — 0`
+  );
+}
+
+const fatalResolution = calculateResults(
+  form,
+  {
+    ...perfectScoresFor(CALL_AUDIT_TEMPLATE),
+    "call-correct": "Fatal",
+  },
+  CALL_AUDIT_TEMPLATE
+);
+assert(
+  fatalResolution.ok && fatalResolution.record.hasFatal,
+  "Correct Resolution FATAL marks audit failed"
+);
+
+for (const [template, probingId, preferredId] of [
+  [CALL_AUDIT_TEMPLATE, "call-probing", "call-language"],
+  [CHAT_AUDIT_TEMPLATE, "chat-probing", "chat-preferred-mode"],
+] as const) {
+  const probing = template.sections
+    .flatMap((section) => section.params)
+    .find((item) => item.id === probingId);
+  const preferred = template.sections
+    .flatMap((section) => section.params)
+    .find((item) => item.id === preferredId);
+
+  assert(!!probing, `${probingId} exists`);
+  assert(!!preferred, `${preferredId} exists`);
+  if (!probing || !preferred) continue;
+
+  assert(probing.scoring === "EE/ME/BE/NA", `${probingId} uses EE/ME/BE/NA`);
+  assert(preferred.scoring === "Y/N/NA", `${preferredId} uses Y/N/NA`);
+
+  const probingOpts = getScoringOptions(probing.scoring, probing.max, {
+    points: probing.points,
+  });
+  assert(
+    probingOpts.some((opt) => opt.label === "EE — 4" && opt.value === "EE"),
+    `${probingId} shows EE — 4`
+  );
+  assert(
+    !probingOpts.some((opt) => opt.label === "Y — 4"),
+    `${probingId} no longer shows Y — 4`
+  );
+
+  const preferredOpts = getScoringOptions(preferred.scoring, preferred.max, {
+    points: preferred.points,
+  });
+  assert(
+    preferredOpts.some((opt) => opt.label === "Y — 4" && opt.value === "4"),
+    `${preferredId} shows Y — 4`
+  );
+  assert(
+    !preferredOpts.some((opt) => opt.label === "EE — 4"),
+    `${preferredId} no longer shows EE — 4`
+  );
+}
+
 if (errors.length) {
   console.error("VERIFICATION FAILED:\n", errors.join("\n"));
   process.exit(1);

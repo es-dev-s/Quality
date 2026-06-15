@@ -34,6 +34,8 @@ import {
 import type { FeedbackSecurity, FeedbackStatus } from "@/lib/audit/feedback";
 import { AuditScorePanel } from "@/components/forms/audit-score-panel";
 import { resolveAuditorNameForSession } from "@/lib/audit/auditor-name";
+import { normalizeFatalYnScoreValue } from "@/lib/audit/fatal-yn-params";
+import { normalizeProbingPreferredModeScoreValue } from "@/lib/audit/probing-preferred-mode-swap";
 import { createRandomUUID } from "@/lib/random-id";
 
 function templateInteractionType(templateId: string): InteractionType | null {
@@ -856,10 +858,13 @@ export function AuditForm({
                       points: param.points,
                       fatalOptionLabel: param.fatalOptionLabel,
                     });
-                    const current = getEffectiveScore(
-                      scores,
+                    const current = normalizeProbingPreferredModeScoreValue(
                       param.id,
-                      section.isFatal
+                      normalizeFatalYnScoreValue(
+                        param.id,
+                        getEffectiveScore(scores, param.id, section.isFatal)
+                      ),
+                      param.max
                     );
                     const tone = getScoreTone(
                       current,

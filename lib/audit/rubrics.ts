@@ -1,5 +1,22 @@
 import type { AuditParameter, AuditSection, AuditTemplate } from "@/lib/audit/types";
 
+function ynFatal(
+  id: string,
+  name: string,
+  max: number,
+  cat: string
+): AuditParameter {
+  return {
+    id,
+    name,
+    max,
+    cat,
+    scoring: "Y/Fatal/NA",
+    points: { Y: max },
+    fatalOptionLabel: "FATAL",
+  };
+}
+
 function yn(
   id: string,
   name: string,
@@ -85,7 +102,7 @@ const CALL_SECTIONS: AuditSection[] = [
       eeme("call-listening", "Active Listening", 4, 2, "Call Etiquette"),
       eeme("call-empathy", "Empathy/Apology", 4, 2, "Call Etiquette"),
       eeme("call-politeness", "Politeness", 4, 2, "Call Etiquette"),
-      eeme("call-language", "Preferred language", 4, 2, "Call Etiquette"),
+      yn("call-language", "Preferred language", 4, "Call Etiquette"),
       eeme("call-clarity", "Voice Clarity/Tone", 4, 2, "Call Etiquette"),
       eeme("call-context", "Context Setting", 4, 2, "Call Etiquette"),
       eeme("call-grammar", "Grammar & Sentence", 4, 2, "Call Etiquette"),
@@ -98,9 +115,9 @@ const CALL_SECTIONS: AuditSection[] = [
     name: "Query Resolution",
     isFatal: false,
     params: [
-      yn("call-probing", "Probing", 4, "Query Resolution"),
-      yn("call-correct", "Correct Resolution", 8, "Query Resolution"),
-      yn("call-complete", "Complete Resolution", 5, "Query Resolution"),
+      eeme("call-probing", "Probing", 4, 2, "Query Resolution"),
+      ynFatal("call-correct", "Correct Resolution", 8, "Query Resolution"),
+      ynFatal("call-complete", "Complete Resolution", 5, "Query Resolution"),
       yn("call-summarization", "Summarization", 5, "Query Resolution"),
     ],
   },
@@ -119,8 +136,8 @@ const CALL_SECTIONS: AuditSection[] = [
     name: "Call Disposition",
     isFatal: false,
     params: [
-      yn("call-alltagged", "All Queries Tagged", 5, "Call Disposition"),
-      yn("call-correcttag", "Correct Tagging", 5, "Call Disposition"),
+      ynFatal("call-alltagged", "All Queries Tagged", 5, "Call Disposition"),
+      ynFatal("call-correcttag", "Correct Tagging", 5, "Call Disposition"),
     ],
   },
   cmmSection("call"),
@@ -150,7 +167,7 @@ const CHAT_SECTIONS: AuditSection[] = [
       eeme("chat-professionalism", "Professionalism", 4, 2, "Call Etiquette"),
       eeme("chat-clarity", "Message Clarity", 4, 2, "Call Etiquette"),
       eeme("chat-context", "Context Setting", 4, 2, "Call Etiquette"),
-      eeme("chat-preferred-mode", "Preferred Mode (Chat/Call)", 4, 2, "Call Etiquette"),
+      yn("chat-preferred-mode", "Preferred Mode (Chat/Call)", 4, "Call Etiquette"),
     ],
   },
   {
@@ -158,9 +175,9 @@ const CHAT_SECTIONS: AuditSection[] = [
     name: "Query Resolution",
     isFatal: false,
     params: [
-      yn("chat-probing", "Probing", 4, "Query Resolution"),
-      yn("chat-correct", "Correct Resolution", 8, "Query Resolution"),
-      yn("chat-complete", "Complete Resolution", 5, "Query Resolution"),
+      eeme("chat-probing", "Probing", 4, 2, "Query Resolution"),
+      ynFatal("chat-correct", "Correct Resolution", 8, "Query Resolution"),
+      ynFatal("chat-complete", "Complete Resolution", 5, "Query Resolution"),
       yn("chat-summarization", "Summarization", 5, "Query Resolution"),
     ],
   },
@@ -179,8 +196,8 @@ const CHAT_SECTIONS: AuditSection[] = [
     name: "Call Disposition",
     isFatal: false,
     params: [
-      yn("chat-alltagged", "All Queries Tagged", 5, "Call Disposition"),
-      yn("chat-correcttag", "Correct Tagging", 5, "Call Disposition"),
+      ynFatal("chat-alltagged", "All Queries Tagged", 5, "Call Disposition"),
+      ynFatal("chat-correcttag", "Correct Tagging", 5, "Call Disposition"),
     ],
   },
   cmmSection("chat"),
