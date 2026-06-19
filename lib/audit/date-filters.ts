@@ -5,7 +5,8 @@ export type DateRangeFilter =
   | "week"
   | "month"
   | "6m"
-  | "1y";
+  | "1y"
+  | "custom";
 
 function parseYmd(dateStr: string): Date {
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -68,5 +69,27 @@ export function matchesDateRange(
   if (range === "6m") return date >= addMonths(now, -6);
   if (range === "1y") return date >= addMonths(now, -12);
 
+  return true;
+}
+
+/**
+ * Returns true when `callDate` (YYYY-MM-DD) falls within the given
+ * from/to strings (both inclusive, both optional).
+ */
+export function matchesCustomDateRange(
+  callDate: string,
+  from: string,
+  to: string
+): boolean {
+  if (!from && !to) return true;
+  const date = parseYmd(callDate);
+  if (from) {
+    const f = parseYmd(from);
+    if (date < f) return false;
+  }
+  if (to) {
+    const t = parseYmd(to);
+    if (date > t) return false;
+  }
   return true;
 }

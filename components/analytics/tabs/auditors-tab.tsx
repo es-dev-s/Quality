@@ -24,6 +24,10 @@ import {
   scoreHex,
 } from "@/components/analytics/qms-primitives";
 import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
+import {
+  DataTablePanel,
+  usePaginatedRows,
+} from "@/components/primitives/data-table-panel";
 
 const AUDITOR_COLORS = [
   CHART_COLORS.accent,
@@ -36,6 +40,7 @@ const AUDITOR_COLORS = [
 ];
 
 export function AuditorsTab({ data }: { data: QmsAnalyticsData }) {
+  const pagination = usePaginatedRows(data.auditors);
   if (data.auditors.length === 0) {
     return <QmsEmpty message="No auditor workload data yet." />;
   }
@@ -175,8 +180,10 @@ export function AuditorsTab({ data }: { data: QmsAnalyticsData }) {
 
       <QmsCard>
         <QmsSectionTitle title="Auditor details" />
-        <div className="ui-table-wrap qms-table-scroll">
-          <table className="ui-table qms-table">
+        <DataTablePanel
+          pagination={pagination}
+          renderTable={(slice) => (
+          <table className="ui-table qms-table platform-report-table">
             <thead>
               <tr>
                 {[
@@ -191,7 +198,7 @@ export function AuditorsTab({ data }: { data: QmsAnalyticsData }) {
               </tr>
             </thead>
             <tbody>
-              {data.auditors.map((auditor) => (
+              {slice.map((auditor) => (
                 <tr key={auditor.name}>
                   <td className="qms-cell-strong">{auditor.name}</td>
                   <td className="qms-cell-accent">{auditor.count}</td>
@@ -213,7 +220,8 @@ export function AuditorsTab({ data }: { data: QmsAnalyticsData }) {
               ))}
             </tbody>
           </table>
-        </div>
+          )}
+        />
       </QmsCard>
     </div>
   );

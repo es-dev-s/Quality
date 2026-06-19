@@ -1,10 +1,12 @@
 import { IMPORT_ENABLED, SUPERADMIN_ROLE_SLUG } from "@/lib/constants";
-import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import {
   PERMISSIONS,
   resolveRoutePermission,
   ROUTE_PERMISSIONS,
+  SYSTEM_ROLE_DEFINITIONS,
+  SYSTEM_ROLE_SLUGS,
   type Permission,
+  type SystemRoleSlug,
 } from "@/lib/permissions";
 
 export type SessionRole = {
@@ -24,7 +26,15 @@ export function hasScope(
 ): boolean {
   if (!role) return false;
   if (isSuperAdmin(role)) return true;
-  return role.scopes.includes(permission);
+  if (role.scopes.includes(permission)) return true;
+
+  const slug = role.slug as SystemRoleSlug;
+  const systemRole = SYSTEM_ROLE_DEFINITIONS[slug];
+  if (systemRole?.permissions.includes(permission as Permission)) {
+    return true;
+  }
+
+  return false;
 }
 
 export function hasAnyScope(
@@ -78,6 +88,41 @@ export function firstAccessiblePath(
 
 export function canManageUsers(role?: SessionRole | null): boolean {
   return hasScope(role, PERMISSIONS.ADMIN_USERS);
+}
+
+export function canProvisionAgents(role?: SessionRole | null): boolean {
+  return hasScope(role, PERMISSIONS.USERS_PROVISION_AGENT);
+}
+
+export function canApproveAgentRequests(role?: SessionRole | null): boolean {
+  return hasScope(role, PERMISSIONS.USERS_APPROVE_AGENT);
+}
+
+export function canProvisionAnalysts(role?: SessionRole | null): boolean {
+  return hasScope(role, PERMISSIONS.USERS_PROVISION_ANALYST);
+}
+
+export function canApproveAnalystRequests(role?: SessionRole | null): boolean {
+  return hasScope(role, PERMISSIONS.USERS_APPROVE_ANALYST);
+}
+
+export function canReadManagedUsers(role?: SessionRole | null): boolean {
+  return hasScope(role, PERMISSIONS.USERS_READ_MANAGED);
+}
+
+export function canManageManagedUsers(role?: SessionRole | null): boolean {
+  return hasScope(role, PERMISSIONS.USERS_MANAGE_MANAGED);
+}
+
+export function canAccessTeamManagement(role?: SessionRole | null): boolean {
+  if (!role) return false;
+  return (
+    canProvisionAgents(role) ||
+    canProvisionAnalysts(role) ||
+    canApproveAgentRequests(role) ||
+    canApproveAnalystRequests(role) ||
+    canReadManagedUsers(role)
+  );
 }
 
 export function canManageRoles(role?: SessionRole | null): boolean {

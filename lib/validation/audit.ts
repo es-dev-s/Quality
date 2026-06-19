@@ -20,6 +20,7 @@ export const auditFormDataSchema = z.object({
   lob: z.string().trim().min(1, "LOB is required"),
   sublob: z.string(),
   mobile: z.string(),
+  referenceUrl: z.string(),
   reason: z.string(),
   subReason: z.string(),
   response: z.string(),

@@ -1,6 +1,6 @@
 import type { AuditFormData } from "@/lib/audit/types";
 
-const REQUIRED_FIELDS: {
+const BASE_REQUIRED_FIELDS: {
   key: keyof AuditFormData;
   label: string;
 }[] = [
@@ -11,38 +11,61 @@ const REQUIRED_FIELDS: {
   { key: "auditor", label: "Quality Analyst" },
   { key: "lob", label: "LOB" },
   { key: "sublob", label: "Reason" },
-  { key: "mobile", label: "Mobile Number" },
   { key: "reason", label: "Sub-reason" },
   { key: "response", label: "Agent's Response" },
 ];
 
-export type InteractionDetailsValidationContext = {
-  subReasonRequired?: boolean;
-};
-
 export function validateInteractionDetails(
-  formData: AuditFormData,
-  context?: InteractionDetailsValidationContext
+  formData: AuditFormData
 ): string | null {
-  for (const { key, label } of REQUIRED_FIELDS) {
+  for (const { key, label } of BASE_REQUIRED_FIELDS) {
     const value = formData[key];
     if (typeof value !== "string" || !value.trim()) {
       return `${label} is required.`;
     }
   }
 
-  if (context?.subReasonRequired) {
-    if (typeof formData.subReason !== "string" || !formData.subReason.trim()) {
-      return "DFF is required.";
+  if (formData.type === "Call") {
+    if (typeof formData.mobile !== "string" || !formData.mobile.trim()) {
+      return "Mobile Number is required.";
+    }
+  }
+
+  if (formData.type === "Chat") {
+    if (
+      typeof formData.referenceUrl !== "string" ||
+      !formData.referenceUrl.trim()
+    ) {
+      return "Reference URL or audio recording is required.";
     }
   }
 
   return null;
 }
 
-export function isInteractionDetailsComplete(
-  formData: AuditFormData,
-  context?: InteractionDetailsValidationContext
-): boolean {
-  return validateInteractionDetails(formData, context) === null;
+export function isInteractionDetailsComplete(formData: AuditFormData): boolean {
+  return validateInteractionDetails(formData) === null;
+}
+
+/** Split legacy combined mobile field (phone + URL in one) for edit forms. */
+export function normalizeLegacyReferenceFields(
+  mobile: string,
+  referenceUrl: string | null | undefined
+): { mobile: string; referenceUrl: string } {
+  const ref = referenceUrl?.trim() ?? "";
+  const phone = mobile?.trim() ?? "";
+
+  if (ref) {
+    return { mobile: phone, referenceUrl: ref };
+  }
+
+  if (
+    /^https?:\/\//i.test(phone) ||
+    phone.startsWith("/uploads/") ||
+    phone.startsWith("uploads/")
+  ) {
+    return { mobile: "", referenceUrl: phone };
+  }
+
+  return { mobile: phone, referenceUrl: "" };
 }

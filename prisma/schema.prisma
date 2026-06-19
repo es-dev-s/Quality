@@ -13,11 +13,50 @@ model User {
   password           String
   roleId             String
   dateOfJoining      String?                 @map("date_of_joining")
+  createdById        String?                 @map("created_by_id")
   role               Role                    @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  createdBy          User?                   @relation("UserCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdUsers       User[]                  @relation("UserCreatedBy")
   auditSubmissions   AuditSubmission[]
   templatePreference UserTemplatePreference?
+  provisioningRequests UserProvisioningRequest[] @relation("ProvisioningRequestedBy")
+  provisioningReviews  UserProvisioningRequest[] @relation("ProvisioningReviewedBy")
+  approvedFromRequest  UserProvisioningRequest?  @relation("ApprovedUser")
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
+
+  @@index([createdById])
+}
+
+enum UserProvisioningStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model UserProvisioningRequest {
+  id             String                   @id @default(cuid())
+  name           String
+  email          String
+  passwordHash   String                   @map("password_hash")
+  dateOfJoining  String?                  @map("date_of_joining")
+  targetRoleSlug String                   @map("target_role_slug")
+  status         UserProvisioningStatus   @default(PENDING)
+  requestedById  String                   @map("requested_by_id")
+  requestedBy    User                     @relation("ProvisioningRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  reviewedById   String?                  @map("reviewed_by_id")
+  reviewedBy     User?                    @relation("ProvisioningReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewNote     String?                  @map("review_note")
+  reviewedAt     DateTime?                @map("reviewed_at")
+  createdUserId  String?                  @unique @map("created_user_id")
+  createdUser    User?                    @relation("ApprovedUser", fields: [createdUserId], references: [id], onDelete: SetNull)
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  updatedAt      DateTime                 @updatedAt @map("updated_at")
+
+  @@index([status, targetRoleSlug])
+  @@index([requestedById])
+  @@index([email])
+  @@map("user_provisioning_requests")
 }
 
 model Role {
@@ -141,6 +180,7 @@ model AuditSubmission {
   sublob         String?
   reason         String?
   mobile         String?
+  referenceUrl   String?  @map("reference_url")
   response       String?
   qualityPct     Int
   finalPct       Int

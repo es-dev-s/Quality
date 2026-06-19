@@ -11,6 +11,10 @@ import {
 } from "@/components/audit-logs/feedback-status-datetime";
 import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
 import { Input, Select } from "@/components/primitives/field";
+import {
+  DataTablePanel,
+  usePaginatedRows,
+} from "@/components/primitives/data-table-panel";
 import { useToast } from "@/components/primitives/toast";
 import { cn } from "@/lib/utils";
 import { deleteAuditSubmissions, updateAuditFeedback } from "@/lib/actions/audit";
@@ -23,8 +27,10 @@ import {
 } from "@/lib/audit/feedback";
 import {
   matchesDateRange,
+  matchesCustomDateRange,
   type DateRangeFilter,
 } from "@/lib/audit/date-filters";
+import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
 import {
   FeedbackStatusSelect,
   feedbackStatusClass,
@@ -206,6 +212,7 @@ export function AuditLogsTable({
   const [lob, setLob] = useState("");
   const [feedbackStatus, setFeedbackStatus] = useState("");
   const [dateRange, setDateRange] = useState<DateRangeFilter>("all");
+  const [customRange, setCustomRange] = useState<DateRangeValue>({ from: "", to: "" });
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
   const [rows, setRows] = useState(submissions);
@@ -248,10 +255,16 @@ export function AuditLogsTable({
   );
 
   const filtered = useMemo(() => {
+    const hasCustom = !!(customRange.from || customRange.to);
     return rows.filter((row) => {
       if (!matchesSearch(row, search)) return false;
       if (!matchesScore(row, scorePreset)) return false;
-      if (!matchesDateRange(resolveMetricDate(row.auditDate, row.callDate), dateRange)) return false;
+      const metricDate = resolveMetricDate(row.auditDate, row.callDate);
+      if (hasCustom) {
+        if (!matchesCustomDateRange(metricDate, customRange.from, customRange.to)) return false;
+      } else {
+        if (!matchesDateRange(metricDate, dateRange)) return false;
+      }
       if (grade && row.grade !== grade) return false;
       if (type && row.type !== type) return false;
       if (businessType && row.businessType !== businessType) return false;
@@ -259,13 +272,16 @@ export function AuditLogsTable({
       if (feedbackStatus && row.feedbackStatus !== feedbackStatus) return false;
       return true;
     });
-  }, [rows, search, scorePreset, dateRange, grade, type, businessType, lob, feedbackStatus]);
+  }, [rows, search, scorePreset, dateRange, customRange, grade, type, businessType, lob, feedbackStatus]);
 
-  const filteredIds = useMemo(() => filtered.map((row) => row.id), [filtered]);
-  const allFilteredSelected =
-    filtered.length > 0 && filtered.every((row) => selectedIds.has(row.id));
-  const someFilteredSelected =
-    filtered.some((row) => selectedIds.has(row.id)) && !allFilteredSelected;
+  const pagination = usePaginatedRows(filtered);
+  const pageRows = pagination.slice;
+  const pageIds = useMemo(() => pageRows.map((row) => row.id), [pageRows]);
+
+  const allPageSelected =
+    pageRows.length > 0 && pageRows.every((row) => selectedIds.has(row.id));
+  const somePageSelected =
+    pageRows.some((row) => selectedIds.has(row.id)) && !allPageSelected;
   const selectedCount = selectedIds.size;
 
   function toggleRowSelection(id: string, checked: boolean) {
@@ -277,10 +293,10 @@ export function AuditLogsTable({
     });
   }
 
-  function toggleFilteredSelection(checked: boolean) {
+  function togglePageSelection(checked: boolean) {
     setSelectedIds((current) => {
       const next = new Set(current);
-      for (const id of filteredIds) {
+      for (const id of pageIds) {
         if (checked) next.add(id);
         else next.delete(id);
       }
@@ -340,7 +356,8 @@ export function AuditLogsTable({
 
   const advancedFilterCount = useMemo(() => {
     let count = 0;
-    if (dateRange !== "all") count++;
+    if (customRange.from || customRange.to) count++;
+    else if (dateRange !== "all") count++;
     if (scorePreset !== "all") count++;
     if (grade) count++;
     if (type) count++;
@@ -348,12 +365,19 @@ export function AuditLogsTable({
     if (lob) count++;
     if (feedbackStatus) count++;
     return count;
-  }, [dateRange, scorePreset, grade, type, businessType, lob, feedbackStatus]);
+  }, [dateRange, customRange, scorePreset, grade, type, businessType, lob, feedbackStatus]);
 
   const activeFilterChips = useMemo(() => {
     const chips: { key: string; label: string; onRemove: () => void }[] = [];
 
-    if (dateRange !== "all") {
+    if (customRange.from || customRange.to) {
+      const label = [customRange.from, customRange.to].filter(Boolean).join(" — ");
+      chips.push({
+        key: "period",
+        label,
+        onRemove: () => setCustomRange({ from: "", to: "" }),
+      });
+    } else if (dateRange !== "all") {
       const item = DATE_RANGES.find((entry) => entry.value === dateRange);
       chips.push({
         key: "period",
@@ -412,6 +436,7 @@ export function AuditLogsTable({
     setSearch("");
     setScorePreset("all");
     setDateRange("all");
+    setCustomRange({ from: "", to: "" });
     setGrade("");
     setType("");
     setBusinessType("");
@@ -505,13 +530,19 @@ export function AuditLogsTable({
     rows.length === 0
       ? "Saved audits will appear here after you complete a form."
       : hasActiveFilters
-        ? `Showing ${filtered.length} of ${rows.length} audit${
-            rows.length === 1 ? "" : "s"
-          }.`
-        : `Showing ${rows.length} saved audit${rows.length === 1 ? "" : "s"}.`;
+        ? filtered.length === 0
+          ? "No audits match your filters."
+          : `Showing ${pagination.start}–${pagination.end} of ${filtered.length} filtered audit${
+              filtered.length === 1 ? "" : "s"
+            } (${rows.length} total).`
+        : filtered.length === 0
+          ? "No audits to display."
+          : `Showing ${pagination.start}–${pagination.end} of ${filtered.length} saved audit${
+              filtered.length === 1 ? "" : "s"
+            }.`;
 
   return (
-    <div className="audit-logs">
+    <div className="audit-logs audit-logs-page">
       {showSectionHead && (
         <div className="audit-logs__head">
           <div>
@@ -547,10 +578,10 @@ export function AuditLogsTable({
               <button
                 type="button"
                 className="ui-btn ui-btn--secondary ui-btn--sm"
-                onClick={() => exportCsv(filtered)}
+                onClick={() => exportCsv(pagination.slice)}
               >
                 <Download size={15} aria-hidden />
-                Export CSV
+                Export CSV ({pagination.slice.length})
               </button>
             )}
             <Link href="/forms/audit" className="ui-btn ui-btn--primary ui-btn--sm">
@@ -655,20 +686,32 @@ export function AuditLogsTable({
                       key={item.value}
                       type="button"
                       role="tab"
-                      aria-selected={dateRange === item.value}
+                      aria-selected={dateRange === item.value && !(customRange.from || customRange.to)}
                       aria-label={item.ariaLabel}
                       title={item.ariaLabel}
                       className={cn(
                         "audit-logs__periods-btn",
-                        dateRange === item.value &&
+                        dateRange === item.value && !(customRange.from || customRange.to) &&
                           "audit-logs__periods-btn--active"
                       )}
-                      onClick={() => setDateRange(item.value)}
+                      onClick={() => {
+                        setCustomRange({ from: "", to: "" });
+                        setDateRange(item.value);
+                      }}
                     >
                       <span className="audit-logs__periods-label">{item.label}</span>
                     </button>
                   ))}
                 </div>
+                <DateRangePicker
+                  value={customRange}
+                  onChange={(v) => {
+                    setCustomRange(v);
+                    if (v.from || v.to) setDateRange("all");
+                  }}
+                  label="Custom range"
+                  className="audit-logs__drp"
+                />
               </div>
 
               <div className="audit-logs__filters-grid">
@@ -779,63 +822,94 @@ export function AuditLogsTable({
         <p className="audit-logs__result-count">{resultLabel}</p>
       )}
 
-      <div className="ui-table-wrap audit-logs__table-wrap ui-scrollbar">
-        <table className="ui-table audit-logs__table">
-          <thead>
-            <tr>
-              {canDeleteAudits ? (
-                <th className="audit-logs__select-col">
-                  <input
-                    type="checkbox"
-                    className="audit-logs__checkbox"
-                    checked={allFilteredSelected}
-                    ref={(input) => {
-                      if (input) input.indeterminate = someFilteredSelected;
-                    }}
-                    onChange={(e) => toggleFilteredSelection(e.target.checked)}
-                    disabled={filtered.length === 0 || deletePending}
-                    aria-label="Select all visible audits"
-                  />
-                </th>
-              ) : null}
-              <th>Agent</th>
-              <th>Type / LOB</th>
-              <th>Audit date</th>
-              <th>Auditor</th>
-              <th>Score</th>
-              <th>Grade</th>
-              <th>Security</th>
-              <th>Feedback</th>
-              <th>Date &amp; time</th>
-              <th>Feedback for the agent</th>
-              <th aria-label="Actions" />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={columnCount} className="ui-table__empty">
-                  No audits yet.{" "}
-                  <Link href="/forms/audit" className="audit-logs__empty-link">
-                    Start your first audit
-                  </Link>
-                </td>
-              </tr>
-            ) : filtered.length === 0 ? (
-              <tr>
-                <td colSpan={columnCount} className="ui-table__empty">
-                  No audits match your filters.{" "}
-                  <button
-                    type="button"
-                    className="audit-logs__empty-link"
-                    onClick={clearFilters}
-                  >
-                    Clear filters
-                  </button>
-                </td>
-              </tr>
-            ) : (
-              filtered.map((row) => (
+      <div className="audit-logs-page__table-zone">
+        {rows.length === 0 || filtered.length === 0 ? (
+          <div className="platform-report-table-panel audit-logs-page__empty-panel">
+            <div className="platform-report-table__scroll audit-logs-page__empty-scroll">
+              <table className="ui-table audit-logs__table platform-report-table">
+                <thead>
+                  <tr>
+                    {canDeleteAudits ? <th className="audit-logs__select-col" /> : null}
+                    <th>Agent</th>
+                    <th>Type / LOB</th>
+                    <th>Audit date</th>
+                    <th>Auditor</th>
+                    <th>Score</th>
+                    <th>Grade</th>
+                    <th>Security</th>
+                    <th>Feedback</th>
+                    <th>Date &amp; time</th>
+                    <th>Feedback for the agent</th>
+                    <th aria-label="Actions" />
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td colSpan={columnCount} className="ui-table__empty">
+                      {rows.length === 0 ? (
+                        <>
+                          No audits yet.{" "}
+                          <Link href="/forms/audit" className="audit-logs__empty-link">
+                            Start your first audit
+                          </Link>
+                        </>
+                      ) : (
+                        <>
+                          No audits match your filters.{" "}
+                          <button
+                            type="button"
+                            className="audit-logs__empty-link"
+                            onClick={clearFilters}
+                          >
+                            Clear filters
+                          </button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <DataTablePanel
+            pagination={pagination}
+            fillViewport
+            scrollClassName="audit-logs-page__table-scroll"
+            renderTable={(slice) => (
+              <table className="ui-table audit-logs__table platform-report-table">
+                <thead>
+                  <tr>
+                    {canDeleteAudits ? (
+                      <th className="audit-logs__select-col">
+                        <input
+                          type="checkbox"
+                          className="audit-logs__checkbox"
+                          checked={allPageSelected}
+                          ref={(input) => {
+                            if (input) input.indeterminate = somePageSelected;
+                          }}
+                          onChange={(e) => togglePageSelection(e.target.checked)}
+                          disabled={slice.length === 0 || deletePending}
+                          aria-label="Select all audits on this page"
+                        />
+                      </th>
+                    ) : null}
+                    <th>Agent</th>
+                    <th>Type / LOB</th>
+                    <th>Audit date</th>
+                    <th>Auditor</th>
+                    <th>Score</th>
+                    <th>Grade</th>
+                    <th>Security</th>
+                    <th>Feedback</th>
+                    <th>Date &amp; time</th>
+                    <th>Feedback for the agent</th>
+                    <th aria-label="Actions" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {slice.map((row) => (
                 <tr
                   key={row.id}
                   className={cn(
@@ -1007,10 +1081,12 @@ export function AuditLogsTable({
                     </div>
                   </td>
                 </tr>
-              ))
+                  ))}
+                </tbody>
+              </table>
             )}
-          </tbody>
-        </table>
+          />
+        )}
       </div>
 
       <AuditDetailModal

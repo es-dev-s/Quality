@@ -3,7 +3,7 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { requireAuth } from "@/lib/auth";
-import { canManageSettings, canReadSettings } from "@/lib/rbac";
+import { canManageSettings } from "@/lib/rbac";
 import { requirePermission } from "@/lib/auth-guards";
 import { PERMISSIONS } from "@/lib/permissions";
 import {
@@ -67,7 +67,7 @@ export async function getInteractionConfig(): Promise<InteractionConfig> {
 }
 
 export async function getInteractionConfigManagerData() {
-  const session = await requirePermission(PERMISSIONS.SETTINGS_READ);
+  const session = await requirePermission(PERMISSIONS.SETTINGS_WRITE);
   const row = await fetchInteractionConfigRow();
   const config = await enrichInteractionConfigWithRoleUsers(
     rowToInteractionConfig(row)

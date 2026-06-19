@@ -6,6 +6,10 @@ import {
 } from "@/lib/permissions";
 import { isSuperAdmin } from "@/lib/rbac";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
+import {
+  fetchManagedAgentNames,
+  fetchManagedAnalystNames,
+} from "@/lib/audit/managed-user-names";
 
 export type DataScopeContext = {
   userId: string;
@@ -24,36 +28,52 @@ function effectiveScopeName(ctx: DataScopeContext): string | null {
 const GLOBAL_DATA_ROLES = new Set<SystemRoleSlug>([
   SYSTEM_ROLE_SLUGS.SUPERADMIN,
   SYSTEM_ROLE_SLUGS.ADMIN,
-  SYSTEM_ROLE_SLUGS.QUALITY_MANAGER,
 ]);
 
+function noAccessFilter(): Prisma.AuditSubmissionWhereInput {
+  return { id: "__no_access__" };
+}
+
 /**
- * Row-level filter for audit submissions based on predefined role data visibility.
- * User.name must match audit.agent, audit.supervisor, or audit.auditor where applicable.
+ * Row-level filter for audit submissions based on role and managed user hierarchy.
  */
-export function auditSubmissionScopeWhere(
+export async function auditSubmissionScopeWhere(
   ctx: DataScopeContext
-): Prisma.AuditSubmissionWhereInput | undefined {
+): Promise<Prisma.AuditSubmissionWhereInput | undefined> {
   if (isSuperAdmin(ctx.role) || GLOBAL_DATA_ROLES.has(ctx.role.slug as SystemRoleSlug)) {
     return undefined;
   }
 
-  const name = effectiveScopeName(ctx);
-  if (!name) {
-    return { id: "__no_access__" };
+  const roleSlug = ctx.role.slug as SystemRoleSlug;
+
+  if (roleSlug === SYSTEM_ROLE_SLUGS.SUPERVISOR) {
+    const agentNames = await fetchManagedAgentNames(ctx.userId);
+    if (agentNames.length === 0) {
+      return noAccessFilter();
+    }
+    return { agent: { in: agentNames } };
   }
 
-  switch (ctx.role.slug as SystemRoleSlug) {
+  if (roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
+    const analystNames = await fetchManagedAnalystNames(ctx.userId);
+    if (analystNames.length === 0) {
+      return noAccessFilter();
+    }
+    return { auditor: { in: analystNames } };
+  }
+
+  const name = effectiveScopeName(ctx);
+  if (!name) {
+    return noAccessFilter();
+  }
+
+  switch (roleSlug) {
     case SYSTEM_ROLE_SLUGS.AGENT:
       return { agent: name };
-    case SYSTEM_ROLE_SLUGS.SUPERVISOR:
-      return {
-        OR: [{ supervisor: name }, { agent: name }],
-      };
     case SYSTEM_ROLE_SLUGS.QUALITY_ANALYST:
       return { auditor: name };
     default:
-      return { id: "__no_access__" };
+      return noAccessFilter();
   }
 }
 

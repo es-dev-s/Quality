@@ -9,6 +9,10 @@ import { Badge } from "@/components/primitives/badge";
 import { Modal } from "@/components/primitives/modal";
 import { useToast } from "@/components/primitives/toast";
 import { UserFormDialog } from "@/components/admin/user-form-dialog";
+import {
+  DataTablePanel,
+  usePaginatedRows,
+} from "@/components/primitives/data-table-panel";
 import { bulkDeleteUsers } from "@/lib/actions/admin";
 import { useBulkSelection } from "@/lib/hooks/use-bulk-selection";
 
@@ -43,10 +47,11 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const pagination = usePaginatedRows(users);
 
   const selectionItems = useMemo(
-    () => users.map((user) => ({ id: user.id })),
-    [users]
+    () => pagination.slice.map((user) => ({ id: user.id })),
+    [pagination.slice]
   );
 
   const {
@@ -60,8 +65,11 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
   } = useBulkSelection(selectionItems);
 
   const selectedIds = useMemo(
-    () => users.filter((user) => isSelected(user.id)).map((user) => user.id),
-    [users, isSelected]
+    () =>
+      pagination.slice
+        .filter((user) => isSelected(user.id))
+        .map((user) => user.id),
+    [pagination.slice, isSelected]
   );
 
   function handleBulkDelete() {
@@ -126,92 +134,111 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
         isPending={pending}
       />
 
-      <div className="ui-table-wrap">
-        <table className="ui-table ui-table--selectable">
-          <thead>
-            <tr>
-              <th className="ui-table__check-col">
-                <input
-                  type="checkbox"
-                  aria-label="Select all users"
-                  checked={allVisibleSelected}
-                  ref={(el) => {
-                    if (el) el.indeterminate = someVisibleSelected;
-                  }}
-                  disabled={pending || users.length === 0}
-                  onChange={toggleAllVisible}
-                />
-              </th>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Joined</th>
-              <th style={{ textAlign: "right" }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.length === 0 ? (
+      {users.length === 0 ? (
+        <div className="ui-table-wrap">
+          <table className="ui-table ui-table--selectable platform-report-table">
+            <thead>
+              <tr>
+                <th className="ui-table__check-col" />
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Joined</th>
+                <th style={{ textAlign: "right" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
               <tr>
                 <td colSpan={6} className="ui-table__empty">
                   No users yet. Create your first user.
                 </td>
               </tr>
-            ) : (
-              users.map((user) => (
-                <tr key={user.id}>
-                  <td className="ui-table__check-col">
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <DataTablePanel
+          pagination={pagination}
+          renderTable={(slice) => (
+            <table className="ui-table ui-table--selectable platform-report-table">
+              <thead>
+                <tr>
+                  <th className="ui-table__check-col">
                     <input
                       type="checkbox"
-                      aria-label={`Select ${user.email}`}
-                      checked={isSelected(user.id)}
-                      disabled={pending}
-                      onChange={() => toggleOne(user.id)}
+                      aria-label="Select all users on this page"
+                      checked={allVisibleSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someVisibleSelected;
+                      }}
+                      disabled={pending || slice.length === 0}
+                      onChange={toggleAllVisible}
                     />
-                  </td>
-                  <td style={{ fontWeight: 500 }}>{user.name ?? "—"}</td>
-                  <td>{user.email}</td>
-                  <td>
-                    <Badge tone="accent">{user.role.name}</Badge>
-                  </td>
-                  <td>{user.dateOfJoining ?? "—"}</td>
-                  <td>
-                    <div className="ui-table__actions">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setEditingUser(user);
-                          setDialogOpen(true);
-                        }}
-                      >
-                        <Pencil size={16} />
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="icon"
-                        disabled={pending}
-                        onClick={() => {
-                          startTransition(async () => {
-                            const result = await bulkDeleteUsers([user.id]);
-                            if (result.error && !result.deleted) {
-                              toast(result.error, "error");
-                              return;
-                            }
-                            toast("User deleted", "success");
-                            router.refresh();
-                          });
-                        }}
-                      >
-                        <Trash2 size={16} />
-                      </Button>
-                    </div>
-                  </td>
+                  </th>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Joined</th>
+                  <th style={{ textAlign: "right" }}>Actions</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {slice.map((user) => (
+                  <tr key={user.id}>
+                    <td className="ui-table__check-col">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${user.email}`}
+                        checked={isSelected(user.id)}
+                        disabled={pending}
+                        onChange={() => toggleOne(user.id)}
+                      />
+                    </td>
+                    <td style={{ fontWeight: 500 }}>{user.name ?? "—"}</td>
+                    <td>{user.email}</td>
+                    <td>
+                      <Badge tone="accent">{user.role.name}</Badge>
+                    </td>
+                    <td>{user.dateOfJoining ?? "—"}</td>
+                    <td>
+                      <div className="ui-table__actions">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setEditingUser(user);
+                            setDialogOpen(true);
+                          }}
+                        >
+                          <Pencil size={16} />
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="icon"
+                          disabled={pending}
+                          onClick={() => {
+                            startTransition(async () => {
+                              const result = await bulkDeleteUsers([user.id]);
+                              if (result.error && !result.deleted) {
+                                toast(result.error, "error");
+                                return;
+                              }
+                              toast("User deleted", "success");
+                              router.refresh();
+                            });
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        />
+      )}
 
       <UserFormDialog
         open={dialogOpen}

@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Coverage Radar Chart</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; display: flex; justify-content: center; padding: 32px 16px; }
+    .wrapper { width: 100%; max-width: 780px; }
+    .chart-title { text-align: center; font-size: 17px; font-weight: 500; color: #111; margin-bottom: 8px; }
+    .caption { text-align: center; font-size: 12px; color: #888; margin-bottom: 16px; }
+    .legend { display: flex; gap: 28px; justify-content: flex-end; margin-bottom: 8px; padding-right: 16px; }
+    .legend-item { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: #555; }
+    canvas { display: block; width: 100%; height: auto; }
+
+    /* Data editor panel */
+    .editor { margin-top: 32px; border-top: 1px solid #eee; padding-top: 24px; }
+    .editor h3 { font-size: 14px; font-weight: 500; color: #333; margin-bottom: 12px; }
+    .editor-grid { display: grid; grid-template-columns: 200px 1fr 1fr; gap: 6px 12px; align-items: center; font-size: 12.5px; }
+    .editor-grid .hdr { font-weight: 500; color: #888; padding-bottom: 4px; }
+    .editor-grid label { color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .editor-grid input[type="range"] { width: 100%; accent-color: #4a90d9; }
+    .editor-grid input[type="range"].obs { accent-color: #d45a5a; }
+    .editor-grid .val { font-size: 11px; color: #888; text-align: right; min-width: 30px; }
+    .btn-row { margin-top: 14px; display: flex; gap: 10px; }
+    button { font-size: 12px; padding: 6px 14px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; color: #333; }
+    button:hover { background: #f5f5f5; }
+    button.primary { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+    button.primary:hover { background: #3a7fc9; }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+  <p class="chart-title">Theoretical capability and observed usage by occupational category</p>
+
+  <div class="legend">
+    <div class="legend-item">
+      <svg width="22" height="12"><line x1="0" y1="6" x2="22" y2="6" stroke="#4a90d9" stroke-width="1.5"/><circle cx="11" cy="6" r="3" fill="#4a90d9"/></svg>
+      Theoretical AI coverage
+    </div>
+    <div class="legend-item">
+      <svg width="22" height="12"><line x1="0" y1="6" x2="22" y2="6" stroke="#d45a5a" stroke-width="1.5"/><rect x="8" y="3" width="6" height="6" fill="#d45a5a"/></svg>
+      Observed AI coverage
+    </div>
+  </div>
+
+  <canvas id="radarCanvas"></canvas>
+
+  <!-- ===== EDITABLE DATA ===== -->
+  <div class="editor" id="editor"></div>
+  <div class="btn-row">
+    <button class="primary" onclick="readEditorAndRedraw()">Update chart</button>
+    <button onclick="resetDefaults()">Reset to defaults</button>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   CUSTOMIZE HERE — change categories, theoretical, or observed values.
+   Values must be between 0.0 and 1.0.
+   ===================================================================== */
+const DEFAULTS = {
+  categories: [
+    "Management",
+    "Business & finance",
+    "Computer & math",
+    "Architecture & engineering",
+    "Life & social sciences",
+    "Social services",
+    "Legal",
+    "Education & library",
+    "Arts & media",
+    "Healthcare practitioners",
+    "Healthcare support",
+    "Protective service",
+    "Food & serving",
+    "Grounds maintenance",
+    "Personal care",
+    "Sales",
+    "Office & admin",
+    "Agriculture",
+    "Construction",
+    "Installation & repair",
+    "Production",
+    "Transportation"
+  ],
+  theoretical: [0.72, 0.78, 0.82, 0.62, 0.55, 0.38, 0.70, 0.75, 0.72, 0.45, 0.28, 0.22, 0.18, 0.14, 0.20, 0.35, 0.80, 0.22, 0.18, 0.22, 0.20, 0.18],
+  observed:    [0.28, 0.32, 0.38, 0.22, 0.30, 0.18, 0.28, 0.20, 0.18, 0.14, 0.10, 0.08, 0.06, 0.04, 0.06, 0.14, 0.30, 0.06, 0.05, 0.06, 0.06, 0.05]
+};
+
+let DATA = JSON.parse(JSON.stringify(DEFAULTS));
+
+/* ===== Canvas Setup ===== */
+const canvas = document.getElementById('radarCanvas');
+const ctx = canvas.getContext('2d');
+
+function getSize() {
+  const w = canvas.parentElement.clientWidth;
+  return { w, h: Math.round(w * 0.82) };
+}
+
+function setup() {
+  const { w, h } = getSize();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  ctx.scale(dpr, dpr);
+  return { w, h };
+}
+
+/* ===== Drawing ===== */
+function draw() {
+  const { w, h } = setup();
+  ctx.clearRect(0, 0, w, h);
+
+  const cx = w / 2;
+  const cy = h / 2 - 10;
+  const R = Math.min(w, h) * 0.36;
+  const N = DATA.categories.length;
+  const startAngle = -Math.PI / 2;
+  const rings = [0.4, 0.6, 0.8, 1.0];
+
+  function pt(i, val) {
+    const a = startAngle + (i * 2 * Math.PI) / N;
+    return { x: cx + val * R * Math.cos(a), y: cy + val * R * Math.sin(a) };
+  }
+
+  /* Grid rings */
+  rings.forEach(v => {
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const p = pt(i, v);
+      i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = '#ddd';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    /* Ring label */
+    const lx = cx + v * R * Math.cos(startAngle) - 5;
+    const ly = cy + v * R * Math.sin(startAngle) - 5;
+    ctx.fillStyle = '#bbb';
+    ctx.font = `${Math.round(R * 0.055)}px sans-serif`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(v.toFixed(1), lx, ly);
+  });
+
+  /* Spoke lines */
+  for (let i = 0; i < N; i++) {
+    const p = pt(i, 1.0);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(p.x, p.y);
+    ctx.strokeStyle = '#ddd';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+  }
+
+  /* Polygon */
+  function drawPoly(values, fillColor, strokeColor, dotShape) {
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const p = pt(i, values[i]);
+      i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    for (let i = 0; i < N; i++) {
+      const p = pt(i, values[i]);
+      ctx.fillStyle = strokeColor;
+      if (dotShape === 'circle') {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillRect(p.x - 3.5, p.y - 3.5, 7, 7);
+      }
+    }
+  }
+
+  drawPoly(DATA.theoretical, 'rgba(74,144,217,0.18)', '#4a90d9', 'circle');
+  drawPoly(DATA.observed,    'rgba(212,90,90,0.22)',  '#d45a5a', 'square');
+
+  /* Labels */
+  const fontSize = Math.max(10, Math.round(R * 0.057));
+  const PAD = R * 0.092;
+  ctx.font = `${fontSize}px sans-serif`;
+  ctx.fillStyle = '#666';
+
+  for (let i = 0; i < N; i++) {
+    const angle = startAngle + (i * 2 * Math.PI) / N;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+    const lx = cx + (R + PAD) * cosA;
+    const ly = cy + (R + PAD) * sinA;
+
+    let align = 'center';
+    if (cosA < -0.15) align = 'right';
+    else if (cosA > 0.15) align = 'left';
+
+    ctx.textAlign = align;
+    ctx.textBaseline = 'middle';
+
+    const label = DATA.categories[i];
+    const parts = label.split(' & ');
+    if (parts.length > 1) {
+      const lineH = fontSize * 1.25;
+      parts.forEach((part, pi) => {
+        const suffix = pi < parts.length - 1 ? ' &' : '';
+        const yOff = (pi - (parts.length - 1) / 2) * lineH;
+        ctx.fillText(part + suffix, lx, ly + yOff);
+      });
+    } else {
+      ctx.fillText(label, lx, ly);
+    }
+  }
+}
+
+/* ===== Editor UI ===== */
+function buildEditor() {
+  const ed = document.getElementById('editor');
+  ed.innerHTML = '<h3>Edit data values (0.0 – 1.0)</h3>';
+
+  const grid = document.createElement('div');
+  grid.className = 'editor-grid';
+
+  ['Category', 'Theoretical (blue)', 'Observed (red)'].forEach(h => {
+    const d = document.createElement('div');
+    d.className = 'hdr';
+    d.textContent = h;
+    grid.appendChild(d);
+  });
+
+  DATA.categories.forEach((cat, i) => {
+    const lbl = document.createElement('label');
+    lbl.textContent = cat;
+    grid.appendChild(lbl);
+
+    ['theoretical', 'observed'].forEach(key => {
+      const wrap = document.createElement('div');
+      wrap.style.display = 'flex';
+      wrap.style.alignItems = 'center';
+      wrap.style.gap = '6px';
+
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.min = 0; slider.max = 1; slider.step = 0.01;
+      slider.value = DATA[key][i];
+      slider.dataset.key = key;
+      slider.dataset.idx = i;
+      if (key === 'observed') slider.className = 'obs';
+
+      const valSpan = document.createElement('span');
+      valSpan.className = 'val';
+      valSpan.textContent = parseFloat(DATA[key][i]).toFixed(2);
+
+      slider.addEventListener('input', () => {
+        valSpan.textContent = parseFloat(slider.value).toFixed(2);
+      });
+
+      wrap.appendChild(slider);
+      wrap.appendChild(valSpan);
+      grid.appendChild(wrap);
+    });
+  });
+
+  ed.appendChild(grid);
+}
+
+function readEditorAndRedraw() {
+  document.querySelectorAll('#editor input[type="range"]').forEach(s => {
+    const key = s.dataset.key;
+    const idx = parseInt(s.dataset.idx);
+    DATA[key][idx] = parseFloat(s.value);
+  });
+  draw();
+}
+
+function resetDefaults() {
+  DATA = JSON.parse(JSON.stringify(DEFAULTS));
+  buildEditor();
+  draw();
+}
+
+/* ===== Init ===== */
+buildEditor();
+draw();
+
+window.addEventListener('resize', () => draw());
+</script>
+</body>
+</html>

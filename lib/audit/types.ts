@@ -81,6 +81,8 @@ export type AuditFormData = {
   lob: string;
   sublob: string;
   mobile: string;
+  /** CRM / ticket URL, uploaded audio (/uploads/audit-media/), or image (/uploads/audit-images/) */
+  referenceUrl: string;
   reason: string;
   subReason: string;
   response: string;

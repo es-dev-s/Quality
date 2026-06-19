@@ -20,8 +20,6 @@ import { saveInteractionConfig } from "@/lib/actions/interaction-config";
 import {
   addSubReasonToReason,
   addToLobStringList,
-  ensureLobFlatLists,
-  getLobDffOptions,
   getSubReasonsForReason,
   prepareLobReasonMap,
   removeFromLobStringList,
@@ -51,8 +49,7 @@ type DeleteTarget =
   | { type: "businessType"; value: string }
   | { type: "lob"; businessType: BusinessType; name: string }
   | { type: "sublob"; lobIndex: number; name: string }
-  | { type: "subReason"; lobIndex: number; reasonName: string; name: string }
-  | { type: "dff"; lobIndex: number; name: string };
+  | { type: "subReason"; lobIndex: number; reasonName: string; name: string };
 
 function sortNames(values: string[]) {
   return [...values].sort((a, b) => a.localeCompare(b));
@@ -99,8 +96,6 @@ function deleteTargetLabel(target: DeleteTarget): string {
       return `reason "${target.name}"`;
     case "subReason":
       return `sub-reason "${target.name}" under "${target.reasonName}"`;
-    case "dff":
-      return `DFF "${target.name}"`;
   }
 }
 
@@ -137,7 +132,6 @@ export function InteractionConfigManager({
   const [newLobName, setNewLobName] = useState("");
   const [newSublobText, setNewSublobText] = useState("");
   const [newReasonText, setNewReasonText] = useState("");
-  const [newSubReasonText, setNewSubReasonText] = useState("");
   const [selectedReasonName, setSelectedReasonName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [bulkListDeleteOpen, setBulkListDeleteOpen] = useState(false);
@@ -383,11 +377,6 @@ export function InteractionConfigManager({
     [activeLobFlat, selectedReasonName]
   );
 
-  const activeDffList = useMemo(
-    () => getLobDffOptions(activeLobFlat ?? undefined),
-    [activeLobFlat]
-  );
-
   const globalLobIndex = useMemo(() => {
     if (!activeLob) return -1;
     return config.lobs.findIndex(
@@ -482,23 +471,6 @@ export function InteractionConfigManager({
     setNewReasonText("");
   }
 
-  function handleAddSubReason(e: React.FormEvent) {
-    e.preventDefault();
-    const value = newSubReasonText.trim();
-    if (!value || globalLobIndex < 0) return;
-    updateLobAt(globalLobIndex, (lob) => {
-      const flat = ensureLobFlatLists(lob);
-      const current = flat.dffList ?? [];
-      const nextList = addToLobStringList(current, value);
-      if (!nextList) {
-        toast("DFF already exists.", "error");
-        return null;
-      }
-      return { ...flat, dffList: nextList };
-    });
-    setNewSubReasonText("");
-  }
-
   function confirmBulkListDelete() {
     const values = new Set(
       filteredList.filter((item) => listSelection.isSelected(item))
@@ -571,15 +543,6 @@ export function InteractionConfigManager({
           deleteTarget.reasonName,
           deleteTarget.name
         );
-      }
-    } else if (deleteTarget.type === "dff") {
-      const lob = next.lobs[deleteTarget.lobIndex];
-      if (lob) {
-        const flat = ensureLobFlatLists(lob);
-        next.lobs[deleteTarget.lobIndex] = {
-          ...flat,
-          dffList: removeFromLobStringList(flat.dffList ?? [], deleteTarget.name),
-        };
       }
     }
 
@@ -1006,61 +969,6 @@ export function InteractionConfigManager({
                                   type: "subReason",
                                   lobIndex: globalLobIndex,
                                   reasonName: selectedReasonName,
-                                  name: subReason,
-                                })
-                              }
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                        </li>
-                      ))
-                    )}
-                  </ul>
-                </section>
-
-                <section className="platform-settings__sub-section">
-                  <div className="platform-settings__section-head">
-                    <h4>DFF</h4>
-                  </div>
-                  {canManage && (
-                    <form
-                      className="platform-settings__add-form platform-settings__add-form--block"
-                      onSubmit={handleAddSubReason}
-                    >
-                      <input
-                        type="text"
-                        className="platform-settings__search"
-                        placeholder="Add DFF…"
-                        value={newSubReasonText}
-                        onChange={(e) => setNewSubReasonText(e.target.value)}
-                      />
-                      <button type="submit" className="ui-btn ui-btn--secondary ui-btn--sm">
-                        <Plus size={14} />
-                        Add
-                      </button>
-                    </form>
-                  )}
-                  <ul className="platform-settings__reason-list">
-                    {activeDffList.length === 0 ? (
-                      <li className="platform-settings__empty platform-settings__empty--list">
-                        No DFF entries yet.
-                      </li>
-                    ) : (
-                      activeDffList.map((subReason) => (
-                        <li key={subReason} className="platform-settings__reason-item">
-                          <span className="platform-settings__reason-label">
-                            {subReason}
-                          </span>
-                          {canManage && (
-                            <button
-                              type="button"
-                              className="platform-settings__icon-btn platform-settings__icon-btn--danger"
-                              aria-label={`Delete DFF ${subReason}`}
-                              onClick={() =>
-                                setDeleteTarget({
-                                  type: "dff",
-                                  lobIndex: globalLobIndex,
                                   name: subReason,
                                 })
                               }

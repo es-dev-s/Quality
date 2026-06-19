@@ -15,7 +15,7 @@ type AuditFormPageProps = {
 };
 
 function parseInitialType(value?: string): InteractionType | undefined {
-  if (value === "Call") return "Call";
+  if (value === "call") return "Call";
   if (value === "Chat") return "Chat";
   return undefined;
 }

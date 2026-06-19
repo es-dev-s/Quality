@@ -50,6 +50,7 @@ export type AuditDetail = {
   reason: string | null;
   subReason: string | null;
   mobile: string | null;
+  referenceUrl: string | null;
   response: string | null;
   qualityPct: number;
   finalPct: number;
@@ -80,6 +81,7 @@ export type AuditEditPayload = {
 
 export type DashboardAuditRecord = {
   id: string;
+  auditCode: string;
   agent: string;
   supervisor: string | null;
   auditor: string | null;

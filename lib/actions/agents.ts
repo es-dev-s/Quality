@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAuth } from "@/lib/auth";
-import { canManageSettings } from "@/lib/rbac";
+import { canManageSettings, canManageUsers, canReadManagedUsers } from "@/lib/rbac";
+import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { normalizeAgentName } from "@/lib/audit/agent-name";
 import {
   fetchAgentRoleUsers,
@@ -74,14 +75,30 @@ export async function getAgentsForManagement(): Promise<{
   canManage: boolean;
 }> {
   const session = await requireAuth();
+  const role = session.user.role;
 
-  const [rows, auditCountByAgent] = await Promise.all([
-    fetchAgentRoleUsers(),
-    fetchAuditCountsByAgentName(),
-  ]);
+  let rows = await fetchAgentRoleUsers();
+
+  if (
+    canReadManagedUsers(role) &&
+    !canManageSettings(role) &&
+    !canManageUsers(role)
+  ) {
+    const managed = await prisma.user.findMany({
+      where: {
+        createdById: session.user.id,
+        role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
+      },
+      select: { id: true },
+    });
+    const managedIds = new Set(managed.map((user) => user.id));
+    rows = rows.filter((row) => managedIds.has(row.id));
+  }
+
+  const auditCountByAgent = await fetchAuditCountsByAgentName();
 
   return {
-    canManage: canManageSettings(session.user.role),
+    canManage: canManageSettings(role),
     agents: rows.map((row) => ({
       id: row.id,
       name: row.name,

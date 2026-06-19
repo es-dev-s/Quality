@@ -25,8 +25,13 @@ import {
 } from "@/components/analytics/qms-primitives";
 import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
 import { ParameterRadarChart } from "@/components/analytics/parameter-radar-chart";
+import {
+  DataTablePanel,
+  usePaginatedRows,
+} from "@/components/primitives/data-table-panel";
 
 export function ParametersTab({ data }: { data: QmsAnalyticsData }) {
+  const pagination = usePaginatedRows(data.params);
   if (data.params.length === 0) {
     return (
       <QmsEmpty message="No parameter-level data yet. Submit audits to see parameter analytics." />
@@ -87,8 +92,10 @@ export function ParametersTab({ data }: { data: QmsAnalyticsData }) {
 
       <QmsCard>
         <QmsSectionTitle title="Parameter detail table" />
-        <div className="ui-table-wrap qms-table-scroll">
-          <table className="ui-table qms-table">
+        <DataTablePanel
+          pagination={pagination}
+          renderTable={(slice) => (
+          <table className="ui-table qms-table platform-report-table">
             <thead>
               <tr>
                 {[
@@ -104,7 +111,7 @@ export function ParametersTab({ data }: { data: QmsAnalyticsData }) {
               </tr>
             </thead>
             <tbody>
-              {data.params.map((p) => (
+              {slice.map((p) => (
                 <tr key={p.name}>
                   <td className="qms-cell-strong">{p.name}</td>
                   <td>{p.avg}</td>
@@ -133,7 +140,8 @@ export function ParametersTab({ data }: { data: QmsAnalyticsData }) {
               ))}
             </tbody>
           </table>
-        </div>
+          )}
+        />
       </QmsCard>
     </div>
   );

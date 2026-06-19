@@ -18,7 +18,6 @@ import {
 } from "@/lib/audit/feedback-status-access";
 import { calculateResults } from "@/lib/audit/calculate-results";
 import { getInteractionConfig } from "@/lib/actions/interaction-config";
-import { getLobDffOptions } from "@/lib/audit/interaction-options";
 import { validateAuditFormAgainstConfig } from "@/lib/audit/validate-audit-form-config";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { getTemplateById } from "@/lib/actions/templates";
@@ -34,6 +33,7 @@ import {
   updateSupervisorRemarksSchema,
 } from "@/lib/validation/audit";
 import { paginationLimitSchema } from "@/lib/validation/common";
+import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
 import {
   defaultAuditFeedback,
   normalizeFeedbackForSave,
@@ -182,21 +182,11 @@ export async function saveAuditSubmission(
     feedbackDate: validFormData.feedbackDate,
   });
 
-  const matchedLob = interactionConfig.lobs.find(
-    (lob) =>
-      lob.name === validFormData.lob &&
-      lob.businessType === validFormData.businessType
-  );
-  const subReasonOptions = getLobDffOptions(matchedLob);
-
   const result = calculateResults(
     validFormData,
     validScores,
     template,
-    feedback,
-    {
-      subReasonRequired: subReasonOptions.length > 0,
-    }
+    feedback
   );
 
   if (!result.ok) {
@@ -220,6 +210,7 @@ export async function saveAuditSubmission(
     sublob: record.sublob || null,
     reason: record.reason || null,
     mobile: record.mobile || null,
+    referenceUrl: record.referenceUrl || null,
     response: record.response || null,
     qualityPct: record.qualityPct,
     finalPct: record.finalPct,
@@ -264,10 +255,7 @@ export async function saveAuditSubmission(
             validFormData,
             validScores,
             template,
-            feedback,
-            {
-              subReasonRequired: subReasonOptions.length > 0,
-            }
+            feedback
           );
           if (!retry.ok) {
             return { error: retry.error };
@@ -361,7 +349,7 @@ export async function getAuditLogs(limit = 500) {
   const take = parsedLimit.success ? parsedLimit.data : 500;
 
   const submissions = await fetchRecentAuditSubmissions(
-    scopedAuditWhere(session),
+    await scopedAuditWhere(session),
     take
   );
 
@@ -379,13 +367,18 @@ export async function getAuditDetail(id: string) {
   }
 
   const submission = await prisma.auditSubmission.findFirst({
-    where: scopedAuditByIdWhere(session, parsedId.data.id),
+    where: await scopedAuditByIdWhere(session, parsedId.data.id),
     include: {
       submittedBy: { select: { name: true, email: true } },
     },
   });
 
   if (!submission) return null;
+
+  const legacy = normalizeLegacyReferenceFields(
+    submission.mobile ?? "",
+    submission.referenceUrl
+  );
 
   return {
     id: submission.id,
@@ -405,7 +398,8 @@ export async function getAuditDetail(id: string) {
       "string"
         ? (submission.record as { subReason: string }).subReason
         : null,
-    mobile: submission.mobile,
+    mobile: legacy.mobile || null,
+    referenceUrl: legacy.referenceUrl || null,
     response: submission.response,
     qualityPct: submission.qualityPct,
     finalPct: submission.finalPct,
@@ -450,9 +444,10 @@ function submissionToFormData(
 ): AuditFormData | null {
   if (!submission) return null;
 
-  const record = submission.record as { subReason?: unknown } | null;
-  const subReason =
-    typeof record?.subReason === "string" ? record.subReason : "";
+  const legacy = normalizeLegacyReferenceFields(
+    submission.mobile ?? "",
+    submission.referenceUrl
+  );
 
   return {
     agent: submission.agent,
@@ -464,9 +459,10 @@ function submissionToFormData(
     auditDate: submission.auditDate,
     lob: submission.lob,
     sublob: submission.sublob ?? "",
-    mobile: submission.mobile ?? "",
+    mobile: legacy.mobile,
+    referenceUrl: legacy.referenceUrl,
     reason: submission.reason ?? "",
-    subReason,
+    subReason: "",
     response: submission.response ?? "",
     ...defaultAuditFeedback(),
     feedbackSecurity: parseFeedbackSecurity(submission.feedbackSecurity),
@@ -481,7 +477,7 @@ async function fetchAuditSubmissionById(
   id: string
 ) {
   return prisma.auditSubmission.findFirst({
-    where: scopedAuditByIdWhere(session, id),
+    where: await scopedAuditByIdWhere(session, id),
     include: {
       submittedBy: { select: { name: true, email: true } },
     },
@@ -554,7 +550,7 @@ export async function updateAuditSubmission(
   } = parsed.data;
 
   const existing = await prisma.auditSubmission.findFirst({
-    where: scopedAuditByIdWhere(session, validId),
+    where: await scopedAuditByIdWhere(session, validId),
     select: {
       id: true,
       auditCode: true,
@@ -604,13 +600,6 @@ export async function updateAuditSubmission(
     feedbackDate: validFormData.feedbackDate,
   });
 
-  const matchedLob = interactionConfig.lobs.find(
-    (lob) =>
-      lob.name === validFormData.lob &&
-      lob.businessType === validFormData.businessType
-  );
-  const subReasonOptions = getLobDffOptions(matchedLob);
-
   const result = calculateResults(
     validFormData,
     validScores,
@@ -618,8 +607,7 @@ export async function updateAuditSubmission(
     {
       id: existing.auditCode,
       ...feedback,
-    },
-    { subReasonRequired: subReasonOptions.length > 0 }
+    }
   );
 
   if (!result.ok) {
@@ -630,7 +618,7 @@ export async function updateAuditSubmission(
 
   try {
     const updated = await prisma.auditSubmission.updateMany({
-      where: scopedAuditByIdWhere(session, validId),
+      where: await scopedAuditByIdWhere(session, validId),
       data: {
         templateId: template.id,
         agent: record.agent,
@@ -644,6 +632,7 @@ export async function updateAuditSubmission(
         sublob: record.sublob || null,
         reason: record.reason || null,
         mobile: record.mobile || null,
+        referenceUrl: record.referenceUrl || null,
         response: record.response || null,
         qualityPct: record.qualityPct,
         finalPct: record.finalPct,
@@ -716,7 +705,7 @@ export async function updateAuditFeedback(
   }
 
   const existing = await prisma.auditSubmission.findFirst({
-    where: scopedAuditByIdWhere(session, parsed.data.id),
+    where: await scopedAuditByIdWhere(session, parsed.data.id),
     select: {
       id: true,
       feedbackSecurity: true,
@@ -790,7 +779,7 @@ export async function updateAuditFeedback(
   const feedback = normalizeFeedbackForSave(payload);
 
   const updated = await prisma.auditSubmission.updateMany({
-    where: scopedAuditByIdWhere(session, parsed.data.id),
+    where: await scopedAuditByIdWhere(session, parsed.data.id),
     data: {
       feedbackSecurity: feedback.feedbackSecurity,
       feedbackStatus: feedback.feedbackStatus,
@@ -842,7 +831,7 @@ export async function updateSupervisorRemarks(
   }
 
   const updated = await prisma.auditSubmission.updateMany({
-    where: scopedAuditByIdWhere(session, parsed.data.id),
+    where: await scopedAuditByIdWhere(session, parsed.data.id),
     data: { supervisorRemarks: parsed.data.supervisorRemarks },
   });
 
@@ -921,6 +910,7 @@ async function fetchDashboardAuditRecords(
     where,
     select: {
       id: true,
+      auditCode: true,
       agent: true,
       supervisor: true,
       auditor: true,
@@ -941,13 +931,15 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
   const session = await requirePermission(PERMISSIONS.OVERVIEW_READ);
 
   try {
+    const scope = await scopedAuditWhere(session);
     const submissions = await withDbRetry(() =>
-      fetchDashboardAuditRecords(scopedAuditWhere(session))
+      fetchDashboardAuditRecords(scope)
     );
 
     return {
       records: submissions.map((s) => ({
         id: s.id,
+        auditCode: s.auditCode,
         agent: s.agent,
         supervisor: s.supervisor,
         auditor: s.auditor,

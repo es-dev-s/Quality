@@ -3,6 +3,7 @@ import { resolveMetricDate } from "@/lib/audit/metric-dates";
 
 export type DashboardAuditRecord = {
   id: string;
+  auditCode: string;
   agent: string;
   supervisor: string | null;
   auditor: string | null;
@@ -14,6 +15,20 @@ export type DashboardAuditRecord = {
   finalPct: number;
   hasFatal: boolean;
   fatalList: string[];
+};
+
+export type FatalOccurrenceRow = {
+  id: string;
+  auditCode: string;
+  agent: string;
+  supervisor: string | null;
+  auditor: string | null;
+  lob: string;
+  type: string;
+  callDate: string;
+  auditDate: string;
+  qualityPct: number;
+  finalPct: number;
 };
 
 export type TopAgentRow = {
@@ -109,7 +124,8 @@ export type DashboardPeriod =
   | "yesterday"
   | "week"
   | "month"
-  | "overall";
+  | "overall"
+  | "custom";
 
 export type TrendGranularity = "day" | "week" | "month";
 
@@ -239,6 +255,29 @@ export function filterCurrentMonth(
   now = new Date()
 ): DashboardAuditRecord[] {
   return records.filter((r) => isSameMonth(recordMetricDate(r), now));
+}
+
+/** Filter by an explicit from/to date range (both YYYY-MM-DD, both optional). */
+export function filterByCustomRange(
+  records: DashboardAuditRecord[],
+  from: string,
+  to: string
+): DashboardAuditRecord[] {
+  if (!from && !to) return records;
+  return records.filter((r) => {
+    const date = recordMetricDate(r);
+    if (from) {
+      const [fy, fm, fd] = from.split("-").map(Number);
+      if (date < new Date(fy, fm - 1, fd)) return false;
+    }
+    if (to) {
+      const [ty, tm, td] = to.split("-").map(Number);
+      const end = new Date(ty, tm - 1, td);
+      end.setDate(end.getDate() + 1); // inclusive end
+      if (date >= end) return false;
+    }
+    return true;
+  });
 }
 
 function finalScore(record: DashboardAuditRecord): number {
@@ -535,4 +574,30 @@ export function computeTopFatals(records: DashboardAuditRecord[]): TopFatalRow[]
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
+}
+
+export function getFatalOccurrences(
+  records: DashboardAuditRecord[],
+  fatalName: string
+): FatalOccurrenceRow[] {
+  return records
+    .filter((record) => record.fatalList.includes(fatalName))
+    .map((record) => ({
+      id: record.id,
+      auditCode: record.auditCode,
+      agent: record.agent,
+      supervisor: record.supervisor,
+      auditor: record.auditor,
+      lob: record.lob,
+      type: record.type,
+      callDate: record.callDate,
+      auditDate: record.auditDate,
+      qualityPct: record.qualityPct,
+      finalPct: record.finalPct,
+    }))
+    .sort((a, b) => {
+      const dateA = resolveMetricDate(a.auditDate, a.callDate);
+      const dateB = resolveMetricDate(b.auditDate, b.callDate);
+      return dateB.localeCompare(dateA);
+    });
 }

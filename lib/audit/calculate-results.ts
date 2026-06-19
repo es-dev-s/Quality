@@ -7,10 +7,7 @@ import type {
   ScoresMap,
 } from "@/lib/audit/types";
 import { isScoringFatal, resolveParamScore } from "@/lib/audit/resolve-score";
-import {
-  validateInteractionDetails,
-  type InteractionDetailsValidationContext,
-} from "@/lib/audit/validate-interaction-details";
+import { validateInteractionDetails } from "@/lib/audit/validate-interaction-details";
 
 function randomAuditSuffix(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") {
@@ -50,16 +47,12 @@ export function calculateResults(
   formData: AuditFormData,
   scores: ScoresMap,
   template: AuditTemplate,
-  initialData?: Partial<AuditRecord>,
-  validationContext?: InteractionDetailsValidationContext
+  initialData?: Partial<AuditRecord>
 ): CalculateResult {
   if (!template) {
     return { ok: false, error: "No audit template loaded." };
   }
-  const interactionError = validateInteractionDetails(
-    formData,
-    validationContext
-  );
+  const interactionError = validateInteractionDetails(formData);
   if (interactionError) {
     return { ok: false, error: interactionError };
   }

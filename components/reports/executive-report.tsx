@@ -2,9 +2,14 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { Calendar, Download, Printer } from "lucide-react";
+import {
+  DataTablePanel,
+  usePaginatedRows,
+} from "@/components/primitives/data-table-panel";
 import { getReportData, type ReportPageData } from "@/lib/actions/reports";
 import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
 import { useStaleRequestGuard } from "@/lib/hooks/use-stale-request-guard";
+import { exportReportCsv } from "@/lib/reports/export-csv";
 
 function defaultRange() {
   const end = new Date();
@@ -23,93 +28,6 @@ function gradeClass(grade: string) {
   return "dash-grade dash-grade--needs";
 }
 
-function formatDateTime(value: string | null | undefined): string {
-  if (!value?.trim()) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toISOString();
-}
-
-function exportCsv(rows: ReportPageData["rows"]) {
-  const headers = [
-    "Audit ID",
-    "Agent",
-    "Supervisor",
-    "Auditor",
-    "Type",
-    "Business Type",
-    "Call Date",
-    "Audit Date",
-    "LOB",
-    "Sub-LOB",
-    "Reason",
-    "Sub-reason",
-    "Mobile",
-    "Response",
-    "Quality %",
-    "Final %",
-    "Grade",
-    "Has Fatal",
-    "Fatal Parameters",
-    "Points Scored",
-    "Points Max",
-    "Feedback Security",
-    "Feedback Status",
-    "Feedback Date",
-    "Acknowledged/Disputed At",
-    "Agent Feedback",
-    "Supervisor Remarks",
-    "Submitted By",
-    "Submitted At",
-    "Parameter Scores",
-  ];
-  const lines = rows.map((r) =>
-    [
-      r.auditCode,
-      r.agent,
-      r.supervisor ?? "",
-      r.auditor ?? "",
-      r.type,
-      r.businessType,
-      r.callDate,
-      r.auditDate,
-      r.lob,
-      r.sublob ?? "",
-      r.reason ?? "",
-      r.subReason ?? "",
-      r.mobile ?? "",
-      r.response ?? "",
-      r.qualityPct,
-      r.hasFatal ? 0 : r.finalPct,
-      r.grade,
-      r.hasFatal ? "Yes" : "No",
-      r.fatalList.join("; "),
-      r.totalScored,
-      r.totalMax,
-      r.feedbackSecurity,
-      r.feedbackStatus,
-      r.feedbackDate ?? "",
-      formatDateTime(r.feedbackStatusAt),
-      r.agentFeedback,
-      r.supervisorRemarks,
-      r.submittedBy,
-      r.createdAt,
-      r.parameterSummary,
-    ]
-      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-      .join(",")
-  );
-  const blob = new Blob([[headers.join(","), ...lines].join("\n")], {
-    type: "text/csv;charset=utf-8;",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `quality-report-${Date.now()}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
 export function ExecutiveReport() {
   const initial = defaultRange();
   const [range, setRange] = useState(initial);
@@ -117,6 +35,8 @@ export function ExecutiveReport() {
   const [data, setData] = useState<ReportPageData | null>(null);
   const [isPending, startTransition] = useTransition();
   const { beginRequest } = useStaleRequestGuard();
+
+  const pagination = usePaginatedRows(data?.rows ?? []);
 
   function load(start: string, end: string) {
     const request = beginRequest();
@@ -133,6 +53,11 @@ export function ExecutiveReport() {
 
   function handleApply() {
     setAppliedRange(range);
+  }
+
+  function handleExport() {
+    if (!pagination.slice.length) return;
+    exportReportCsv(pagination.slice);
   }
 
   return (
@@ -187,11 +112,11 @@ export function ExecutiveReport() {
           <button
             type="button"
             className="ui-btn ui-btn--primary ui-btn--sm"
-            onClick={() => data && exportCsv(data.rows)}
-            disabled={!data?.rows.length}
+            onClick={handleExport}
+            disabled={!pagination.slice.length}
           >
             <Download size={15} aria-hidden />
-            Export CSV
+            Export CSV ({pagination.slice.length})
           </button>
         </div>
       </div>
@@ -237,47 +162,67 @@ export function ExecutiveReport() {
             </article>
           </div>
 
-          <div className="ui-table-wrap platform-table-wrap">
-            <table className="ui-table platform-table">
-              <thead>
-                <tr>
-                  <th>Agent</th>
-                  <th>Auditor</th>
-                  <th>Audit date</th>
-                  <th>Type</th>
-                  <th>LOB</th>
-                  <th>Quality</th>
-                  <th>Final</th>
-                  <th>Grade</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.map((row) => (
-                  <tr key={row.id}>
-                    <td className="platform-cell-strong">{row.agent}</td>
-                    <td>{row.auditor ?? "—"}</td>
-                    <td>{row.auditDate}</td>
-                    <td>
-                      {row.type}
-                      <span className="dash-cell-muted"> · {row.businessType}</span>
-                    </td>
-                    <td>{row.lob}</td>
-                    <td className="platform-cell-accent">{row.qualityPct}%</td>
-                    <td>
-                      {row.hasFatal ? (
-                        <span className="platform-cell-danger">FAILED</span>
-                      ) : (
-                        `${row.finalPct}%`
-                      )}
-                    </td>
-                    <td>
-                      <span className={gradeClass(row.grade)}>{row.grade}</span>
-                    </td>
+          <DataTablePanel
+            pagination={pagination}
+            renderTable={(slice) => (
+              <table className="ui-table platform-table platform-report-table">
+                <thead>
+                  <tr>
+                    <th>Audit ID</th>
+                    <th>Agent</th>
+                    <th>Supervisor</th>
+                    <th>Auditor</th>
+                    <th>Audit date</th>
+                    <th>Call date</th>
+                    <th>Type</th>
+                    <th>LOB</th>
+                    <th>Reason</th>
+                    <th>Quality</th>
+                    <th>Final</th>
+                    <th>Grade</th>
+                    <th>Feedback</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {slice.map((row) => (
+                    <tr key={row.id}>
+                      <td className="platform-report-table__code">{row.auditCode}</td>
+                      <td className="platform-cell-strong">{row.agent}</td>
+                      <td>{row.supervisor ?? "—"}</td>
+                      <td>{row.auditor ?? "—"}</td>
+                      <td>{row.auditDate}</td>
+                      <td>{row.callDate}</td>
+                      <td>
+                        {row.type}
+                        <span className="dash-cell-muted"> · {row.businessType}</span>
+                      </td>
+                      <td>
+                        {row.lob}
+                        {row.sublob ? (
+                          <span className="dash-cell-muted"> / {row.sublob}</span>
+                        ) : null}
+                      </td>
+                      <td className="platform-report-table__reason">
+                        {row.reason ?? "—"}
+                      </td>
+                      <td className="platform-cell-accent">{row.qualityPct}%</td>
+                      <td>
+                        {row.hasFatal ? (
+                          <span className="platform-cell-danger">FAILED</span>
+                        ) : (
+                          `${row.finalPct}%`
+                        )}
+                      </td>
+                      <td>
+                        <span className={gradeClass(row.grade)}>{row.grade}</span>
+                      </td>
+                      <td>{row.feedbackStatus}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          />
         </>
       )}
     </div>

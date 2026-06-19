@@ -8,8 +8,30 @@ import { prisma } from "@/lib/prisma";
 import type { SessionRole } from "@/lib/rbac";
 import { isSuperAdmin } from "@/lib/rbac";
 import { SUPERADMIN_ROLE_SLUG } from "@/lib/constants";
+import { cache } from "react";
 
 ensureAuthEnv();
+
+const loadSessionRole = cache(async (userId: string): Promise<SessionRole | null> => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      role: {
+        include: {
+          scopes: { include: { scope: true } },
+        },
+      },
+    },
+  });
+  if (!user) return null;
+
+  return {
+    id: user.role.id,
+    name: user.role.name,
+    slug: user.role.slug,
+    scopes: user.role.scopes.map((entry) => entry.scope.slug),
+  };
+});
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -70,9 +92,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
 export async function requireAuth() {
   const session = await getServerSession();
-  if (!session?.user) {
+  if (!session?.user?.id) {
     throw new Error("Unauthorized");
   }
+
+  const freshRole = await loadSessionRole(session.user.id);
+  if (freshRole) {
+    session.user.role = freshRole;
+  }
+
   return session;
 }
 

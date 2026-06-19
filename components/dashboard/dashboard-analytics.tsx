@@ -2,9 +2,10 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Award, CalendarRange, RefreshCw, SlidersHorizontal, X } from "lucide-react";
+import { AlertTriangle, Award, ChevronDown, RefreshCw, SlidersHorizontal, X } from "lucide-react";
 import { Select } from "@/components/primitives/field";
 import { cn } from "@/lib/utils";
+import { FatalOccurrencesModal } from "@/components/dashboard/fatal-occurrences-modal";
 import type { DashboardAuditData } from "@/lib/audit/audit-records";
 import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
 import {
@@ -15,20 +16,25 @@ import {
   computeScoreDistribution,
   computeTopAgents,
   computeTopFatals,
+  getFatalOccurrences,
   computeTrendData,
   EMPTY_INCLUDE_FILTERS,
   extractFilterOptions,
   filterByIncludeFilters,
   filterByPeriod,
+  filterByCustomRange,
   filterCurrentMonth,
   hasActiveIncludeFilters,
   type DashboardIncludeFilters,
   type DashboardPeriod,
   type TrendGranularity,
 } from "@/lib/audit/dashboard-metrics";
+import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
 
 type DashboardAnalyticsProps = {
   data: DashboardAuditData;
+  canEditAudits?: boolean;
+  canEditSupervisorRemarks?: boolean;
 };
 
 const PERIODS: { id: DashboardPeriod; label: string; ariaLabel: string }[] = [
@@ -66,10 +72,15 @@ function bucketBarTone(key: string): string {
   return "dash-dist__bar-fill--muted";
 }
 
-export function DashboardAnalytics({ data }: DashboardAnalyticsProps) {
+export function DashboardAnalytics({
+  data,
+  canEditAudits = false,
+  canEditSupervisorRemarks = false,
+}: DashboardAnalyticsProps) {
   const router = useRouter();
   const [isRefreshing, startRefresh] = useTransition();
   const [period, setPeriod] = useState<DashboardPeriod>("overall");
+  const [customRange, setCustomRange] = useState<DateRangeValue>({ from: "", to: "" });
   const [trendGranularity, setTrendGranularity] =
     useState<TrendGranularity>("week");
   const [includeFilters, setIncludeFilters] =
@@ -78,6 +89,8 @@ export function DashboardAnalytics({ data }: DashboardAnalyticsProps) {
   const [totalMonthlyTarget, setTotalMonthlyTarget] = useState<number | null>(
     null
   );
+  const [selectedFatal, setSelectedFatal] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const records = data.records ?? [];
   const referenceNow = useMemo(
@@ -95,10 +108,12 @@ export function DashboardAnalytics({ data }: DashboardAnalyticsProps) {
     [records, includeFilters]
   );
 
-  const filtered = useMemo(
-    () => filterByPeriod(scopedRecords, period, referenceNow),
-    [scopedRecords, period, referenceNow]
-  );
+  const filtered = useMemo(() => {
+    if (customRange.from || customRange.to) {
+      return filterByCustomRange(scopedRecords, customRange.from, customRange.to);
+    }
+    return filterByPeriod(scopedRecords, period, referenceNow);
+  }, [scopedRecords, period, customRange, referenceNow]);
 
   const monthRecords = useMemo(
     () => filterCurrentMonth(scopedRecords, referenceNow),
@@ -137,6 +152,11 @@ export function DashboardAnalytics({ data }: DashboardAnalyticsProps) {
 
   const topAgents = useMemo(() => computeTopAgents(filtered), [filtered]);
   const topFatals = useMemo(() => computeTopFatals(filtered), [filtered]);
+  const selectedFatalOccurrences = useMemo(
+    () =>
+      selectedFatal ? getFatalOccurrences(filtered, selectedFatal) : [],
+    [filtered, selectedFatal]
+  );
 
   const distMax = Math.max(1, ...distribution.map((b) => b.count));
   const filtersActive = hasActiveIncludeFilters(includeFilters);
@@ -166,130 +186,195 @@ export function DashboardAnalytics({ data }: DashboardAnalyticsProps) {
         </div>
       ) : null}
 
-      <div className="dash-topbar">
-        <div className="dash-topbar__panel dash-topbar__panel--periods">
-          <div className="dash-topbar__label-row">
-            <div className="dash-topbar__label">
-              <CalendarRange size={14} aria-hidden />
-              Period
+      {/* ── Unified filter panel ─────────────────────────────── */}
+      <div className={cn("pf-panel", filtersOpen && "pf-panel--open")}>
+        {/* Bar row */}
+        <div className="pf-bar">
+          {/* Period pills — always visible */}
+          <div className="pf-bar__left">
+            <div className="pf-periods" role="tablist" aria-label="Time period">
+              {PERIODS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={period === p.id && !(customRange.from || customRange.to)}
+                  aria-label={p.ariaLabel}
+                  title={p.ariaLabel}
+                  className={cn(
+                    "pf-period-btn",
+                    period === p.id && !(customRange.from || customRange.to) && "pf-period-btn--active"
+                  )}
+                  onClick={() => {
+                    setCustomRange({ from: "", to: "" });
+                    setPeriod(p.id);
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
             </div>
+          </div>
+
+          {/* Right actions */}
+          <div className="pf-bar__right">
             <button
               type="button"
-              className="dash-refresh dash-refresh--inline"
+              className={cn(
+                "pf-toggle",
+                filtersOpen && "pf-toggle--open",
+                (filtersActive || customRange.from || customRange.to) && "pf-toggle--active"
+              )}
+              onClick={() => setFiltersOpen((o) => !o)}
+              aria-expanded={filtersOpen}
+            >
+              <SlidersHorizontal size={14} aria-hidden />
+              <span>Filters</span>
+              {!filtersOpen && (filtersActive || customRange.from || customRange.to) ? (
+                <span className="pf-toggle__badge">
+                  {[
+                    filtersActive ? 1 : 0,
+                    customRange.from || customRange.to ? 1 : 0,
+                  ].reduce((a, b) => a + b, 0)}
+                </span>
+              ) : null}
+              <ChevronDown size={14} className="pf-toggle__chevron" aria-hidden />
+            </button>
+            <button
+              type="button"
+              className="pf-refresh"
               onClick={handleRefresh}
               disabled={isRefreshing}
             >
               <RefreshCw
-                className={isRefreshing ? "dash-refresh__icon--spin" : undefined}
+                className={isRefreshing ? "pf-refresh__icon--spin" : undefined}
                 size={14}
                 aria-hidden
               />
-              Refresh
+              {isRefreshing ? "Refreshing…" : "Refresh"}
             </button>
-          </div>
-          <div
-            className="dash-periods"
-            role="tablist"
-            aria-label="Time period"
-          >
-            {PERIODS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                role="tab"
-                aria-selected={period === p.id}
-                aria-label={p.ariaLabel}
-                title={p.ariaLabel}
-                className={cn(
-                  "dash-periods__btn",
-                  period === p.id && "dash-periods__btn--active"
-                )}
-                onClick={() => setPeriod(p.id)}
-              >
-                <span className="dash-periods__btn-label">{p.label}</span>
-              </button>
-            ))}
           </div>
         </div>
 
-        <div className="dash-topbar__panel dash-topbar__panel--filters">
-          <div className="dash-topbar__label-row">
-            <div className="dash-topbar__label">
-              <SlidersHorizontal size={14} aria-hidden />
-              Include filter
-            </div>
-            {filtersActive && (
+        {/* Active chips */}
+        {(filtersActive || customRange.from || customRange.to) && (
+          <div className="pf-chips">
+            {(customRange.from || customRange.to) && (
               <button
                 type="button"
-                className="dash-filter-clear"
-                onClick={clearFilters}
+                className="pf-chip"
+                onClick={() => setCustomRange({ from: "", to: "" })}
               >
-                <X size={14} aria-hidden />
-                Clear
+                {[customRange.from, customRange.to].filter(Boolean).join(" — ")}
+                <X size={11} aria-hidden />
               </button>
             )}
+            {includeFilters.teamName && (
+              <button type="button" className="pf-chip" onClick={() => updateFilter("teamName", "")}>
+                Team: {includeFilters.teamName}<X size={11} aria-hidden />
+              </button>
+            )}
+            {includeFilters.lob && (
+              <button type="button" className="pf-chip" onClick={() => updateFilter("lob", "")}>
+                LOB: {includeFilters.lob}<X size={11} aria-hidden />
+              </button>
+            )}
+            {includeFilters.auditor && (
+              <button type="button" className="pf-chip" onClick={() => updateFilter("auditor", "")}>
+                Auditor: {includeFilters.auditor}<X size={11} aria-hidden />
+              </button>
+            )}
+            {includeFilters.auditType && (
+              <button type="button" className="pf-chip" onClick={() => updateFilter("auditType", "")}>
+                Type: {includeFilters.auditType}<X size={11} aria-hidden />
+              </button>
+            )}
+            <button
+              type="button"
+              className="pf-chip-clear"
+              onClick={() => {
+                clearFilters();
+                setCustomRange({ from: "", to: "" });
+              }}
+            >
+              Clear all
+            </button>
           </div>
-          <div className="dash-filters">
-            <label className="dash-filter">
-              <span>Team name</span>
-              <Select
-                className="dash-select dash-select--filter"
-                value={includeFilters.teamName}
-                onChange={(e) => updateFilter("teamName", e.target.value)}
-              >
-                <option value="">All teams</option>
-                {filterOptions.teamNames.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <label className="dash-filter">
-              <span>LOB</span>
-              <Select
-                className="dash-select dash-select--filter"
-                value={includeFilters.lob}
-                onChange={(e) => updateFilter("lob", e.target.value)}
-              >
-                <option value="">All LOBs</option>
-                {filterOptions.lobs.map((lob) => (
-                  <option key={lob} value={lob}>
-                    {lob}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <label className="dash-filter">
-              <span>Quality auditor</span>
-              <Select
-                className="dash-select dash-select--filter"
-                value={includeFilters.auditor}
-                onChange={(e) => updateFilter("auditor", e.target.value)}
-              >
-                <option value="">All auditors</option>
-                {filterOptions.auditors.map((auditor) => (
-                  <option key={auditor} value={auditor}>
-                    {auditor}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <label className="dash-filter">
-              <span>Audit type</span>
-              <Select
-                className="dash-select dash-select--filter"
-                value={includeFilters.auditType}
-                onChange={(e) => updateFilter("auditType", e.target.value)}
-              >
-                <option value="">All types</option>
-                {filterOptions.auditTypes.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </Select>
-            </label>
+        )}
+
+        {/* Expandable filter body */}
+        <div className="pf-body" aria-hidden={!filtersOpen}>
+          <div className="pf-body-inner">
+            {/* Date range */}
+            <div className="pf-section">
+              <span className="pf-section__label">Custom date range</span>
+              <DateRangePicker
+                value={customRange}
+                onChange={(v) => {
+                  setCustomRange(v);
+                  if (v.from || v.to) setPeriod("custom");
+                }}
+                label=""
+              />
+            </div>
+            {/* Include filters */}
+            <div className="pf-section">
+              <span className="pf-section__label">Segment filter</span>
+              <div className="pf-grid">
+                <label className="dash-filter">
+                  <span>Team name</span>
+                  <Select
+                    className="dash-select dash-select--filter"
+                    value={includeFilters.teamName}
+                    onChange={(e) => updateFilter("teamName", e.target.value)}
+                  >
+                    <option value="">All teams</option>
+                    {filterOptions.teamNames.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </Select>
+                </label>
+                <label className="dash-filter">
+                  <span>LOB</span>
+                  <Select
+                    className="dash-select dash-select--filter"
+                    value={includeFilters.lob}
+                    onChange={(e) => updateFilter("lob", e.target.value)}
+                  >
+                    <option value="">All LOBs</option>
+                    {filterOptions.lobs.map((lob) => (
+                      <option key={lob} value={lob}>{lob}</option>
+                    ))}
+                  </Select>
+                </label>
+                <label className="dash-filter">
+                  <span>Quality auditor</span>
+                  <Select
+                    className="dash-select dash-select--filter"
+                    value={includeFilters.auditor}
+                    onChange={(e) => updateFilter("auditor", e.target.value)}
+                  >
+                    <option value="">All auditors</option>
+                    {filterOptions.auditors.map((auditor) => (
+                      <option key={auditor} value={auditor}>{auditor}</option>
+                    ))}
+                  </Select>
+                </label>
+                <label className="dash-filter">
+                  <span>Audit type</span>
+                  <Select
+                    className="dash-select dash-select--filter"
+                    value={includeFilters.auditType}
+                    onChange={(e) => updateFilter("auditType", e.target.value)}
+                  >
+                    <option value="">All types</option>
+                    {filterOptions.auditTypes.map((type) => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </Select>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -624,15 +709,28 @@ export function DashboardAnalytics({ data }: DashboardAnalyticsProps) {
                   className="dash-performer-row dash-performer-row--fatal"
                 >
                   <span className="dash-performer-row__name">{fatal.name}</span>
-                  <span className="dash-performer-row__badge">
+                  <button
+                    type="button"
+                    className="dash-performer-row__badge dash-performer-row__badge--action"
+                    aria-label={`View ${fatal.count} occurrence${fatal.count === 1 ? "" : "s"} of ${fatal.name}`}
+                    onClick={() => setSelectedFatal(fatal.name)}
+                  >
                     {fatal.count} occurrence{fatal.count === 1 ? "" : "s"}
-                  </span>
+                  </button>
                 </div>
               ))
             )}
           </div>
         </section>
       </div>
+
+      <FatalOccurrencesModal
+        fatalName={selectedFatal}
+        occurrences={selectedFatalOccurrences}
+        canEditAudits={canEditAudits}
+        canEditSupervisorRemarks={canEditSupervisorRemarks}
+        onClose={() => setSelectedFatal(null)}
+      />
     </div>
   );
 }

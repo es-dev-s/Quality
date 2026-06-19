@@ -7,6 +7,7 @@ import { scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
 import { PASS_RATE_QUALITY_THRESHOLD } from "@/lib/audit/metrics-config";
 import type { AuditRow } from "@/lib/audit/types";
 import { reportDateRangeSchema } from "@/lib/validation/reports";
+import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
 
 function parseRows(value: unknown): AuditRow[] {
   if (!Array.isArray(value)) return [];
@@ -42,6 +43,7 @@ export type ReportRow = {
   reason: string | null;
   subReason: string | null;
   mobile: string | null;
+  referenceUrl: string | null;
   response: string | null;
   qualityPct: number;
   finalPct: number;
@@ -80,7 +82,7 @@ export async function getReportData(startDate: string, endDate: string) {
   const range = parsed.data;
 
   const submissions = await prisma.auditSubmission.findMany({
-    where: scopedAuditWhere(session, {
+    where: await scopedAuditWhere(session, {
       auditDate: {
         gte: range.startDate,
         lte: range.endDate,
@@ -100,6 +102,7 @@ export async function getReportData(startDate: string, endDate: string) {
       sublob: true,
       reason: true,
       mobile: true,
+      referenceUrl: true,
       response: true,
       qualityPct: true,
       finalPct: true,
@@ -127,6 +130,10 @@ export async function getReportData(startDate: string, endDate: string) {
     const record = s.record as { subReason?: unknown } | null;
     const subReason =
       typeof record?.subReason === "string" ? record.subReason : null;
+    const legacy = normalizeLegacyReferenceFields(
+      s.mobile ?? "",
+      s.referenceUrl
+    );
 
     return {
       id: s.id,
@@ -142,7 +149,8 @@ export async function getReportData(startDate: string, endDate: string) {
       sublob: s.sublob,
       reason: s.reason,
       subReason,
-      mobile: s.mobile,
+      mobile: legacy.mobile || null,
+      referenceUrl: legacy.referenceUrl || null,
       response: s.response,
       qualityPct: s.qualityPct,
       finalPct: s.finalPct,

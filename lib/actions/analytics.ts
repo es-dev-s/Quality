@@ -17,10 +17,19 @@ function parseRows(value: unknown): AuditRow[] {
 }
 
 async function fetchAnalyticsRecords(
-  where: ReturnType<typeof scopedAuditWhere>
+  where: Awaited<ReturnType<typeof scopedAuditWhere>>,
+  startDate?: string,
+  endDate?: string
 ): Promise<AnalyticsAuditRecord[]> {
+  const dateFilter: Record<string, unknown> = {};
+  if (startDate || endDate) {
+    dateFilter.auditDate = {
+      ...(startDate ? { gte: startDate } : {}),
+      ...(endDate   ? { lte: endDate   } : {}),
+    };
+  }
   const submissions = await prisma.auditSubmission.findMany({
-    where,
+    where: { ...where, ...dateFilter },
     select: {
       id: true,
       agent: true,
@@ -58,14 +67,23 @@ async function fetchAnalyticsRecords(
   }));
 }
 
-export async function getAnalyticsData() {
+export async function getAnalyticsData(
+  startDate?: string,
+  endDate?: string
+) {
   const session = await requirePermission(PERMISSIONS.ANALYTICS_READ);
-  const records = await fetchAnalyticsRecords(scopedAuditWhere(session));
+  const records = await fetchAnalyticsRecords(
+    await scopedAuditWhere(session),
+    startDate,
+    endDate
+  );
   return {
     ...computeQmsAnalytics(records),
     leaderboards: computeLeaderboardAnalytics(records),
     fetchedAt: new Date().toISOString(),
     recordCount: records.length,
+    dateFrom: startDate ?? null,
+    dateTo: endDate ?? null,
   };
 }
 

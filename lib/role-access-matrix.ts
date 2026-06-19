@@ -41,9 +41,10 @@ export const ACCESS_MODULES: {
 export const DATA_VISIBILITY: Record<SystemRoleSlug, string> = {
   [SYSTEM_ROLE_SLUGS.AGENT]: "Only particular agent details",
   [SYSTEM_ROLE_SLUGS.SUPERVISOR]:
-    "Only particular supervisor and aligned agent details",
+    "Agents onboarded by this supervisor (after QM approval)",
   [SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]: "Aligned agent details only",
-  [SYSTEM_ROLE_SLUGS.QUALITY_MANAGER]: "Overall view (partial access)",
+  [SYSTEM_ROLE_SLUGS.QUALITY_MANAGER]:
+    "Quality analysts onboarded by this manager (after admin approval)",
   [SYSTEM_ROLE_SLUGS.ADMIN]: "Full view with selective modification",
   [SYSTEM_ROLE_SLUGS.SUPERADMIN]: "Full access to all records",
 };

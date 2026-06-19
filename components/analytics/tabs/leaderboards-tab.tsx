@@ -9,6 +9,10 @@ import {
   QmsViewToggle,
   scoreHex,
 } from "@/components/analytics/qms-primitives";
+import {
+  DataTablePanel,
+  usePaginatedRows,
+} from "@/components/primitives/data-table-panel";
 
 type LeaderboardsTabProps = {
   data: LeaderboardAnalytics;
@@ -31,6 +35,8 @@ function LeaderboardTable({
   rows: LeaderboardAnalytics["agents"];
   title: string;
 }) {
+  const pagination = usePaginatedRows(rows);
+
   if (rows.length === 0) {
     return <QmsEmpty message={`No ${title.toLowerCase()} data available yet.`} />;
   }
@@ -41,8 +47,10 @@ function LeaderboardTable({
         title={`${title} rankings`}
         sub="Sorted by average quality score"
       />
-      <div className="ui-table-wrap qms-table-scroll">
-        <table className="ui-table qms-table platform-leaderboard">
+      <DataTablePanel
+        pagination={pagination}
+        renderTable={(slice) => (
+        <table className="ui-table qms-table platform-leaderboard platform-report-table">
           <thead>
             <tr>
               <th>Rank</th>
@@ -55,10 +63,12 @@ function LeaderboardTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, index) => (
+            {slice.map((row, index) => {
+              const rank = pagination.start + index - 1;
+              return (
               <tr key={row.name}>
                 <td className="qms-cell-rank">
-                  {index < 3 ? `${index + 1}` : `#${index + 1}`}
+                  {rank < 3 ? `${rank + 1}` : `#${rank + 1}`}
                 </td>
                 <td className="qms-cell-strong">{row.name}</td>
                 <td
@@ -99,10 +109,12 @@ function LeaderboardTable({
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
-      </div>
+        )}
+      />
     </QmsCard>
   );
 }

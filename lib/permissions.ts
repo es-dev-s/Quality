@@ -22,6 +22,12 @@ export const PERMISSIONS = {
   IMPORT_WRITE: "import:write",
   ADMIN_USERS: "admin:users",
   ADMIN_ROLES: "admin:roles",
+  USERS_PROVISION_AGENT: "users:provision-agent",
+  USERS_APPROVE_AGENT: "users:approve-agent",
+  USERS_PROVISION_ANALYST: "users:provision-analyst",
+  USERS_APPROVE_ANALYST: "users:approve-analyst",
+  USERS_READ_MANAGED: "users:read-managed",
+  USERS_MANAGE_MANAGED: "users:manage-managed",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -60,11 +66,15 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleSlug, RoleDefinition> = {
   [SYSTEM_ROLE_SLUGS.SUPERVISOR]: {
     name: "Supervisor",
     description:
-      "Views team audits for aligned agents and supervisors. Read-only feedback.",
+      "Views team audits for agents they onboard. Can request new agent accounts pending Quality Manager approval.",
     permissions: [
       PERMISSIONS.OVERVIEW_READ,
       PERMISSIONS.AUDIT_LOGS_READ,
       PERMISSIONS.FEEDBACK_READ,
+      PERMISSIONS.SETTINGS_READ,
+      PERMISSIONS.USERS_PROVISION_AGENT,
+      PERMISSIONS.USERS_READ_MANAGED,
+      PERMISSIONS.USERS_MANAGE_MANAGED,
     ],
   },
   [SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]: {
@@ -82,7 +92,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleSlug, RoleDefinition> = {
   [SYSTEM_ROLE_SLUGS.QUALITY_MANAGER]: {
     name: "Quality Manager",
     description:
-      "Overall operational view with analytics, reporting, audit execution, and audit log management.",
+      "Operational view scoped to onboarded analysts. Approves supervisor agent requests and submits analyst accounts for admin approval.",
     permissions: [
       PERMISSIONS.OVERVIEW_READ,
       PERMISSIONS.AUDIT_LOGS_READ,
@@ -93,12 +103,17 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleSlug, RoleDefinition> = {
       PERMISSIONS.AUDIT_FORM_WRITE,
       PERMISSIONS.AUDIT_TEMPLATES_READ,
       PERMISSIONS.FEEDBACK_STATUS,
+      PERMISSIONS.SETTINGS_READ,
+      PERMISSIONS.USERS_APPROVE_AGENT,
+      PERMISSIONS.USERS_PROVISION_ANALYST,
+      PERMISSIONS.USERS_READ_MANAGED,
+      PERMISSIONS.USERS_MANAGE_MANAGED,
     ],
   },
   [SYSTEM_ROLE_SLUGS.ADMIN]: {
     name: "Admin",
     description:
-      "Platform administrator with settings and template management. Read-only analytics.",
+      "Platform administrator with settings and template management. Approves Quality Manager analyst requests.",
     permissions: [
       PERMISSIONS.OVERVIEW_READ,
       PERMISSIONS.AUDIT_LOGS_READ,
@@ -111,6 +126,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleSlug, RoleDefinition> = {
       PERMISSIONS.SETTINGS_READ,
       PERMISSIONS.SETTINGS_WRITE,
       PERMISSIONS.FEEDBACK_READ,
+      PERMISSIONS.USERS_APPROVE_ANALYST,
     ],
   },
   [SYSTEM_ROLE_SLUGS.SUPERADMIN]: {

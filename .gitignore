@@ -41,3 +41,9 @@ yarn-error.log*
 next-env.d.ts
 
 /lib/generated/prisma
+
+# user-uploaded audit media (keep folder via .gitkeep)
+#!/public/uploads/audit-media/*
+!/public/uploads/audit-media/.gitkeep
+/public/uploads/audit-images/*
+!/public/uploads/audit-images/.gitkeep

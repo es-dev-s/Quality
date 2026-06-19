@@ -11,7 +11,6 @@ import { calculateResults } from "@/lib/audit/calculate-results";
 import { getScoringOptions } from "@/lib/audit/scoring-options";
 import { getEffectiveScore } from "@/lib/audit/score-state";
 import {
-  getLobDffOptions,
   getSubReasonsForReason,
 } from "@/lib/audit/interaction-options";
 import { isInteractionDetailsComplete } from "@/lib/audit/validate-interaction-details";
@@ -33,6 +32,7 @@ import {
 } from "@/lib/audit/feedback";
 import type { FeedbackSecurity, FeedbackStatus } from "@/lib/audit/feedback";
 import { AuditScorePanel } from "@/components/forms/audit-score-panel";
+import { ReferenceUrlField } from "@/components/forms/reference-url-field";
 import { resolveAuditorNameForSession } from "@/lib/audit/auditor-name";
 import { normalizeFatalYnScoreValue } from "@/lib/audit/fatal-yn-params";
 import { normalizeProbingPreferredModeScoreValue } from "@/lib/audit/probing-preferred-mode-swap";
@@ -91,6 +91,7 @@ function createInitialFormData(): AuditFormData {
     lob: "",
     sublob: "",
     mobile: "",
+    referenceUrl: "",
     reason: "",
     subReason: "",
     response: "",
@@ -254,7 +255,6 @@ export function AuditForm({
         lob: "",
         sublob: "",
         reason: "",
-        subReason: "",
       }));
     }
   }, [businessTypes, formData.businessType]);
@@ -264,34 +264,24 @@ export function AuditForm({
     [matchedLOB, formData.sublob]
   );
 
-  const subReasons = useMemo(
-    () => getLobDffOptions(matchedLOB),
-    [matchedLOB]
-  );
-
-  const interactionValidationContext = useMemo(
-    () => ({ subReasonRequired: subReasons.length > 0 }),
-    [subReasons.length]
-  );
-
   const updateForm = useCallback((patch: Partial<AuditFormData>) => {
     setFormData((prev) => ({ ...prev, ...patch }));
   }, []);
 
   const handleBusinessType = (businessType: BusinessType) => {
-    updateForm({ businessType, lob: "", sublob: "", reason: "", subReason: "" });
+    updateForm({ businessType, lob: "", sublob: "", reason: "" });
   };
 
   const handleLOB = (lob: string) => {
-    updateForm({ lob, sublob: "", reason: "", subReason: "" });
+    updateForm({ lob, sublob: "", reason: "" });
   };
 
   const handleSubLOB = (sublob: string) => {
-    updateForm({ sublob, reason: "", subReason: "" });
+    updateForm({ sublob, reason: "" });
   };
 
   const handleReason = (reason: string) => {
-    updateForm({ reason, subReason: "" });
+    updateForm({ reason });
   };
 
   const handleFeedbackStatus = (feedbackStatus: FeedbackStatus) => {
@@ -327,8 +317,7 @@ export function AuditForm({
       formData,
       scores,
       activeTemplate,
-      previewRecordContext,
-      interactionValidationContext
+      previewRecordContext
     );
     if (!calc.ok) {
       toast(calc.error, "error");
@@ -348,8 +337,7 @@ export function AuditForm({
         formData,
         scores,
         activeTemplate,
-        previewRecordContext,
-        interactionValidationContext
+        previewRecordContext
       );
       if (!calc.ok) {
         toast(calc.error, "error");
@@ -402,10 +390,7 @@ export function AuditForm({
     return count;
   }, [scores, activeTemplate.sections]);
 
-  const canCalculate = isInteractionDetailsComplete(
-    formData,
-    interactionValidationContext
-  );
+  const canCalculate = isInteractionDetailsComplete(formData);
 
   const liveResult = useMemo(() => {
     if (!canCalculate || !activeTemplate) return null;
@@ -413,18 +398,10 @@ export function AuditForm({
       formData,
       scores,
       activeTemplate,
-      previewRecordContext,
-      interactionValidationContext
+      previewRecordContext
     );
     return calc.ok ? calc.record : null;
-  }, [
-    canCalculate,
-    formData,
-    scores,
-    activeTemplate,
-    interactionValidationContext,
-    previewRecordContext,
-  ]);
+  }, [canCalculate, formData, scores, activeTemplate, previewRecordContext]);
 
   if (!activeTemplate) {
     return null;
@@ -722,57 +699,42 @@ export function AuditForm({
                   </Field>
                 </div>
 
-                <div className="audit-details__row audit-details__row--pair">
-                  <Field className="audit-field">
-                    <Label htmlFor="subReason">
-                      DFF
-                      {subReasons.length > 0 ? (
-                        <span className="audit-required"> *</span>
-                      ) : null}
-                    </Label>
-                    <Select
-                      id="subReason"
-                      className="audit-control"
-                      value={formData.subReason}
-                      disabled={!formData.lob || subReasons.length === 0}
-                      required={subReasons.length > 0}
-                      onChange={(e) =>
-                        updateForm({ subReason: e.target.value })
-                      }
-                    >
-                      <option value="">
-                        {!formData.lob
-                          ? "Select LOB first"
-                          : subReasons.length === 0
-                            ? "No DFF configured"
-                            : "Select DFF"}
-                      </option>
-                      {subReasons.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
+                <div
+                  className={cn(
+                    "audit-details__row",
+                    isCallInteraction
+                      ? "audit-details__row--pair audit-details__row--contact"
+                      : "audit-details__row--full"
+                  )}
+                >
+                  {isCallInteraction ? (
+                    <Field className="audit-field audit-contact-field">
+                      <div className="audit-contact-field__label-row">
+                        <Label htmlFor="mobile">
+                          Mobile Number <span className="audit-required">*</span>
+                        </Label>
+                      </div>
+                      <Input
+                        id="mobile"
+                        className="audit-control"
+                        type="tel"
+                        inputMode="tel"
+                        autoComplete="tel"
+                        placeholder="e.g. 916393540300"
+                        value={formData.mobile}
+                        required
+                        onChange={(e) => updateForm({ mobile: e.target.value })}
+                      />
+                    </Field>
+                  ) : null}
 
-                  <Field className="audit-field">
-                    <Label htmlFor="mobile">
-                      {isCallInteraction ? "Mobile Number" : "Chat Reference"}{" "}
-                      <span className="audit-required">*</span>
-                    </Label>
-                    <Input
-                      id="mobile"
-                      className="audit-control"
-                      placeholder={
-                        isCallInteraction
-                          ? "Phone number or CRM URL"
-                          : "Chat ID, ticket URL, or CRM link"
-                      }
-                      value={formData.mobile}
-                      required
-                      onChange={(e) => updateForm({ mobile: e.target.value })}
-                    />
-                  </Field>
+                  <ReferenceUrlField
+                    value={formData.referenceUrl}
+                    interactionType={formData.type}
+                    required={!isCallInteraction}
+                    inline={isCallInteraction}
+                    onChange={(referenceUrl) => updateForm({ referenceUrl })}
+                  />
                 </div>
 
                 <div className="audit-details__row audit-details__row--full">

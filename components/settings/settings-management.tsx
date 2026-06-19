@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { AgentsTable } from "@/components/admin/agents-table";
 import { InteractionConfigManager } from "@/components/admin/interaction-config-manager";
+import { TeamManagement } from "@/components/admin/team-management";
 import { UsersTable } from "@/components/admin/users-table";
 import { RolesTable } from "@/components/admin/roles-table";
 import type { AgentListItem } from "@/lib/actions/agents";
+import type { getTeamManagementData } from "@/lib/actions/user-provisioning";
 import type { InteractionConfig } from "@/lib/audit/types";
 
 type RoleOption = {
@@ -35,17 +37,21 @@ type Role = {
   _count: { users: number; scopes: number };
 };
 
-type TabId = "agents" | "interaction" | "users" | "roles";
+type TabId = "agents" | "interaction" | "users" | "roles" | "team";
+
+type TeamData = Awaited<ReturnType<typeof getTeamManagementData>>;
 
 type SettingsManagementProps = {
   initialTab?: TabId;
   canManageUsers: boolean;
   canManageRoles: boolean;
+  canAccessTeam: boolean;
+  teamData: TeamData | null;
   users: User[];
   roles: Role[];
   agents: AgentListItem[];
   canManageAgents: boolean;
-  interactionConfig: InteractionConfig;
+  interactionConfig: InteractionConfig | null;
   interactionUpdatedAt: string;
   interactionConfigVersion: number;
   canManageInteraction: boolean;
@@ -55,6 +61,8 @@ export function SettingsManagement({
   initialTab = "agents",
   canManageUsers,
   canManageRoles,
+  canAccessTeam,
+  teamData,
   users,
   roles,
   agents,
@@ -66,21 +74,21 @@ export function SettingsManagement({
 }: SettingsManagementProps) {
   const [tab, setTab] = useState<TabId>(initialTab);
   const [interactionMounted, setInteractionMounted] = useState(
-    initialTab === "interaction"
+    initialTab === "interaction" && canManageInteraction
   );
 
   useEffect(() => {
     setTab(initialTab);
-    if (initialTab === "interaction") {
+    if (initialTab === "interaction" && canManageInteraction) {
       setInteractionMounted(true);
     }
-  }, [initialTab]);
+  }, [initialTab, canManageInteraction]);
 
   useEffect(() => {
-    if (tab === "interaction") {
+    if (tab === "interaction" && canManageInteraction) {
       setInteractionMounted(true);
     }
-  }, [tab]);
+  }, [tab, canManageInteraction]);
 
   const roleOptions: RoleOption[] = roles.map(
     ({ id, name, slug, isSystem, _count }) => ({
@@ -109,19 +117,41 @@ export function SettingsManagement({
           Agent users
           <span className="access-tabs__count">{agents.length}</span>
         </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "interaction"}
-          className={
-            tab === "interaction"
-              ? "access-tabs__btn access-tabs__btn--active"
-              : "access-tabs__btn"
-          }
-          onClick={() => setTab("interaction")}
-        >
-          Interaction
-        </button>
+        {canManageInteraction && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "interaction"}
+            className={
+              tab === "interaction"
+                ? "access-tabs__btn access-tabs__btn--active"
+                : "access-tabs__btn"
+            }
+            onClick={() => setTab("interaction")}
+          >
+            Interaction
+          </button>
+        )}
+        {canAccessTeam && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "team"}
+            className={
+              tab === "team"
+                ? "access-tabs__btn access-tabs__btn--active"
+                : "access-tabs__btn"
+            }
+            onClick={() => setTab("team")}
+          >
+            Team
+            {teamData?.pendingApprovals.length ? (
+              <span className="access-tabs__count">
+                {teamData.pendingApprovals.length}
+              </span>
+            ) : null}
+          </button>
+        )}
         {canManageUsers && (
           <button
             type="button"
@@ -163,21 +193,30 @@ export function SettingsManagement({
             canManage={canManageAgents}
             canManageUsers={canManageUsers}
             onOpenUsersTab={canManageUsers ? () => setTab("users") : undefined}
+            onOpenTeamTab={canAccessTeam ? () => setTab("team") : undefined}
             embedded
           />
         )}
       </div>
 
-      <div role="tabpanel" hidden={tab !== "interaction"}>
-        {interactionMounted && (
-          <InteractionConfigManager
-            initialConfig={interactionConfig}
-            canManage={canManageInteraction}
-            updatedAt={interactionUpdatedAt}
-            configVersion={interactionConfigVersion}
-          />
-        )}
-      </div>
+      {canManageInteraction && interactionConfig && (
+        <div role="tabpanel" hidden={tab !== "interaction"}>
+          {interactionMounted && (
+            <InteractionConfigManager
+              initialConfig={interactionConfig}
+              canManage={canManageInteraction}
+              updatedAt={interactionUpdatedAt}
+              configVersion={interactionConfigVersion}
+            />
+          )}
+        </div>
+      )}
+
+      {canAccessTeam && teamData && (
+        <div role="tabpanel" hidden={tab !== "team"}>
+          {tab === "team" && <TeamManagement {...teamData} />}
+        </div>
+      )}
 
       {canManageUsers && (
         <div role="tabpanel" hidden={tab !== "users"}>

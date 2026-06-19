@@ -1,7 +1,4 @@
-import {
-  getLobDffOptions,
-  getSubReasonsForReason,
-} from "@/lib/audit/lob-flat-lists";
+import { getSubReasonsForReason } from "@/lib/audit/lob-flat-lists";
 import { isAllowedAuditor } from "@/lib/audit/auditors";
 import type { AuditFormData, InteractionConfig } from "@/lib/audit/types";
 
@@ -67,23 +64,6 @@ export function validateAuditFormAgainstConfig(
     const subReasons = getSubReasonsForReason(matchedLob, formData.sublob);
     if (subReasons.length > 0 && !includesOption(subReasons, formData.reason)) {
       return "Selected sub-reason is not valid for this reason.";
-    }
-  }
-
-  if (matchedLob && formData.subReason) {
-    const dffOptions = getLobDffOptions(matchedLob);
-    if (
-      dffOptions.length > 0 &&
-      !includesOption(dffOptions, formData.subReason)
-    ) {
-      return "Selected DFF is not valid for this LOB.";
-    }
-  }
-
-  if (matchedLob) {
-    const dffOptions = getLobDffOptions(matchedLob);
-    if (dffOptions.length > 0 && !formData.subReason.trim()) {
-      return "DFF is required.";
     }
   }
 

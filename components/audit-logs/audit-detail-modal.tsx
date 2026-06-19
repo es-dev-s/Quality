@@ -2,8 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { ChevronDown, Pencil, X } from "lucide-react";
+import { ChevronDown, ExternalLink, FileText, MessageSquare, Pencil, Phone, ShieldAlert, X } from "lucide-react";
 import { getAuditDetail, updateSupervisorRemarks } from "@/lib/actions/audit";
+import { ReferenceImageViewer } from "@/components/forms/reference-image-viewer";
+import {
+  isUploadedAudioPath,
+  isUploadedImagePath,
+} from "@/lib/upload/reference-url-paths";
 import type { AuditDetail } from "@/lib/audit/audit-records";
 import type { AuditRow } from "@/lib/audit/types";
 import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
@@ -18,10 +23,16 @@ type AuditDetailModalProps = {
 };
 
 function gradeClass(grade: string) {
-  if (grade === "Failed") return "dash-grade dash-grade--failed";
-  if (grade === "Excellent") return "dash-grade dash-grade--excellent";
-  if (grade === "Good") return "dash-grade dash-grade--good";
-  return "dash-grade dash-grade--needs";
+  if (grade === "Failed") return "adi-grade adi-grade--failed";
+  if (grade === "Excellent") return "adi-grade adi-grade--excellent";
+  if (grade === "Good") return "adi-grade adi-grade--good";
+  return "adi-grade adi-grade--needs";
+}
+
+function scoreToneClass(pct: number) {
+  if (pct >= 90) return "adi-kpi__val--success";
+  if (pct >= 75) return "adi-kpi__val--warn";
+  return "adi-kpi__val--danger";
 }
 
 function formatDateTime(value: string | null | undefined): string {
@@ -36,6 +47,16 @@ function groupRowsByCategory(rows: AuditRow[]): Map<string, AuditRow[]> {
     grouped.set(row.cat, list);
   }
   return grouped;
+}
+
+/** Label + value field used in info grids */
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="adi-field">
+      <span className="adi-field__label">{label}</span>
+      <div className="adi-field__val">{children}</div>
+    </div>
+  );
 }
 
 export function AuditDetailModal({
@@ -111,28 +132,34 @@ export function AuditDetailModal({
         aria-label="Close"
         onClick={onClose}
       />
-      <div className="platform-modal__panel platform-modal__panel--wide">
-        <header className="platform-modal__head">
-          <div>
-            <h2 className="platform-modal__title">Audit details</h2>
-            <p className="platform-modal__sub">
-              {detail?.auditCode ?? "Loading…"}
-            </p>
+
+      <div className="platform-modal__panel platform-modal__panel--wide platform-modal__panel--adi">
+
+        {/* ── Header ─────────────────────────────────────────────── */}
+        <header className="adi-header">
+          <div className="adi-header__left">
+            <span className="adi-header__icon" aria-hidden><FileText size={16} /></span>
+            <div>
+              <h2 className="adi-header__title">Audit Details</h2>
+              {detail && (
+                <p className="adi-header__code">{detail.auditCode}</p>
+              )}
+            </div>
           </div>
-          <div className="platform-modal__head-actions">
-            {detail && canEditAudits ? (
+          <div className="adi-header__actions">
+            {detail && canEditAudits && (
               <Link
                 href={`/audit-logs/${detail.id}/edit`}
                 className="ui-btn ui-btn--secondary ui-btn--sm"
                 onClick={onClose}
               >
-                <Pencil size={15} aria-hidden />
+                <Pencil size={14} aria-hidden />
                 Edit
               </Link>
-            ) : null}
+            )}
             <button
               type="button"
-              className="platform-modal__close"
+              className="adi-header__close"
               onClick={onClose}
               aria-label="Close"
             >
@@ -141,168 +168,172 @@ export function AuditDetailModal({
           </div>
         </header>
 
-        <div className="platform-modal__body">
+        {/* ── Body ───────────────────────────────────────────────── */}
+        <div className="adi-body">
           {isPending && !detail && !error && (
-            <p className="platform-empty">Loading audit…</p>
+            <div className="adi-loading">
+              <div className="adi-loading__spinner" aria-hidden />
+              <p>Loading audit…</p>
+            </div>
           )}
           {error && (
             <p className="platform-empty platform-empty--error">{error}</p>
           )}
+
           {detail && (
-            <div className="audit-detail">
-              <div className="audit-detail__scores">
-                <div className="audit-detail__score-card">
-                  <span className="audit-detail__score-label">Quality</span>
-                  <strong className="audit-detail__score-value">
+            <div className="adi-content">
+
+              {/* ── KPI bar ──────────────────────────────────────── */}
+              <div className="adi-kpis">
+                <div className={cn("adi-kpi", detail.hasFatal && "adi-kpi--fatal")}>
+                  <span className="adi-kpi__label">Quality score</span>
+                  <strong className={cn("adi-kpi__val", scoreToneClass(detail.qualityPct))}>
                     {detail.qualityPct}%
                   </strong>
                 </div>
-                <div className="audit-detail__score-card">
-                  <span className="audit-detail__score-label">Final</span>
-                  <strong
-                    className={
-                      detail.hasFatal
-                        ? "audit-detail__score-value audit-detail__score-value--danger"
-                        : "audit-detail__score-value"
-                    }
-                  >
+                <div className={cn("adi-kpi", detail.hasFatal && "adi-kpi--fatal")}>
+                  <span className="adi-kpi__label">Final score</span>
+                  <strong className={cn("adi-kpi__val", detail.hasFatal ? "adi-kpi__val--danger" : scoreToneClass(detail.finalPct))}>
                     {detail.hasFatal ? "FAILED" : `${detail.finalPct}%`}
                   </strong>
                 </div>
-                <div className="audit-detail__score-card">
-                  <span className="audit-detail__score-label">Grade</span>
+                <div className="adi-kpi">
+                  <span className="adi-kpi__label">Grade</span>
                   <span className={gradeClass(detail.grade)}>{detail.grade}</span>
                 </div>
-                <div className="audit-detail__score-card">
-                  <span className="audit-detail__score-label">Points</span>
-                  <strong className="audit-detail__score-value">
-                    {detail.totalScored}/{detail.totalMax}
+                <div className="adi-kpi">
+                  <span className="adi-kpi__label">Points</span>
+                  <strong className="adi-kpi__val">
+                    {detail.totalScored}<span className="adi-kpi__val--sub">/{detail.totalMax}</span>
                   </strong>
                 </div>
               </div>
 
-              <h3 className="audit-detail__section-title">Interaction details</h3>
-              <div className="audit-detail__grid">
-                <div>
-                  <span className="audit-detail__field-label">Agent</span>
-                  <p>{detail.agent}</p>
-                </div>
-                <div>
-                  <span className="audit-detail__field-label">Supervisor</span>
-                  <p>{detail.supervisor ?? "—"}</p>
-                </div>
-                <div>
-                  <span className="audit-detail__field-label">Quality analyst</span>
-                  <p>{detail.auditor ?? "—"}</p>
-                </div>
-                <div>
-                  <span className="audit-detail__field-label">Type</span>
-                  <p>
-                    {detail.type} · {detail.businessType}
-                  </p>
-                </div>
-                <div>
-                  <span className="audit-detail__field-label">LOB</span>
-                  <p>
-                    {detail.lob}
-                    {detail.sublob ? ` / ${detail.sublob}` : ""}
-                  </p>
-                </div>
-                <div>
-                  <span className="audit-detail__field-label">Call date</span>
-                  <p>{detail.callDate}</p>
-                </div>
-                <div>
-                  <span className="audit-detail__field-label">Audit date</span>
-                  <p>{detail.auditDate}</p>
-                </div>
-                <div>
-                  <span className="audit-detail__field-label">Reason</span>
-                  <p>{detail.reason ?? "—"}</p>
-                </div>
-                {detail.subReason ? (
+              {/* ── Fatal alert ──────────────────────────────────── */}
+              {detail.hasFatal && detail.fatalList.length > 0 && (
+                <div className="adi-fatal-alert" role="alert">
+                  <ShieldAlert size={16} className="adi-fatal-alert__icon" aria-hidden />
                   <div>
-                    <span className="audit-detail__field-label">Sub-reason / DFF</span>
-                    <p>{detail.subReason}</p>
+                    <p className="adi-fatal-alert__title">Fatal error — auto-failed</p>
+                    <div className="adi-fatal-alert__chips">
+                      {detail.fatalList.map((item) => (
+                        <span key={item} className="adi-fatal-alert__chip">{item}</span>
+                      ))}
+                    </div>
                   </div>
-                ) : null}
-                {detail.mobile ? (
-                  <div>
-                    <span className="audit-detail__field-label">
-                      {detail.type === "Call" ? "Mobile" : "Reference"}
-                    </span>
-                    <p>{detail.mobile}</p>
-                  </div>
-                ) : null}
-                {detail.response ? (
-                  <div className="audit-detail__grid-span">
-                    <span className="audit-detail__field-label">Response</span>
-                    <p>{detail.response}</p>
-                  </div>
-                ) : null}
-                <div>
-                  <span className="audit-detail__field-label">Submitted by</span>
-                  <p>{detail.submittedBy}</p>
                 </div>
-                <div>
-                  <span className="audit-detail__field-label">Submitted at</span>
-                  <p>{formatDateTime(detail.createdAt)}</p>
-                </div>
-              </div>
+              )}
 
-              <div className="audit-detail__feedback">
-                <h3 className="audit-detail__section-title">Feedback</h3>
-                <div className="audit-detail__grid">
-                  <div>
-                    <span className="audit-detail__field-label">Security</span>
-                    <p>{detail.feedbackSecurity}</p>
-                  </div>
-                  <div>
-                    <span className="audit-detail__field-label">Feedback status</span>
-                    <p>{detail.feedbackStatus}</p>
-                  </div>
-                  <div>
-                    <span className="audit-detail__field-label">
-                      Feedback date &amp; time
+              {/* ── Interaction (full-width) ──────────────────────── */}
+              <section className="adi-section">
+                <h3 className="adi-section__title">
+                  <Phone size={13} aria-hidden />
+                  Interaction
+                </h3>
+                <div className="adi-grid adi-grid--4">
+                  <Field label="Agent">{detail.agent}</Field>
+                  <Field label="Supervisor">{detail.supervisor ?? "—"}</Field>
+                  <Field label="Quality analyst">{detail.auditor ?? "—"}</Field>
+                  <Field label="Type">{detail.type} · {detail.businessType}</Field>
+                  <Field label="LOB">
+                    {detail.lob}{detail.sublob ? ` / ${detail.sublob}` : ""}
+                  </Field>
+                  <Field label="Reason">{detail.reason ?? "—"}</Field>
+                  <Field label="Call date">{detail.callDate}</Field>
+                  <Field label="Audit date">{detail.auditDate}</Field>
+                  {detail.mobile ? (
+                    <Field label="Mobile">{detail.mobile}</Field>
+                  ) : null}
+                  <Field label="Submitted by">{detail.submittedBy}</Field>
+                  <Field label="Submitted at">{formatDateTime(detail.createdAt)}</Field>
+                </div>
+
+                {detail.referenceUrl ? (
+                  <div className="adi-reference">
+                    <span className="adi-field__label">
+                      {isUploadedImagePath(detail.referenceUrl)
+                        ? "Reference image"
+                        : isUploadedAudioPath(detail.referenceUrl)
+                          ? "Call recording"
+                          : "Reference URL"}
                     </span>
-                    <p>{formatFeedbackDateTime(detail.feedbackDate)}</p>
+                    <div className="adi-reference__media">
+                      {isUploadedImagePath(detail.referenceUrl) ? (
+                        <ReferenceImageViewer src={detail.referenceUrl} />
+                      ) : isUploadedAudioPath(detail.referenceUrl) ? (
+                        <audio
+                          controls
+                          preload="none"
+                          src={detail.referenceUrl}
+                          className="adi-audio"
+                        />
+                      ) : (
+                        <a
+                          href={detail.referenceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="adi-url-link"
+                        >
+                          <ExternalLink size={13} aria-hidden />
+                          {detail.referenceUrl}
+                        </a>
+                      )}
+                    </div>
                   </div>
+                ) : null}
+
+                {detail.response ? (
+                  <div className="adi-reference">
+                    <span className="adi-field__label">Response</span>
+                    <p className="adi-reference__text">{detail.response}</p>
+                  </div>
+                ) : null}
+              </section>
+
+              {/* ── Feedback (full-width) ─────────────────────────── */}
+              <section className="adi-section">
+                <h3 className="adi-section__title">
+                  <MessageSquare size={13} aria-hidden />
+                  Feedback
+                </h3>
+                <div className="adi-grid adi-grid--4">
+                  <Field label="Security">{detail.feedbackSecurity}</Field>
+                  <Field label="Status">{detail.feedbackStatus}</Field>
+                  <Field label="Feedback date">{formatFeedbackDateTime(detail.feedbackDate)}</Field>
                   {(detail.feedbackStatus === "Acknowledged" ||
                     detail.feedbackStatus === "Disputed" ||
-                    detail.feedbackStatusAt) && (
-                    <div>
-                      <span className="audit-detail__field-label">
-                        {detail.feedbackStatus === "Disputed"
-                          ? "Disputed date & time"
-                          : "Acknowledged date & time"}
-                      </span>
-                      <p>{formatFeedbackDateTime(detail.feedbackStatusAt)}</p>
-                    </div>
-                  )}
+                    detail.feedbackStatusAt) ? (
+                    <Field label={
+                      detail.feedbackStatus === "Disputed"
+                        ? "Disputed at"
+                        : "Acknowledged at"
+                    }>
+                      {formatFeedbackDateTime(detail.feedbackStatusAt)}
+                    </Field>
+                  ) : null}
                 </div>
-                <div className="audit-detail__agent-feedback">
-                  <span className="audit-detail__field-label">
-                    Feedback for the agent
-                  </span>
-                  <p>{detail.agentFeedback.trim() || "—"}</p>
-                </div>
-              </div>
+                {detail.agentFeedback.trim() ? (
+                  <div className="adi-agent-feedback">
+                    <span className="adi-field__label">Feedback for agent</span>
+                    <p className="adi-agent-feedback__text">{detail.agentFeedback.trim()}</p>
+                  </div>
+                ) : null}
+              </section>
 
+              {/* ── Supervisor remarks (full-width) ───────────────── */}
               {(canEditSupervisorRemarks || detail.supervisorRemarks.trim()) && (
-                <div className="audit-detail__remarks">
-                  <h3 className="audit-detail__section-title">
-                    Supervisor remarks
-                  </h3>
+                <section className="adi-section adi-section--remarks">
+                  <h3 className="adi-section__title">Supervisor remarks</h3>
                   {canEditSupervisorRemarks ? (
                     <>
                       <textarea
-                        className="audit-detail__remarks-input"
-                        rows={4}
+                        className="adi-remarks-input"
+                        rows={3}
                         value={remarksDraft}
                         onChange={(e) => setRemarksDraft(e.target.value)}
-                        placeholder="Add feedback or remarks for this audit…"
+                        placeholder="Add remarks for this audit…"
                       />
-                      <div className="audit-detail__remarks-actions">
+                      <div className="adi-remarks-actions">
                         <button
                           type="button"
                           className="ui-btn ui-btn--primary ui-btn--sm"
@@ -312,127 +343,106 @@ export function AuditDetailModal({
                           {remarksPending ? "Saving…" : "Save remarks"}
                         </button>
                         {remarksMessage ? (
-                          <span
-                            className={cn(
-                              "audit-detail__remarks-msg",
-                              remarksMessage.endsWith(".") &&
-                                !remarksMessage.includes("error") &&
-                                "audit-detail__remarks-msg--ok"
-                            )}
-                          >
+                          <span className={cn(
+                            "adi-remarks-msg",
+                            !remarksMessage.toLowerCase().includes("error") && "adi-remarks-msg--ok"
+                          )}>
                             {remarksMessage}
                           </span>
                         ) : null}
                       </div>
                     </>
                   ) : (
-                    <p className="audit-detail__remarks-text">
+                    <p className="adi-remarks-text">
                       {detail.supervisorRemarks.trim() || "—"}
                     </p>
+                  )}
+                </section>
+              )}
+
+              {/* ── Bottom: Category scores + Parameter table ─────── */}
+              {(Object.keys(detail.catScores).length > 0 || detail.rows.length > 0) && (
+                <div className="adi-lower">
+
+                  {/* Category scores */}
+                  {Object.keys(detail.catScores).length > 0 && (
+                    <section className="adi-section adi-section--cats">
+                      <h3 className="adi-section__title">Category scores</h3>
+                      <div className="adi-cats">
+                        {Object.entries(detail.catScores).map(([name, cat]) => {
+                          const pct = cat.max > 0 ? Math.round((cat.scored / cat.max) * 100) : 0;
+                          const params = rowsByCategory.get(name) ?? [];
+                          const tone = pct >= 90 ? "success" : pct >= 75 ? "warn" : "danger";
+                          return (
+                            <details key={name} className="adi-cat">
+                              <summary className="adi-cat__head">
+                                <span className="adi-cat__name">{name}</span>
+                                <div className="adi-cat__right">
+                                  <div className="adi-cat__bar-track">
+                                    <div
+                                      className={`adi-cat__bar-fill adi-cat__bar-fill--${tone}`}
+                                      style={{ width: `${pct}%` }}
+                                    />
+                                  </div>
+                                  <span className={`adi-cat__pct adi-cat__pct--${tone}`}>{pct}%</span>
+                                  <span className="adi-cat__pts">{cat.scored}/{cat.max}</span>
+                                  <ChevronDown size={14} className="adi-cat__chevron" aria-hidden />
+                                </div>
+                              </summary>
+                              {params.length > 0 && (
+                                <ul className="adi-cat__params">
+                                  {params.map((row: AuditRow) => (
+                                    <li key={row.id} className="adi-cat__param">
+                                      <span className="adi-cat__param-name">{row.name}</span>
+                                      <span className={cn(
+                                        "adi-cat__param-sel",
+                                        row.fatal && "adi-cat__param-sel--fatal"
+                                      )}>
+                                        {row.sel}
+                                      </span>
+                                      <span className="adi-cat__param-pts">{row.score}/{row.max}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </details>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  )}
+
+                  {/* Parameter table */}
+                  {detail.rows.length > 0 && (
+                    <section className="adi-section adi-section--params">
+                      <h3 className="adi-section__title">All parameters</h3>
+                      <div className="adi-param-table-wrap">
+                        <table className="adi-param-table">
+                          <thead>
+                            <tr>
+                              <th>Category</th>
+                              <th>Parameter</th>
+                              <th>Selection</th>
+                              <th>Score</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {detail.rows.map((row) => (
+                              <tr key={row.id} className={row.fatal ? "adi-param-table__row--fatal" : undefined}>
+                                <td className="adi-param-table__cat">{row.cat}</td>
+                                <td>{row.name}</td>
+                                <td className={cn(row.fatal && "adi-param-table__sel--fatal")}>{row.sel}</td>
+                                <td className="adi-param-table__score">{row.score}/{row.max}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
                   )}
                 </div>
               )}
 
-              {detail.hasFatal && detail.fatalList.length > 0 && (
-                <div className="audit-detail__fatals">
-                  <h3 className="audit-detail__section-title">Fatal parameters</h3>
-                  <div className="audit-detail__fatal-list">
-                    {detail.fatalList.map((item) => (
-                      <span key={item} className="audit-detail__fatal-chip">
-                        {item}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {Object.keys(detail.catScores).length > 0 && (
-                <div className="audit-detail__categories">
-                  <h3 className="audit-detail__section-title">Category scores</h3>
-                  <div className="audit-detail__cat-accordion">
-                    {Object.entries(detail.catScores).map(([name, cat]) => {
-                      const pct =
-                        cat.max > 0
-                          ? Math.round((cat.scored / cat.max) * 100)
-                          : 0;
-                      const params = rowsByCategory.get(name) ?? [];
-                      return (
-                        <details key={name} className="audit-detail__cat-block">
-                          <summary className="audit-detail__cat-summary">
-                            <span>{name}</span>
-                            <strong>
-                              {cat.scored}/{cat.max} ({pct}%)
-                            </strong>
-                            <ChevronDown
-                              size={16}
-                              className="audit-detail__cat-chevron"
-                              aria-hidden
-                            />
-                          </summary>
-                          {params.length > 0 ? (
-                            <ul className="audit-detail__param-list">
-                              {params.map((row: AuditRow) => (
-                                <li key={row.id} className="audit-detail__param-row">
-                                  <span>{row.name}</span>
-                                  <span
-                                    className={cn(
-                                      row.fatal && "audit-detail__param-fatal"
-                                    )}
-                                  >
-                                    {row.sel} · {row.score}/{row.max}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="audit-detail__param-empty">
-                              No parameter breakdown stored.
-                            </p>
-                          )}
-                        </details>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {detail.rows.length > 0 && (
-                <div className="audit-detail__parameters">
-                  <h3 className="audit-detail__section-title">
-                    Parameter scores
-                  </h3>
-                  <div className="ui-table-wrap">
-                    <table className="ui-table audit-detail__param-table">
-                      <thead>
-                        <tr>
-                          <th>Category</th>
-                          <th>Parameter</th>
-                          <th>Selection</th>
-                          <th>Score</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detail.rows.map((row) => (
-                          <tr key={row.id}>
-                            <td>{row.cat}</td>
-                            <td>{row.name}</td>
-                            <td
-                              className={cn(
-                                row.fatal && "audit-detail__param-fatal"
-                              )}
-                            >
-                              {row.sel}
-                            </td>
-                            <td>
-                              {row.score}/{row.max}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>

@@ -26,8 +26,13 @@ import {
   scoreHex,
 } from "@/components/analytics/qms-primitives";
 import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
+import {
+  DataTablePanel,
+  usePaginatedRows,
+} from "@/components/primitives/data-table-panel";
 
 export function TeamsTab({ data }: { data: QmsAnalyticsData }) {
+  const pagination = usePaginatedRows(data.teams);
   const [view, setView] = useState("chart");
 
   if (data.teams.length === 0) {
@@ -135,8 +140,10 @@ export function TeamsTab({ data }: { data: QmsAnalyticsData }) {
       ) : (
         <QmsCard>
           <QmsSectionTitle title="Team performance table" />
-          <div className="ui-table-wrap qms-table-scroll">
-            <table className="ui-table qms-table">
+          <DataTablePanel
+            pagination={pagination}
+            renderTable={(slice) => (
+            <table className="ui-table qms-table platform-report-table">
               <thead>
                 <tr>
                   {["Rank", "Team", "Avg score", "Audits", "Status", "Gap"].map(
@@ -147,16 +154,18 @@ export function TeamsTab({ data }: { data: QmsAnalyticsData }) {
                 </tr>
               </thead>
               <tbody>
-                {data.teams.map((team, index) => (
+                {slice.map((team, index) => {
+                  const rank = pagination.start + index - 1;
+                  return (
                   <tr key={team.team}>
-                    <td className={index < 3 ? "qms-cell-rank" : undefined}>
-                      {index === 0
+                    <td className={rank < 3 ? "qms-cell-rank" : undefined}>
+                      {rank === 0
                         ? "1st"
-                        : index === 1
+                        : rank === 1
                           ? "2nd"
-                          : index === 2
+                          : rank === 2
                             ? "3rd"
-                            : `#${index + 1}`}
+                            : `#${rank + 1}`}
                     </td>
                     <td className="qms-cell-strong">{team.team}</td>
                     <td style={{ color: scoreHex(team.avg), fontWeight: 800 }}>
@@ -181,10 +190,12 @@ export function TeamsTab({ data }: { data: QmsAnalyticsData }) {
                         : `${(team.avg - 90).toFixed(1)}%`}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
-          </div>
+            )}
+          />
         </QmsCard>
       )}
     </div>

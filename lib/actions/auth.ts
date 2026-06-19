@@ -2,6 +2,7 @@
 
 import { AuthError } from "next-auth";
 import { signIn } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { loginSchema } from "@/lib/validation/auth";
 
 export type LoginState = {
@@ -48,6 +49,19 @@ export async function loginAction(
       throw error;
     }
     if (error instanceof AuthError && error.type === "CredentialsSignin") {
+      const pending = await prisma.userProvisioningRequest.findFirst({
+        where: {
+          email: email.toLowerCase(),
+          status: "PENDING",
+        },
+        select: { targetRoleSlug: true },
+      });
+      if (pending) {
+        return {
+          error:
+            "This account is still awaiting approval. You can sign in only after a Quality Manager or Admin approves the request in Settings → Team.",
+        };
+      }
       return { error: "Invalid email or password." };
     }
     console.error("[auth] loginAction failed:", error);

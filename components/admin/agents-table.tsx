@@ -5,6 +5,10 @@ import Link from "next/link";
 import { Search, UserPlus } from "lucide-react";
 import { Badge } from "@/components/primitives/badge";
 import { Button } from "@/components/primitives/button";
+import {
+  DataTablePanel,
+  usePaginatedRows,
+} from "@/components/primitives/data-table-panel";
 import type { AgentListItem } from "@/lib/actions/agents";
 
 type AgentsTableProps = {
@@ -12,6 +16,7 @@ type AgentsTableProps = {
   canManage: boolean;
   canManageUsers?: boolean;
   onOpenUsersTab?: () => void;
+  onOpenTeamTab?: () => void;
   embedded?: boolean;
 };
 
@@ -20,6 +25,7 @@ export function AgentsTable({
   canManage,
   canManageUsers = false,
   onOpenUsersTab,
+  onOpenTeamTab,
   embedded = false,
 }: AgentsTableProps) {
   const [search, setSearch] = useState("");
@@ -33,6 +39,8 @@ export function AgentsTable({
         agent.email.toLowerCase().includes(q)
     );
   }, [agents, search]);
+
+  const pagination = usePaginatedRows(filtered);
 
   return (
     <>
@@ -57,6 +65,12 @@ export function AgentsTable({
           <Button onClick={onOpenUsersTab}>
             <UserPlus size={16} />
             Manage in Users
+          </Button>
+        )}
+        {!canManageUsers && onOpenTeamTab && (
+          <Button onClick={onOpenTeamTab}>
+            <UserPlus size={16} />
+            Request agent
           </Button>
         )}
         {canManageUsers && !onOpenUsersTab && (
@@ -84,19 +98,19 @@ export function AgentsTable({
         </div>
       </div>
 
-      <div className="ui-table-wrap">
-        <table className="ui-table">
-          <thead>
-            <tr>
-              <th>Display name</th>
-              <th>Email</th>
-              <th>Date of joining</th>
-              <th>Audits</th>
-              <th>Profile</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
+      {filtered.length === 0 ? (
+        <div className="ui-table-wrap">
+          <table className="ui-table platform-report-table">
+            <thead>
+              <tr>
+                <th>Display name</th>
+                <th>Email</th>
+                <th>Date of joining</th>
+                <th>Audits</th>
+                <th>Profile</th>
+              </tr>
+            </thead>
+            <tbody>
               <tr>
                 <td colSpan={5} className="ui-table__empty">
                   {agents.length === 0
@@ -106,26 +120,44 @@ export function AgentsTable({
                     : "No agent users match your search."}
                 </td>
               </tr>
-            ) : (
-              filtered.map((agent) => (
-                <tr key={agent.id}>
-                  <td style={{ fontWeight: 500 }}>{agent.name}</td>
-                  <td>{agent.email}</td>
-                  <td>{agent.dateOfJoining ?? "—"}</td>
-                  <td>{agent.auditCount}</td>
-                  <td>
-                    {agent.hasProfileName ? (
-                      <Badge tone="accent">Named</Badge>
-                    ) : (
-                      <Badge tone="neutral">Uses email</Badge>
-                    )}
-                  </td>
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <DataTablePanel
+          pagination={pagination}
+          renderTable={(slice) => (
+            <table className="ui-table platform-report-table">
+              <thead>
+                <tr>
+                  <th>Display name</th>
+                  <th>Email</th>
+                  <th>Date of joining</th>
+                  <th>Audits</th>
+                  <th>Profile</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {slice.map((agent) => (
+                  <tr key={agent.id}>
+                    <td style={{ fontWeight: 500 }}>{agent.name}</td>
+                    <td>{agent.email}</td>
+                    <td>{agent.dateOfJoining ?? "—"}</td>
+                    <td>{agent.auditCount}</td>
+                    <td>
+                      {agent.hasProfileName ? (
+                        <Badge tone="accent">Named</Badge>
+                      ) : (
+                        <Badge tone="neutral">Uses email</Badge>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        />
+      )}
 
       {canManage && (
         <p className="ui-hint" style={{ marginTop: 12 }}>

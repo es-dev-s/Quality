@@ -146,6 +146,17 @@ export async function createUser(formData: FormData) {
     return { error: "A user with this email already exists" };
   }
 
+  const pendingRequest = await prisma.userProvisioningRequest.findFirst({
+    where: { email, status: "PENDING" },
+    select: { id: true, targetRoleSlug: true },
+  });
+  if (pendingRequest) {
+    return {
+      error:
+        "This email has a pending Team approval request. Approve or reject it under Settings → Team instead of creating the user directly.",
+    };
+  }
+
   const roleCheck = await validateRoleAssignment(parsed.data.roleId);
   if ("error" in roleCheck) {
     return { error: roleCheck.error };

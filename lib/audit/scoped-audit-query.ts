@@ -8,6 +8,7 @@ type SessionLike = {
   user: {
     id: string;
     name?: string | null;
+    email?: string | null;
     role: {
       id: string;
       name: string;
@@ -17,11 +18,11 @@ type SessionLike = {
   };
 };
 
-export function scopedAuditWhere(
+export async function scopedAuditWhere(
   session: SessionLike,
   extra?: Prisma.AuditSubmissionWhereInput
-): Prisma.AuditSubmissionWhereInput {
-  const scope = auditSubmissionScopeWhere(dataScopeFromSession(session));
+): Promise<Prisma.AuditSubmissionWhereInput> {
+  const scope = await auditSubmissionScopeWhere(dataScopeFromSession(session));
 
   if (!scope && !extra) {
     return {};
@@ -35,9 +36,9 @@ export function scopedAuditWhere(
   return { AND: [scope, extra] };
 }
 
-export function scopedAuditByIdWhere(
+export async function scopedAuditByIdWhere(
   session: SessionLike,
   id: string
-): Prisma.AuditSubmissionWhereInput {
+): Promise<Prisma.AuditSubmissionWhereInput> {
   return scopedAuditWhere(session, { id });
 }

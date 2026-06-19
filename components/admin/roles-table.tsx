@@ -10,6 +10,10 @@ import { useToast } from "@/components/primitives/toast";
 import { RoleAccessMatrix } from "@/components/admin/role-access-matrix";
 import { RoleFormDialog } from "@/components/admin/role-form-dialog";
 import { BulkActionBar } from "@/components/admin/bulk-action-bar";
+import {
+  DataTablePanel,
+  usePaginatedRows,
+} from "@/components/primitives/data-table-panel";
 import { useBulkSelection } from "@/lib/hooks/use-bulk-selection";
 import { bulkDeleteRoles, deleteRole } from "@/lib/actions/admin";
 
@@ -34,10 +38,14 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const pagination = usePaginatedRows(roles);
 
   const selectionItems = useMemo(
-    () => roles.filter((role) => !role.isSystem).map((role) => ({ id: role.id })),
-    [roles]
+    () =>
+      pagination.slice
+        .filter((role) => !role.isSystem)
+        .map((role) => ({ id: role.id })),
+    [pagination.slice]
   );
 
   const {
@@ -128,100 +136,119 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
         isPending={pending}
       />
 
-      <div className="ui-table-wrap">
-        <table className="ui-table ui-table--selectable">
-          <thead>
-            <tr>
-              <th className="ui-table__check-col">
-                <input
-                  type="checkbox"
-                  aria-label="Select all roles"
-                  checked={allVisibleSelected}
-                  ref={(el) => {
-                    if (el) el.indeterminate = someVisibleSelected;
-                  }}
-                  onChange={toggleAllVisible}
-                  disabled={pending || selectionItems.length === 0}
-                />
-              </th>
-              <th>Name</th>
-              <th>Slug</th>
-              <th>Users</th>
-              <th>Scopes</th>
-              <th style={{ textAlign: "right" }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {roles.length === 0 ? (
+      {roles.length === 0 ? (
+        <div className="ui-table-wrap">
+          <table className="ui-table ui-table--selectable platform-report-table">
+            <thead>
+              <tr>
+                <th className="ui-table__check-col" />
+                <th>Name</th>
+                <th>Slug</th>
+                <th>Users</th>
+                <th>Scopes</th>
+                <th style={{ textAlign: "right" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
               <tr>
                 <td colSpan={6} className="ui-table__empty">
                   No roles yet. Create your first role.
                 </td>
               </tr>
-            ) : (
-              roles.map((role) => (
-                <tr key={role.id}>
-                  <td className="ui-table__check-col">
-                    {!role.isSystem ? (
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${role.name}`}
-                        checked={isSelected(role.id)}
-                        disabled={pending}
-                        onChange={() => toggleOne(role.id)}
-                      />
-                    ) : null}
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontWeight: 500 }}>{role.name}</span>
-                      {role.isSystem && <Badge tone="accent">System</Badge>}
-                    </div>
-                    {role.description && (
-                      <p
-                        style={{
-                          margin: "2px 0 0",
-                          fontSize: "0.75rem",
-                          color: "var(--color-muted-fg)",
-                        }}
-                      >
-                        {role.description}
-                      </p>
-                    )}
-                  </td>
-                  <td>
-                    <code className="ui-code">{role.slug}</code>
-                  </td>
-                  <td>{role._count.users}</td>
-                  <td>{role._count.scopes}</td>
-                  <td>
-                    <div className="ui-table__actions">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setEditingRole(role);
-                          setDialogOpen(true);
-                        }}
-                      >
-                        <Pencil size={16} />
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="icon"
-                        disabled={pending || role.isSystem}
-                        onClick={() => handleDelete(role.id)}
-                      >
-                        <Trash2 size={16} />
-                      </Button>
-                    </div>
-                  </td>
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <DataTablePanel
+          pagination={pagination}
+          renderTable={(slice) => (
+            <table className="ui-table ui-table--selectable platform-report-table">
+              <thead>
+                <tr>
+                  <th className="ui-table__check-col">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all roles on this page"
+                      checked={allVisibleSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someVisibleSelected;
+                      }}
+                      onChange={toggleAllVisible}
+                      disabled={pending || selectionItems.length === 0}
+                    />
+                  </th>
+                  <th>Name</th>
+                  <th>Slug</th>
+                  <th>Users</th>
+                  <th>Scopes</th>
+                  <th style={{ textAlign: "right" }}>Actions</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {slice.map((role) => (
+                  <tr key={role.id}>
+                    <td className="ui-table__check-col">
+                      {!role.isSystem ? (
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${role.name}`}
+                          checked={isSelected(role.id)}
+                          disabled={pending}
+                          onChange={() => toggleOne(role.id)}
+                        />
+                      ) : null}
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontWeight: 500 }}>{role.name}</span>
+                        {role.isSystem && <Badge tone="accent">System</Badge>}
+                      </div>
+                      {role.description && (
+                        <p
+                          style={{
+                            margin: "2px 0 0",
+                            fontSize: "0.75rem",
+                            color: "var(--color-muted-fg)",
+                          }}
+                        >
+                          {role.description}
+                        </p>
+                      )}
+                    </td>
+                    <td>
+                      <code className="ui-code">{role.slug}</code>
+                    </td>
+                    <td>{role._count.users}</td>
+                    <td>{role._count.scopes}</td>
+                    <td>
+                      <div className="ui-table__actions">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setEditingRole(role);
+                            setDialogOpen(true);
+                          }}
+                        >
+                          <Pencil size={16} />
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="icon"
+                          disabled={pending || role.isSystem}
+                          onClick={() => handleDelete(role.id)}
+                        >
+                          <Trash2 size={16} />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        />
+      )}
 
       <Modal
         open={bulkDeleteOpen}

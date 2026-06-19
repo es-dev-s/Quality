@@ -82,6 +82,32 @@
   font-weight: 600;
 }
 
+.qms-summary-chip__tag {
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.qms-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.qms-toolbar__error {
+  margin: 0;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  color: var(--color-danger);
+}
+
+.qms-drp {
+  font-size: 0.8125rem;
+}
+
 .qms-tabs {
   display: flex;
   flex-wrap: nowrap;
@@ -307,11 +333,9 @@
   height: var(--ds-chart-height-tall);
 }
 
+/* ── Radar chart (canvas-based) ──────────────────────────────────────────── */
 .qms-radar-chart {
   width: 100%;
-  max-width: 420px;
-  height: 360px;
-  min-height: 360px;
   margin-inline: auto;
 }
 
@@ -327,16 +351,72 @@
   margin-top: var(--ds-space-1);
 }
 
-.qms-radar-chart .recharts-polar-angle-axis-tick text {
-  font-weight: 500;
+/* Canvas wrapper — hosts the legend, canvas, and tooltip */
+.qms-radar-canvas-wrap {
+  position: relative;
+  width: 100%;
 }
 
-.qms-radar-chart .recharts-polar-radius-axis-tick text {
-  font-variant-numeric: tabular-nums;
+/* Legend — top-right, matches reference HTML */
+.qms-radar-canvas-legend {
+  display: flex;
+  gap: 20px;
+  justify-content: flex-end;
+  padding-right: 4px;
+  margin-bottom: 6px;
 }
 
-.qms-radar-chart .recharts-legend-wrapper {
-  padding-top: var(--ds-space-2) !important;
+.qms-radar-canvas-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: #555;
+  white-space: nowrap;
+}
+
+/* The canvas itself */
+.qms-radar-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: crosshair;
+}
+
+/* Tooltip — fixed-position, shown near the hovered dot */
+.qms-radar-canvas-tooltip {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px;
+  background: var(--color-bg, #fff);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 0.12);
+  font-size: 12.5px;
+  min-width: 160px;
+}
+
+.qms-radar-canvas-tooltip__title {
+  margin: 0 0 6px;
+  font-weight: 700;
+  color: var(--color-fg, #111);
+  font-size: 13px;
+}
+
+.qms-radar-canvas-tooltip__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 3px 0 0;
+  color: var(--color-muted-fg, #555);
+}
+
+.qms-radar-canvas-tooltip__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
 }
 
 .qms-chart--xl {

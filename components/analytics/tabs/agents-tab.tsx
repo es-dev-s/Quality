@@ -24,6 +24,10 @@ import {
   QmsViewToggle,
 } from "@/components/analytics/qms-primitives";
 import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
+import {
+  DataTablePanel,
+  usePaginatedRows,
+} from "@/components/primitives/data-table-panel";
 
 export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
   const [view, setView] = useState<"bottom" | "top">("bottom");
@@ -35,6 +39,7 @@ export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
   }
 
   const agents = view === "bottom" ? data.bottom_agents : data.top_agents;
+  const pagination = usePaginatedRows(agents);
   const chartData =
     view === "top" ? [...data.top_agents].reverse() : data.bottom_agents;
 
@@ -123,8 +128,10 @@ export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
       </QmsCard>
 
       <QmsCard>
-        <div className="ui-table-wrap qms-table-scroll">
-          <table className="ui-table qms-table">
+        <DataTablePanel
+          pagination={pagination}
+          renderTable={(slice) => (
+          <table className="ui-table qms-table platform-report-table">
             <thead>
               <tr>
                 {(view === "bottom"
@@ -136,17 +143,19 @@ export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
               </tr>
             </thead>
             <tbody>
-              {agents.map((agent, index) => (
+              {slice.map((agent, index) => {
+                const rank = pagination.start + index - 1;
+                return (
                 <tr key={agent.agent}>
                   {view === "top" && (
-                    <td className={index < 3 ? "qms-cell-rank" : undefined}>
-                      {index === 0
+                    <td className={rank < 3 ? "qms-cell-rank" : undefined}>
+                      {rank === 0
                         ? "1st"
-                        : index === 1
+                        : rank === 1
                           ? "2nd"
-                          : index === 2
+                          : rank === 2
                             ? "3rd"
-                            : `#${index + 1}`}
+                            : `#${rank + 1}`}
                     </td>
                   )}
                   <td className="qms-cell-strong">{agent.agent}</td>
@@ -188,10 +197,12 @@ export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
                     />
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
-        </div>
+          )}
+        />
       </QmsCard>
     </div>
   );
