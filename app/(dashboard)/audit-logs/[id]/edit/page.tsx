@@ -4,7 +4,7 @@ import { AuditFormSkeleton } from "@/components/dashboard/page-skeletons";
 import { PageFrame } from "@/components/dashboard/page-frame";
 import { AuditForm } from "@/components/forms/audit-form";
 import { requirePageAccess } from "@/lib/auth-guards";
-import { getAuditors, getAuditForEdit } from "@/lib/actions/audit";
+import { getAuditors, getAuditForEdit, getAuditReferenceOptions } from "@/lib/actions/audit";
 import { getInteractionConfig } from "@/lib/actions/interaction-config";
 import { getAuditFormWorkbenchForEdit } from "@/lib/actions/templates";
 import { canEditAuditSubmissions } from "@/lib/rbac";
@@ -24,11 +24,13 @@ async function EditAuditContent({ id }: { id: string }) {
     notFound();
   }
 
-  const [workbench, auditors, interactionConfig] = await Promise.all([
-    getAuditFormWorkbenchForEdit(editData.templateId),
-    getAuditors(),
-    getInteractionConfig(),
-  ]);
+  const [workbench, auditors, interactionConfig, auditReferenceOptions] =
+    await Promise.all([
+      getAuditFormWorkbenchForEdit(editData.templateId),
+      getAuditors(),
+      getInteractionConfig(),
+      getAuditReferenceOptions(),
+    ]);
 
   return (
     <AuditForm
@@ -38,6 +40,7 @@ async function EditAuditContent({ id }: { id: string }) {
       }
       interactionConfig={interactionConfig}
       templates={workbench.templates}
+      auditReferenceOptions={auditReferenceOptions}
       initialTemplateId={editData.templateId}
       initialType={editData.formData.type}
       editAuditId={editData.id}
@@ -54,10 +57,7 @@ export default async function EditAuditPage({ params }: EditAuditPageProps) {
   const { id } = await params;
 
   return (
-    <PageFrame
-      title="Edit audit"
-      description="Update interaction details and scoring, then save changes"
-    >
+    <PageFrame flush>
       <Suspense fallback={<AuditFormSkeleton />}>
         <EditAuditContent id={id} />
       </Suspense>

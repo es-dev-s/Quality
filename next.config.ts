@@ -24,6 +24,23 @@ const nextConfig: NextConfig = {
     AUTH_URL: process.env.AUTH_URL ?? "",
     AUTH_TRUST_HOST: process.env.AUTH_TRUST_HOST ?? "true",
   },
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=()",
+          },
+          // TODO: Add Content-Security-Policy after inline script audit.
+        ],
+      },
+    ];
+  },
   experimental: {
     serverActions: {
       allowedOrigins,

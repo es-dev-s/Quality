@@ -1,9 +1,9 @@
 import { PageFrame } from "@/components/dashboard/page-frame";
 import { CardsPageSkeleton } from "@/components/dashboard/page-skeletons";
 
-export default function DashboardSegmentLoading() {
+export default function DashboardGroupLoading() {
   return (
-    <PageFrame title="Loading" description="Loading page content…">
+    <PageFrame>
       <CardsPageSkeleton />
     </PageFrame>
   );

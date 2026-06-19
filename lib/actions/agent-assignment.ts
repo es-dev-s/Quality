@@ -1,0 +1,262 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { requireAuth } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth-guards";
+import { resolveRoleUserName } from "@/lib/audit/role-users";
+import {
+  fetchQmApprovedAgentUserIds,
+  fetchQmAssignedAgentUserIds,
+  fetchSupervisorTierVisibleAgentNames,
+} from "@/lib/audit/agent-assignment-scope";
+import { prisma } from "@/lib/prisma";
+import { PERMISSIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { isSuperAdmin, type SessionRole } from "@/lib/rbac";
+import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
+import { invalidateAgentAssignmentCaches } from "@/lib/invalidate-cache";
+
+const assignSchema = z.object({
+  agentId: z.string().min(1),
+  assignToUserId: z.string().min(1),
+});
+
+function revalidateAssignmentPaths() {
+  revalidatePath("/settings");
+  revalidatePath("/audit-logs");
+  revalidatePath("/dashboard");
+}
+
+async function assertQmCanManageAgent(
+  agentId: string,
+  actorId: string,
+  actorRole: SessionRole
+) {
+  const agent = await prisma.user.findFirst({
+    where: {
+      id: agentId,
+      role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
+      approvalStatus: "ACTIVE",
+      isActive: true,
+    },
+    select: { id: true },
+  });
+  if (!agent) {
+    return "Agent not found or not active.";
+  }
+
+  if (isSuperAdmin(actorRole)) {
+    return null;
+  }
+
+  const approved = await prisma.userProvisioningRequest.findFirst({
+    where: {
+      createdUserId: agentId,
+      reviewedById: actorId,
+      status: "APPROVED",
+      targetRoleSlug: SYSTEM_ROLE_SLUGS.AGENT,
+    },
+    select: { id: true },
+  });
+
+  const alreadyAssigned = await prisma.agentAssignment.findFirst({
+    where: { agentId, assignedById: actorId },
+    select: { id: true },
+  });
+
+  if (!approved && !alreadyAssigned) {
+    return "You can only assign agents you approved or already manage.";
+  }
+
+  return null;
+}
+
+async function assertAssigneeIsQualityAnalyst(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { role: { select: { slug: true } } },
+  });
+  if (!user) return "Assignee not found.";
+  if (user.role.slug !== SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
+    return "Agents can only be assigned to Quality Analyst users.";
+  }
+  return null;
+}
+
+export async function assignAgentToUser(agentId: string, assignToUserId: string) {
+  const session = await requirePermission(PERMISSIONS.AGENT_ASSIGN);
+
+  const parsed = assignSchema.safeParse({ agentId, assignToUserId });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid assignment." };
+  }
+
+  const agentError = await assertQmCanManageAgent(
+    parsed.data.agentId,
+    session.user.id,
+    session.user.role
+  );
+  if (agentError) return { error: agentError };
+
+  const assigneeError = await assertAssigneeIsQualityAnalyst(
+    parsed.data.assignToUserId
+  );
+  if (assigneeError) return { error: assigneeError };
+
+  try {
+    await prisma.agentAssignment.create({
+      data: {
+        agentId: parsed.data.agentId,
+        assignedToId: parsed.data.assignToUserId,
+        assignedById: session.user.id,
+      },
+    });
+  } catch (error) {
+    if (isPrismaUniqueViolation(error)) {
+      return { error: "This agent is already assigned to that user." };
+    }
+    throw error;
+  }
+
+  revalidateAssignmentPaths();
+  invalidateAgentAssignmentCaches(session.user.id, parsed.data.assignToUserId, {
+    type: "agent:assigned",
+    agentId: parsed.data.agentId,
+    assignedToId: parsed.data.assignToUserId,
+  });
+  return { success: true as const };
+}
+
+export async function removeAgentFromUser(
+  agentId: string,
+  assignToUserId: string
+) {
+  const session = await requirePermission(PERMISSIONS.AGENT_ASSIGN);
+
+  const parsed = assignSchema.safeParse({ agentId, assignToUserId });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid assignment." };
+  }
+
+  const existing = await prisma.agentAssignment.findUnique({
+    where: {
+      agentId_assignedToId: {
+        agentId: parsed.data.agentId,
+        assignedToId: parsed.data.assignToUserId,
+      },
+    },
+    select: { assignedById: true },
+  });
+
+  if (!existing) {
+    return { error: "Assignment not found." };
+  }
+
+  if (
+    existing.assignedById !== session.user.id &&
+    !isSuperAdmin(session.user.role)
+  ) {
+    return { error: "You can only remove assignments you created." };
+  }
+
+  await prisma.agentAssignment.delete({
+    where: {
+      agentId_assignedToId: {
+        agentId: parsed.data.agentId,
+        assignedToId: parsed.data.assignToUserId,
+      },
+    },
+  });
+
+  revalidateAssignmentPaths();
+  invalidateAgentAssignmentCaches(session.user.id, parsed.data.assignToUserId, {
+    type: "agent:unassigned",
+    agentId: parsed.data.agentId,
+    assignedToId: parsed.data.assignToUserId,
+  });
+  return { success: true as const };
+}
+
+export type MyAgentRow = {
+  id: string;
+  name: string;
+  email: string;
+  source: "created" | "assigned";
+};
+
+export async function getMyVisibleAgents(): Promise<MyAgentRow[]> {
+  const session = await requireAuth();
+  const slug = session.user.role.slug;
+
+  if (
+    slug === SYSTEM_ROLE_SLUGS.SUPERVISOR ||
+    slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
+  ) {
+    const [createdUsers, assignedRows, names] = await Promise.all([
+      prisma.user.findMany({
+        where: {
+          createdById: session.user.id,
+          role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
+          approvalStatus: "ACTIVE",
+          isActive: true,
+        },
+        select: { id: true, name: true, email: true },
+      }),
+      prisma.agentAssignment.findMany({
+        where: { assignedToId: session.user.id },
+        include: {
+          agent: { select: { id: true, name: true, email: true, isActive: true, approvalStatus: true } },
+        },
+      }),
+      fetchSupervisorTierVisibleAgentNames(session.user.id),
+    ]);
+
+    const byId = new Map<string, MyAgentRow>();
+    for (const user of createdUsers) {
+      byId.set(user.id, {
+        id: user.id,
+        name: resolveRoleUserName(user),
+        email: user.email,
+        source: "created",
+      });
+    }
+    for (const row of assignedRows) {
+      if (!row.agent.isActive || row.agent.approvalStatus !== "ACTIVE") continue;
+      if (!byId.has(row.agent.id)) {
+        byId.set(row.agent.id, {
+          id: row.agent.id,
+          name: resolveRoleUserName(row.agent),
+          email: row.agent.email,
+          source: "assigned",
+        });
+      }
+    }
+
+    // Ensure stable ordering aligned with visible names filter
+    void names;
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  if (slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
+    const approvedIds = await fetchQmApprovedAgentUserIds(session.user.id);
+    const assignedIds = await fetchQmAssignedAgentUserIds(session.user.id);
+    const userIds = [...new Set([...approvedIds, ...assignedIds])];
+    if (userIds.length === 0) return [];
+
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, email: true },
+    });
+
+    return users
+      .map((user) => ({
+        id: user.id,
+        name: resolveRoleUserName(user),
+        email: user.email,
+        source: "created" as const,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  return [];
+}

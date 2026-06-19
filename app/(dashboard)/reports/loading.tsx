@@ -3,10 +3,7 @@ import { TablePageSkeleton } from "@/components/dashboard/page-skeletons";
 
 export default function ReportsRouteLoading() {
   return (
-    <PageFrame
-      title="Reports"
-      description="Executive performance snapshot with date range, pass rate, and export"
-    >
+    <PageFrame>
       <TablePageSkeleton rows={10} />
     </PageFrame>
   );

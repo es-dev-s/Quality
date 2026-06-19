@@ -79,6 +79,14 @@ function moduleAccess(
   return "—";
 }
 
+/** Modules with read-only scopes (no separate :write permission). */
+function readOnlyModuleAccess(
+  role: SessionRole | SystemRoleSlug,
+  readPerm: string
+): ModuleAccessCell {
+  return has(role, readPerm) ? "Read" : "—";
+}
+
 function feedbackAccess(role: SessionRole | SystemRoleSlug): ModuleAccessCell {
   if (has(role, PERMISSIONS.FEEDBACK_WRITE)) return "Read/Write";
   if (has(role, PERMISSIONS.FEEDBACK_STATUS)) return "Change status";
@@ -90,26 +98,14 @@ export function getModuleAccessMatrix(
   role: SessionRole | SystemRoleSlug
 ): Record<ModuleKey, ModuleAccessCell> {
   return {
-    overview: moduleAccess(
-      role,
-      PERMISSIONS.OVERVIEW_READ,
-      PERMISSIONS.OVERVIEW_WRITE
-    ),
+    overview: readOnlyModuleAccess(role, PERMISSIONS.OVERVIEW_READ),
     auditLogs: moduleAccess(
       role,
       PERMISSIONS.AUDIT_LOGS_READ,
       PERMISSIONS.AUDIT_LOGS_WRITE
     ),
-    analytics: moduleAccess(
-      role,
-      PERMISSIONS.ANALYTICS_READ,
-      PERMISSIONS.ANALYTICS_WRITE
-    ),
-    reports: moduleAccess(
-      role,
-      PERMISSIONS.REPORTS_READ,
-      PERMISSIONS.REPORTS_WRITE
-    ),
+    analytics: readOnlyModuleAccess(role, PERMISSIONS.ANALYTICS_READ),
+    reports: readOnlyModuleAccess(role, PERMISSIONS.REPORTS_READ),
     auditForm: moduleAccess(
       role,
       PERMISSIONS.AUDIT_FORM_READ,

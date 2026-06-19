@@ -5,16 +5,20 @@ import { FileText, Plus, Settings2 } from "lucide-react";
 import type { TemplateListItem } from "@/lib/actions/templates";
 import { cn } from "@/lib/utils";
 
+import type { FormsScopeSummary } from "@/lib/audit/interaction-config-people";
+
 type FormsHubProps = {
   templates: TemplateListItem[];
   activeTemplateId: string;
   canManage: boolean;
+  scopeSummary: FormsScopeSummary;
 };
 
 export function FormsHub({
   templates,
   activeTemplateId,
   canManage,
+  scopeSummary,
 }: FormsHubProps) {
   if (templates.length === 0) {
     return (
@@ -38,6 +42,20 @@ export function FormsHub({
 
   return (
     <div className="forms-hub">
+      <div className="forms-hub__scope" role="status">
+        <span className="forms-hub__scope-label">Your scope</span>
+        <span className="forms-hub__scope-meta">
+          {scopeSummary.agentCount} agent{scopeSummary.agentCount === 1 ? "" : "s"}
+          {" · "}
+          {scopeSummary.supervisorCount} supervisor
+          {scopeSummary.supervisorCount === 1 ? "" : "s"}
+          {" · "}
+          {scopeSummary.analystCount} analyst
+          {scopeSummary.analystCount === 1 ? "" : "s"}
+        </span>
+        <span className="forms-hub__scope-role">{scopeSummary.roleLabel}</span>
+      </div>
+
       {canManage && (
         <div className="forms-hub__toolbar">
           <p className="forms-hub__toolbar-text">

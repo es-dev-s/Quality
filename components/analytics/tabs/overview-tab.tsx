@@ -62,7 +62,7 @@ export function OverviewTab({ data }: { data: QmsAnalyticsData }) {
       </div>
 
       <div className="qms-panels qms-panels--3">
-        <QmsCard>
+        <QmsCard className="qms-card--gauges">
           <QmsSectionTitle title="Quality score gauges" />
           <div className="qms-gauges">
             <QmsGauge value={kpis.overall_avg} label="Overall" />

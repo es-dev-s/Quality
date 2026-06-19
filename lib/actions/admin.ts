@@ -1,16 +1,28 @@
 "use server";
 
-import bcrypt from "bcryptjs";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { ForbiddenError, permissionError, requirePermission } from "@/lib/auth-guards";
-import { PERMISSIONS } from "@/lib/permissions";
-import { canManageRoles, canManageUsers, hasScope } from "@/lib/rbac";
+import { PERMISSIONS, isLegacySystemRole } from "@/lib/permissions";
+import { canManageRoles, canManageUsers, hasScope, isSuperAdmin } from "@/lib/rbac";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { SUPERADMIN_ROLE_SLUG } from "@/lib/constants";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
+import {
+  invalidateRoleCaches,
+  invalidateUserCaches,
+} from "@/lib/invalidate-cache";
+import {
+  SECURITY_AUDIT_ACTIONS,
+  logSecurityAudit,
+} from "@/lib/security-audit";
+import { buildPasswordCredentials } from "@/lib/password-credentials";
+import {
+  decryptPassword,
+  generateTemporaryPassword,
+} from "@/lib/crypto/password-vault";
 
 const isoDateSchema = z.union([
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date (YYYY-MM-DD)"),
@@ -86,6 +98,24 @@ async function validateRoleAssignment(roleId: string) {
   return { role };
 }
 
+function assertSuperAdminRoleAssignment(
+  actor: Awaited<ReturnType<typeof requireAuth>>,
+  targetRoleSlug: string
+): { error: string } | null {
+  if (isSuperAdmin(actor.user.role)) return null;
+  if (
+    targetRoleSlug === SUPERADMIN_ROLE_SLUG ||
+    targetRoleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER ||
+    isLegacySystemRole(targetRoleSlug)
+  ) {
+    return {
+      error:
+        "Only Super Admin can assign Super Admin, Quality Manager, or legacy Admin roles.",
+    };
+  }
+  return null;
+}
+
 export async function getUsers() {
   await requirePermission(PERMISSIONS.ADMIN_USERS);
   return prisma.user.findMany({
@@ -126,7 +156,7 @@ export async function getRolesForSelect() {
 }
 
 export async function createUser(formData: FormData) {
-  await requirePermission(PERMISSIONS.ADMIN_USERS);
+  const session = await requirePermission(PERMISSIONS.ADMIN_USERS);
 
   const parsed = createUserSchema.safeParse({
     name: formData.get("name"),
@@ -162,6 +192,12 @@ export async function createUser(formData: FormData) {
     return { error: roleCheck.error };
   }
 
+  const roleGuard = assertSuperAdminRoleAssignment(
+    session,
+    roleCheck.role.slug
+  );
+  if (roleGuard) return roleGuard;
+
   const dateOfJoining = normalizeJoiningDate(parsed.data.dateOfJoining);
   if (roleCheck.role.slug === SYSTEM_ROLE_SLUGS.AGENT && !dateOfJoining) {
     return {
@@ -169,16 +205,19 @@ export async function createUser(formData: FormData) {
     };
   }
 
-  const hashedPassword = await bcrypt.hash(parsed.data.password, 12);
+  const credentials = await buildPasswordCredentials(parsed.data.password);
 
   try {
     await prisma.user.create({
       data: {
         name: parsed.data.name,
         email,
-        password: hashedPassword,
+        password: credentials.password,
+        passwordEncrypted: credentials.passwordEncrypted,
         roleId: parsed.data.roleId,
         dateOfJoining,
+        isActive: true,
+        approvalStatus: "ACTIVE",
       },
     });
   } catch (error) {
@@ -189,11 +228,12 @@ export async function createUser(formData: FormData) {
   }
 
   revalidateUserRosterPaths();
+  invalidateUserCaches(session.user.id);
   return { success: true };
 }
 
 export async function updateUser(formData: FormData) {
-  await requirePermission(PERMISSIONS.ADMIN_USERS);
+  const session = await requirePermission(PERMISSIONS.ADMIN_USERS);
 
   const parsed = updateUserSchema.safeParse({
     id: formData.get("id"),
@@ -221,6 +261,12 @@ export async function updateUser(formData: FormData) {
     return { error: roleCheck.error };
   }
 
+  const roleGuard = assertSuperAdminRoleAssignment(
+    session,
+    roleCheck.role.slug
+  );
+  if (roleGuard) return roleGuard;
+
   const dateOfJoining = normalizeJoiningDate(parsed.data.dateOfJoining);
   if (roleCheck.role.slug === SYSTEM_ROLE_SLUGS.AGENT && !dateOfJoining) {
     return {
@@ -228,12 +274,19 @@ export async function updateUser(formData: FormData) {
     };
   }
 
+  const existingUser = await prisma.user.findUnique({
+    where: { id: parsed.data.id },
+    select: { roleId: true },
+  });
+
   const data: {
     name: string;
     email: string;
     roleId: string;
     dateOfJoining: string | null;
     password?: string;
+    passwordEncrypted?: string;
+    sessionVersion?: { increment: number };
   } = {
     name: parsed.data.name,
     email,
@@ -242,7 +295,14 @@ export async function updateUser(formData: FormData) {
   };
 
   if (parsed.data.password) {
-    data.password = await bcrypt.hash(parsed.data.password, 12);
+    const credentials = await buildPasswordCredentials(parsed.data.password);
+    data.password = credentials.password;
+    data.passwordEncrypted = credentials.passwordEncrypted;
+    data.sessionVersion = { increment: 1 };
+  }
+
+  if (existingUser && existingUser.roleId !== parsed.data.roleId) {
+    data.sessionVersion = { increment: 1 };
   }
 
   await prisma.user.update({
@@ -251,11 +311,12 @@ export async function updateUser(formData: FormData) {
   });
 
   revalidateUserRosterPaths();
+  invalidateUserCaches(session.user.id);
   return { success: true };
 }
 
 export async function deleteUser(userId: string) {
-  await requirePermission(PERMISSIONS.ADMIN_USERS);
+  const session = await requirePermission(PERMISSIONS.ADMIN_USERS);
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -306,11 +367,15 @@ export async function deleteUser(userId: string) {
   }
 
   revalidatePath("/settings");
+  invalidateUserCaches(session.user.id, {
+    type: "user:deactivated",
+    userId,
+  });
   return { success: true };
 }
 
 export async function bulkDeleteUsers(userIds: string[]) {
-  await requirePermission(PERMISSIONS.ADMIN_USERS);
+  const session = await requirePermission(PERMISSIONS.ADMIN_USERS);
 
   const uniqueIds = [...new Set(userIds.filter(Boolean))];
   if (uniqueIds.length === 0) {
@@ -435,6 +500,7 @@ export async function createRole(formData: FormData) {
 
   revalidatePath("/settings");
   revalidatePath("/admin/roles");
+  invalidateRoleCaches();
   return { success: true };
 }
 
@@ -486,6 +552,7 @@ export async function updateRole(formData: FormData) {
 
   revalidatePath("/settings");
   revalidatePath("/admin/roles");
+  invalidateRoleCaches();
   return { success: true };
 }
 
@@ -527,6 +594,7 @@ export async function deleteRole(roleId: string) {
 
   revalidatePath("/settings");
   revalidatePath("/admin/roles");
+  invalidateRoleCaches();
   return { success: true };
 }
 
@@ -575,6 +643,7 @@ export async function bulkDeleteRoles(roleIds: string[]) {
 
   revalidatePath("/settings");
   revalidatePath("/admin/roles");
+  invalidateRoleCaches();
 
   if (deleted === 0 && skipped.length > 0) {
     return { error: `Could not delete: ${skipped.join(", ")}` };
@@ -590,4 +659,123 @@ export async function bulkDeleteRoles(roleIds: string[]) {
 export async function signOutAction() {
   const { signOut } = await import("@/lib/auth");
   await signOut({ redirectTo: "/login" });
+}
+
+export async function setUserActive(userId: string, isActive: boolean) {
+  const session = await requirePermission(PERMISSIONS.ADMIN_USERS);
+
+  if (userId === session.user.id && !isActive) {
+    return { error: "Cannot deactivate your own account." };
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { role: true },
+  });
+  if (!target) {
+    return { error: "User not found." };
+  }
+
+  if (
+    !isActive &&
+    target.role.slug === SUPERADMIN_ROLE_SLUG &&
+    userId === session.user.id
+  ) {
+    return { error: "Cannot deactivate your own account." };
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      isActive,
+      ...(!isActive ? { sessionVersion: { increment: 1 } } : {}),
+    },
+  });
+
+  await logSecurityAudit({
+    action: isActive
+      ? SECURITY_AUDIT_ACTIONS.USER_ACTIVATED
+      : SECURITY_AUDIT_ACTIONS.USER_DEACTIVATED,
+    actorUserId: session.user.id,
+    targetUserId: userId,
+  });
+
+  revalidateUserRosterPaths();
+  revalidatePath("/settings");
+  invalidateUserCaches(session.user.id, {
+    type: isActive ? "user:activated" : "user:deactivated",
+    userId,
+  });
+
+  return { success: true as const };
+}
+
+export async function revealUserPassword(userId: string) {
+  await requirePermission(PERMISSIONS.USER_READ_SENSITIVE);
+  const session = await requireAuth();
+
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, passwordEncrypted: true },
+  });
+  if (!target) {
+    return { error: "User not found." };
+  }
+
+  let plainPassword: string;
+  let wasReset = false;
+
+  if (target.passwordEncrypted) {
+    try {
+      plainPassword = decryptPassword(target.passwordEncrypted);
+    } catch {
+      return {
+        error:
+          "Stored password could not be decrypted. Reset the user's password and try again.",
+      };
+    }
+  } else {
+    plainPassword = generateTemporaryPassword();
+    wasReset = true;
+    const credentials = await buildPasswordCredentials(plainPassword);
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: credentials.password,
+        passwordEncrypted: credentials.passwordEncrypted,
+        sessionVersion: { increment: 1 },
+      },
+    });
+    invalidateUserCaches(session.user.id);
+  }
+
+  await logSecurityAudit({
+    action: SECURITY_AUDIT_ACTIONS.PASSWORD_READ,
+    actorUserId: session.user.id,
+    targetUserId: userId,
+    metadata: { email: target.email, wasReset },
+  });
+
+  return {
+    success: true as const,
+    email: target.email,
+    password: plainPassword,
+    wasReset,
+  };
+}
+
+/** @deprecated Use revealUserPassword */
+export async function getUserPasswordHash(userId: string) {
+  const result = await revealUserPassword(userId);
+  if ("error" in result && result.error) {
+    return { error: result.error };
+  }
+  if (result.success) {
+    return {
+      success: true as const,
+      email: result.email,
+      passwordHash: result.password,
+    };
+  }
+  return { error: "Could not reveal password." };
 }

@@ -4,7 +4,7 @@ import { AuditFormSkeleton } from "@/components/dashboard/page-skeletons";
 import { AuditForm } from "@/components/forms/audit-form";
 import { QmsEmpty } from "@/components/analytics/qms-primitives";
 import { requirePageAccess } from "@/lib/auth-guards";
-import { getAuditors } from "@/lib/actions/audit";
+import { getAuditors, getAuditReferenceOptions } from "@/lib/actions/audit";
 import { getInteractionConfig } from "@/lib/actions/interaction-config";
 import { getAuditFormWorkbench } from "@/lib/actions/templates";
 import { resolveAuditFormTemplateId } from "@/lib/audit/audit-form-utils";
@@ -31,11 +31,13 @@ async function AuditFormContent({
     session.user.name?.trim() || session.user.email || "";
   const initialType = parseInitialType(params.type);
 
-  const [auditors, interactionConfig, workbench] = await Promise.all([
-    getAuditors(),
-    getInteractionConfig(),
-    getAuditFormWorkbench(),
-  ]);
+  const [auditors, interactionConfig, workbench, auditReferenceOptions] =
+    await Promise.all([
+      getAuditors(),
+      getInteractionConfig(),
+      getAuditFormWorkbench(),
+      getAuditReferenceOptions(),
+    ]);
 
   if (workbench.templates.length === 0) {
     return (
@@ -58,6 +60,7 @@ async function AuditFormContent({
       currentAuditorName={currentAuditorName}
       interactionConfig={interactionConfig}
       templates={workbench.templates}
+      auditReferenceOptions={auditReferenceOptions}
       initialTemplateId={initialTemplateId}
       initialType={initialType}
     />
@@ -66,7 +69,7 @@ async function AuditFormContent({
 
 export default function AuditFormPage({ searchParams }: AuditFormPageProps) {
   return (
-    <PageFrame title="Audit Form" description="Score a call or chat interaction">
+    <PageFrame flush>
       <Suspense fallback={<AuditFormSkeleton />}>
         <AuditFormContent searchParams={searchParams} />
       </Suspense>

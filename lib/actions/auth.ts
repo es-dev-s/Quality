@@ -1,9 +1,11 @@
 "use server";
 
+import { headers } from "next/headers";
 import { AuthError } from "next-auth";
 import { signIn } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { loginSchema } from "@/lib/validation/auth";
+import { checkRateLimit } from "@/lib/server/rate-limit";
+import { loginSchema, safeCallbackUrl } from "@/lib/validation/auth";
 
 export type LoginState = {
   error?: string;
@@ -23,6 +25,32 @@ export async function loginAction(
   _prev: LoginState,
   formData: FormData
 ): Promise<LoginState> {
+  const emailRaw = String(formData.get("email") ?? "")
+    .trim()
+    .toLowerCase();
+
+  const hdrs = await headers();
+  const clientIp =
+    hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    hdrs.get("x-real-ip")?.trim() ||
+    "unknown";
+
+  const ipLimit = checkRateLimit(`login-ip:${clientIp}`, 20, 15 * 60_000);
+  if (!ipLimit.allowed) {
+    return {
+      error: `Too many attempts. Try again in ${Math.max(1, Math.ceil(ipLimit.retryAfterMs / 60_000))} minutes.`,
+    };
+  }
+
+  if (emailRaw) {
+    const emailLimit = checkRateLimit(`login:${emailRaw}`, 5, 15 * 60_000);
+    if (!emailLimit.allowed) {
+      return {
+        error: `Too many attempts. Try again in ${Math.max(1, Math.ceil(emailLimit.retryAfterMs / 60_000))} minutes.`,
+      };
+    }
+  }
+
   const parsed = loginSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
@@ -35,7 +63,8 @@ export async function loginAction(
     };
   }
 
-  const { email, password, callbackUrl } = parsed.data;
+  const { email, password } = parsed.data;
+  const callbackUrl = safeCallbackUrl(parsed.data.callbackUrl);
 
   try {
     await signIn("credentials", {

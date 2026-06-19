@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { prisma } from "../lib/prisma";
 import {
-  ALL_PERMISSIONS,
+  SEED_PERMISSIONS,
   SYSTEM_ROLE_DEFINITIONS,
   type SystemRoleSlug,
 } from "../lib/permissions";
@@ -15,7 +15,7 @@ function humanizePermission(slug: string): string {
 export async function seedRbac(): Promise<void> {
   const scopeIds = new Map<string, string>();
 
-  for (const permission of ALL_PERMISSIONS) {
+  for (const permission of SEED_PERMISSIONS) {
     const scope = await prisma.scope.upsert({
       where: { slug: permission },
       update: {
@@ -66,7 +66,7 @@ export async function seedRbac(): Promise<void> {
 async function main() {
   await seedRbac();
   console.log("RBAC seed completed.");
-  console.log(`Scopes: ${ALL_PERMISSIONS.length}`);
+  console.log(`Scopes: ${SEED_PERMISSIONS.length}`);
   console.log(
     `Roles: ${Object.keys(SYSTEM_ROLE_DEFINITIONS).join(", ")}`
   );

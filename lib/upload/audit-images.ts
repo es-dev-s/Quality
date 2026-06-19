@@ -1,7 +1,7 @@
 import path from "path";
 import { createRandomUUID } from "@/lib/random-id";
 
-export const AUDIT_IMAGE_UPLOAD_DIR = "public/uploads/audit-images";
+export const AUDIT_IMAGE_UPLOAD_DIR = "storage/uploads/audit-images";
 
 export const AUDIT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
@@ -74,7 +74,7 @@ export function buildAuditImageFilename(originalName: string, extension: string)
 }
 
 export function auditImagePublicPath(filename: string) {
-  return `/uploads/audit-images/${filename}`;
+  return `/api/files/audit-images/${filename}`;
 }
 
 export function resolveAuditImageUploadPath(filename: string) {

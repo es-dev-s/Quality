@@ -117,9 +117,9 @@ export function QmsKpiTile({
 }
 
 export function QmsGauge({ value, label }: { value: number; label: string }) {
-  const r = 52;
+  const r = 46;
   const cx = 60;
-  const cy = 60;
+  const cy = 58;
   const circumference = 2 * Math.PI * r;
   const pct = Math.min(value / 100, 1);
   const dash = circumference * pct;
@@ -127,7 +127,7 @@ export function QmsGauge({ value, label }: { value: number; label: string }) {
 
   return (
     <div className="qms-gauge">
-      <svg width={120} height={90} viewBox="0 0 120 100" aria-hidden>
+      <svg width={120} height={116} viewBox="0 0 120 116" aria-hidden>
         <circle
           cx={cx}
           cy={cy}

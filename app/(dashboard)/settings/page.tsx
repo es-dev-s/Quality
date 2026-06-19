@@ -82,10 +82,7 @@ async function SettingsContent({
 
 export default function SettingsPage({ searchParams }: SettingsPageProps) {
   return (
-    <PageFrame
-      title="Settings"
-      description="Agents, users, roles, and interaction config for audit forms"
-    >
+    <PageFrame fill>
       <Suspense fallback={<SettingsPageSkeleton />}>
         <SettingsContent searchParams={searchParams} />
       </Suspense>

@@ -45,6 +45,7 @@ export function FatalOccurrencesModal({
         title={fatalName ?? "Fatal error details"}
         description={`${occurrences.length} audit${occurrences.length === 1 ? "" : "s"} with this fatal parameter in the selected period`}
         className="dash-fatal-modal"
+        rootClassName={viewAuditId ? "ui-modal-root--underlay" : undefined}
       >
         {occurrences.length === 0 ? (
           <p className="dash-empty">No matching audits found.</p>
@@ -62,7 +63,7 @@ export function FatalOccurrencesModal({
                   <th>Audit date</th>
                   <th>Quality</th>
                   <th>Final</th>
-                  <th aria-label="Actions" />
+                  <th className="col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -81,14 +82,15 @@ export function FatalOccurrencesModal({
                     </td>
                     <td>{row.qualityPct}%</td>
                     <td className="dash-fatal-modal__final">{row.finalPct}%</td>
-                    <td className="dash-fatal-modal__actions">
+                    <td className="col-actions dash-fatal-modal__actions">
                       <button
                         type="button"
                         className="ui-btn ui-btn--sm ui-btn--ghost dash-fatal-modal__view-btn"
+                        title="View audit details"
                         onClick={() => setViewAuditId(row.id)}
                       >
                         <FileText size={14} aria-hidden />
-                        View form
+                        Details
                       </button>
                     </td>
                   </tr>
@@ -103,6 +105,7 @@ export function FatalOccurrencesModal({
         auditId={viewAuditId}
         canEditAudits={canEditAudits}
         canEditSupervisorRemarks={canEditSupervisorRemarks}
+        elevated
         onClose={() => setViewAuditId(null)}
       />
     </>

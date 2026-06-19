@@ -1,6 +1,8 @@
 import NextAuth from "next-auth";
 import { authConfig } from "@/lib/auth.config";
 import { ensureAuthEnv } from "@/lib/deployment";
+import { canAccessPath } from "@/lib/rbac";
+import type { SessionRole } from "@/lib/rbac";
 import { NextResponse } from "next/server";
 
 ensureAuthEnv();
@@ -41,6 +43,14 @@ export default auth((req) => {
     const tab = tabByPath[pathname];
     const target = tab ? `/settings?tab=${tab}` : "/settings";
     return NextResponse.redirect(new URL(target, nextUrl));
+  }
+
+  // JWT role/scopes may be stale until session maxAge expires.
+  // Session revocation (deactivate, role change) is enforced in requireAuth()
+  // via sessionVersion — middleware only checks route-level scope from JWT.
+  const role = req.auth?.user?.role as SessionRole | undefined;
+  if (role && !canAccessPath(role, pathname)) {
+    return NextResponse.redirect(new URL("/access-denied", nextUrl));
   }
 
   return NextResponse.next();

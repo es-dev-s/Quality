@@ -34,10 +34,7 @@ export default function FormTemplatesPage({
   searchParams,
 }: FormTemplatesPageProps) {
   return (
-    <PageFrame
-      title="Form templates"
-      description="Create audit rubrics, assign them to roles, and manage scoring parameters"
-    >
+    <PageFrame>
       <Suspense fallback={<FormsHubSkeleton />}>
         <TemplatesContent searchParams={searchParams} />
       </Suspense>

@@ -21,6 +21,7 @@ import type {
   UserImportResult,
 } from "@/lib/import/user-import-types";
 import { cn } from "@/lib/utils";
+import { LoadingZone } from "@/components/primitives/loading-zone";
 
 type ImportFormat = "csv" | "json";
 
@@ -293,6 +294,7 @@ export function DataImportPanel({ roles }: DataImportPanelProps) {
         ) : null}
       </section>
 
+      <LoadingZone loading={isImporting} label="Importing users…">
       <section className="import-card">
         <div className="import-card__head">
           <div>
@@ -395,6 +397,7 @@ export function DataImportPanel({ roles }: DataImportPanelProps) {
           </button>
         </div>
       </section>
+      </LoadingZone>
     </div>
   );
 }

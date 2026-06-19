@@ -15,6 +15,7 @@ import {
 } from "@/lib/audit/interaction-options";
 import { isInteractionDetailsComplete } from "@/lib/audit/validate-interaction-details";
 import { getScoreTone, toneClass } from "@/lib/audit/score-visual";
+import type { AuditReferenceOption } from "@/lib/actions/audit";
 import type { TemplateListItem } from "@/lib/actions/templates";
 import type {
   AuditFormData,
@@ -106,6 +107,7 @@ type AuditFormProps = {
   currentAuditorName?: string;
   interactionConfig: InteractionConfig;
   templates: TemplateListItem[];
+  auditReferenceOptions?: AuditReferenceOption[];
   initialTemplateId: string;
   initialType?: InteractionType;
   editAuditId?: string;
@@ -129,6 +131,7 @@ export function AuditForm({
   currentAuditorName = "",
   interactionConfig,
   templates,
+  auditReferenceOptions = [],
   initialTemplateId,
   initialType = "Call",
   editAuditId,
@@ -438,14 +441,13 @@ export function AuditForm({
           >
             Calculate Score
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={pending || !canCalculate}>
-            {pending
-              ? isEditMode
-                ? "Saving…"
-                : "Saving…"
-              : isEditMode
-                ? "Save changes"
-                : "Save to History"}
+          <Button
+            size="sm"
+            loading={pending}
+            onClick={handleSave}
+            disabled={!canCalculate}
+          >
+            {isEditMode ? "Save changes" : "Save to History"}
           </Button>
         </div>
       </header>
@@ -733,6 +735,7 @@ export function AuditForm({
                     interactionType={formData.type}
                     required={!isCallInteraction}
                     inline={isCallInteraction}
+                    auditReferenceOptions={auditReferenceOptions}
                     onChange={(referenceUrl) => updateForm({ referenceUrl })}
                   />
                 </div>

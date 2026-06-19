@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Search, UserPlus } from "lucide-react";
 import { Badge } from "@/components/primitives/badge";
 import { Button } from "@/components/primitives/button";
+import { Input } from "@/components/primitives/field";
 import {
   DataTablePanel,
   usePaginatedRows,
@@ -43,9 +44,9 @@ export function AgentsTable({
   const pagination = usePaginatedRows(filtered);
 
   return (
-    <>
-      <div className="admin-section-head">
-        {!embedded && (
+    <div className={embedded ? "settings-tab-layout" : undefined}>
+      {!embedded && (
+        <div className="admin-section-head">
           <div>
             <h2 className="admin-section-head__title">Agent users</h2>
             <p className="admin-section-head__desc">
@@ -53,53 +54,56 @@ export function AgentsTable({
               filters.
             </p>
           </div>
-        )}
-        {embedded && (
-          <p className="admin-section-head__desc">
-            Users assigned the <strong>Agent</strong> system role. Their display
-            name is used on audit forms and must match audit records for scoped
-            access.
-          </p>
-        )}
-        {canManageUsers && onOpenUsersTab && (
-          <Button onClick={onOpenUsersTab}>
-            <UserPlus size={16} />
-            Manage in Users
-          </Button>
-        )}
-        {!canManageUsers && onOpenTeamTab && (
-          <Button onClick={onOpenTeamTab}>
-            <UserPlus size={16} />
-            Request agent
-          </Button>
-        )}
-        {canManageUsers && !onOpenUsersTab && (
-          <Link href="/settings?tab=users" className="ui-btn ui-btn--primary ui-btn--md">
-            <UserPlus size={16} />
-            Manage in Users
-          </Link>
-        )}
-      </div>
+        </div>
+      )}
 
-      <div className="platform-settings__toolbar">
-        <div className="platform-settings__search-wrap">
-          <Search
-            size={16}
-            className="platform-settings__search-icon"
-            aria-hidden
-          />
-          <input
+      <div className={embedded ? "settings-tab-layout__head" : undefined}>
+        <div className="section-toolbar">
+        <span className="section-toolbar__meta">
+          {filtered.length} agent{filtered.length === 1 ? "" : "s"}
+        </span>
+        <div className="section-toolbar__search">
+          <Search size={16} className="section-toolbar__search-icon" aria-hidden />
+          <Input
             type="search"
-            className="platform-settings__search"
+            className="ui-input"
             placeholder="Search agent users…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search agent users"
           />
+        </div>
+        <div className="section-toolbar__actions">
+          {canManageUsers && onOpenUsersTab && (
+            <Button onClick={onOpenUsersTab}>
+              <UserPlus size={16} />
+              Manage in Users
+            </Button>
+          )}
+          {!canManageUsers && onOpenTeamTab && (
+            <Button onClick={onOpenTeamTab}>
+              <UserPlus size={16} />
+              Request agent
+            </Button>
+          )}
+          {canManageUsers && !onOpenUsersTab && (
+            <Link
+              href="/settings?tab=users"
+              className="ui-btn ui-btn--primary ui-btn--md"
+            >
+              <UserPlus size={16} />
+              Manage in Users
+            </Link>
+          )}
+        </div>
         </div>
       </div>
 
-      {filtered.length === 0 ? (
-        <div className="ui-table-wrap">
+      <div className={embedded ? "settings-tab-layout__body" : undefined}>
+        <DataTablePanel
+          pagination={pagination}
+          fillViewport={embedded}
+          renderTable={(slice) => (
           <table className="ui-table platform-report-table">
             <thead>
               <tr>
@@ -111,34 +115,18 @@ export function AgentsTable({
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td colSpan={5} className="ui-table__empty">
-                  {agents.length === 0
-                    ? canManageUsers
-                      ? "No agent users yet. Create a user and assign the Agent role in the Users tab."
-                      : "No users are assigned the Agent role yet."
-                    : "No agent users match your search."}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <DataTablePanel
-          pagination={pagination}
-          renderTable={(slice) => (
-            <table className="ui-table platform-report-table">
-              <thead>
+              {slice.length === 0 ? (
                 <tr>
-                  <th>Display name</th>
-                  <th>Email</th>
-                  <th>Date of joining</th>
-                  <th>Audits</th>
-                  <th>Profile</th>
+                  <td colSpan={5} className="ui-table__empty">
+                    {agents.length === 0
+                      ? canManageUsers
+                        ? "No agent users yet. Create a user and assign the Agent role in the Users tab."
+                        : "No users are assigned the Agent role yet."
+                      : "No agent users match your search."}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {slice.map((agent) => (
+              ) : (
+                slice.map((agent) => (
                   <tr key={agent.id}>
                     <td style={{ fontWeight: 500 }}>{agent.name}</td>
                     <td>{agent.email}</td>
@@ -152,19 +140,20 @@ export function AgentsTable({
                       )}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        />
-      )}
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
+      />
 
-      {canManage && (
-        <p className="ui-hint" style={{ marginTop: 12 }}>
-          To add or remove agents, use the Users tab and assign the Agent system
-          role. Pre-named agent lists are no longer used.
-        </p>
-      )}
-    </>
+        {canManage && (
+          <p className="ui-hint" style={{ marginTop: 12 }}>
+            To add or remove agents, use the Users tab and assign the Agent system
+            role. Pre-named agent lists are no longer used.
+          </p>
+        )}
+      </div>
+    </div>
   );
 }

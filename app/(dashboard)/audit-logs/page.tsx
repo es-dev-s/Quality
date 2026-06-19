@@ -20,6 +20,7 @@ async function AuditLogsContent() {
   return (
     <AuditLogsTable
       submissions={submissions}
+      showSectionHead={false}
       feedbackStatusRole={session.user.role}
       canEditFeedbackFully={canEditFeedbackFully(session.user.role)}
       canEditFeedbackDate={canEditFeedbackDate(session.user.role)}
@@ -33,10 +34,7 @@ async function AuditLogsContent() {
 
 export default function AuditLogsPage() {
   return (
-    <PageFrame
-      title="Audit Logs"
-      description="Browse recent saved audits, scores, and submission history"
-    >
+    <PageFrame>
       <Suspense fallback={<TablePageSkeleton rows={12} />}>
         <AuditLogsContent />
       </Suspense>

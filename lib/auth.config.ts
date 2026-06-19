@@ -10,7 +10,7 @@ export const authConfig = {
   trustHost: resolveTrustHost(),
   useSecureCookies,
   ...(useSecureCookies ? {} : { cookies: buildHttpAuthCookies() }),
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: 8 * 60 * 60 },
   pages: {
     signIn: "/login",
   },
@@ -20,6 +20,8 @@ export const authConfig = {
       if (user) {
         token.id = user.id!;
         token.role = user.role;
+        token.sessionVersion =
+          (user as { sessionVersion?: number }).sessionVersion ?? 0;
       }
       return token;
     },
@@ -27,6 +29,7 @@ export const authConfig = {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as SessionRole;
+        session.user.sessionVersion = token.sessionVersion as number;
       }
       return session;
     },

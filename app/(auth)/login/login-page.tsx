@@ -57,8 +57,8 @@ export default function LoginPage() {
             />
           </Field>
 
-          <Button type="submit" block disabled={pending}>
-            {pending ? "Signing in..." : "Sign in"}
+          <Button type="submit" block loading={pending}>
+            Sign in
           </Button>
         </form>
       </div>

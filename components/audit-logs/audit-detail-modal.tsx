@@ -2,17 +2,22 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, ExternalLink, FileText, MessageSquare, Pencil, Phone, ShieldAlert, X } from "lucide-react";
 import { getAuditDetail, updateSupervisorRemarks } from "@/lib/actions/audit";
 import { ReferenceImageViewer } from "@/components/forms/reference-image-viewer";
 import {
+  auditCodeFromReferencePath,
   isUploadedAudioPath,
   isUploadedImagePath,
+  isAuditReferencePath,
+  normalizeUploadedReferencePath,
 } from "@/lib/upload/reference-url-paths";
 import type { AuditDetail } from "@/lib/audit/audit-records";
 import type { AuditRow } from "@/lib/audit/types";
 import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
 import { useStaleRequestGuard } from "@/lib/hooks/use-stale-request-guard";
+import { LoadingIndicator, LoadingZone } from "@/components/primitives/loading-zone";
 import { cn } from "@/lib/utils";
 
 type AuditDetailModalProps = {
@@ -20,6 +25,8 @@ type AuditDetailModalProps = {
   canEditAudits?: boolean;
   canEditSupervisorRemarks?: boolean;
   onClose: () => void;
+  /** Render above another open modal (e.g. fatal occurrences list) */
+  elevated?: boolean;
 };
 
 function gradeClass(grade: string) {
@@ -64,7 +71,9 @@ export function AuditDetailModal({
   canEditAudits = false,
   canEditSupervisorRemarks = false,
   onClose,
+  elevated = false,
 }: AuditDetailModalProps) {
+  const [mounted, setMounted] = useState(false);
   const [detail, setDetail] = useState<AuditDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [remarksDraft, setRemarksDraft] = useState("");
@@ -72,6 +81,19 @@ export function AuditDetailModal({
   const [isPending, startTransition] = useTransition();
   const [remarksPending, startRemarks] = useTransition();
   const { beginRequest } = useStaleRequestGuard();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!auditId) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [auditId]);
 
   useEffect(() => {
     if (!auditId) {
@@ -122,10 +144,14 @@ export function AuditDetailModal({
     });
   }
 
-  if (!auditId) return null;
+  if (!auditId || !mounted) return null;
 
-  return (
-    <div className="platform-modal" role="dialog" aria-modal="true">
+  return createPortal(
+    <div
+      className={cn("platform-modal", elevated && "platform-modal--stacked")}
+      role="dialog"
+      aria-modal="true"
+    >
       <button
         type="button"
         className="platform-modal__backdrop"
@@ -133,7 +159,12 @@ export function AuditDetailModal({
         onClick={onClose}
       />
 
-      <div className="platform-modal__panel platform-modal__panel--wide platform-modal__panel--adi">
+      <div
+        className={cn(
+          "platform-modal__panel platform-modal__panel--wide platform-modal__panel--adi",
+          elevated && "platform-modal__panel--adi-xl"
+        )}
+      >
 
         {/* ── Header ─────────────────────────────────────────────── */}
         <header className="adi-header">
@@ -171,16 +202,14 @@ export function AuditDetailModal({
         {/* ── Body ───────────────────────────────────────────────── */}
         <div className="adi-body">
           {isPending && !detail && !error && (
-            <div className="adi-loading">
-              <div className="adi-loading__spinner" aria-hidden />
-              <p>Loading audit…</p>
-            </div>
+            <LoadingIndicator label="Loading audit…" />
           )}
           {error && (
             <p className="platform-empty platform-empty--error">{error}</p>
           )}
 
           {detail && (
+            <LoadingZone loading={remarksPending} label="Saving remarks…">
             <div className="adi-content">
 
               {/* ── KPI bar ──────────────────────────────────────── */}
@@ -250,35 +279,56 @@ export function AuditDetailModal({
 
                 {detail.referenceUrl ? (
                   <div className="adi-reference">
+                    {(() => {
+                      const referenceUrl = normalizeUploadedReferencePath(
+                        detail.referenceUrl
+                      );
+                      return (
+                        <>
                     <span className="adi-field__label">
-                      {isUploadedImagePath(detail.referenceUrl)
+                      {isUploadedImagePath(referenceUrl)
                         ? "Reference image"
-                        : isUploadedAudioPath(detail.referenceUrl)
+                        : isUploadedAudioPath(referenceUrl)
                           ? "Call recording"
-                          : "Reference URL"}
+                          : isAuditReferencePath(referenceUrl)
+                            ? "Linked audit"
+                            : "Reference URL"}
                     </span>
                     <div className="adi-reference__media">
-                      {isUploadedImagePath(detail.referenceUrl) ? (
-                        <ReferenceImageViewer src={detail.referenceUrl} />
-                      ) : isUploadedAudioPath(detail.referenceUrl) ? (
+                      {isUploadedImagePath(referenceUrl) ? (
+                        <ReferenceImageViewer src={referenceUrl} />
+                      ) : isUploadedAudioPath(referenceUrl) ? (
                         <audio
                           controls
                           preload="none"
-                          src={detail.referenceUrl}
+                          src={referenceUrl}
                           className="adi-audio"
                         />
+                      ) : isAuditReferencePath(referenceUrl) ? (
+                        <Link
+                          href={`/audit-logs?search=${encodeURIComponent(
+                            auditCodeFromReferencePath(referenceUrl) ?? ""
+                          )}`}
+                          className="adi-url-link"
+                        >
+                          <ExternalLink size={13} aria-hidden />
+                          {auditCodeFromReferencePath(referenceUrl)}
+                        </Link>
                       ) : (
                         <a
-                          href={detail.referenceUrl}
+                          href={referenceUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="adi-url-link"
                         >
                           <ExternalLink size={13} aria-hidden />
-                          {detail.referenceUrl}
+                          {referenceUrl}
                         </a>
                       )}
                     </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 ) : null}
 
@@ -444,9 +494,11 @@ export function AuditDetailModal({
               )}
 
             </div>
+            </LoadingZone>
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -11,7 +11,11 @@ model User {
   name               String?
   email              String                  @unique
   password           String
+  passwordEncrypted  String?                 @map("password_encrypted")
   roleId             String
+  isActive           Boolean                 @default(true) @map("is_active")
+  approvalStatus     UserApprovalStatus      @default(ACTIVE) @map("approval_status")
+  sessionVersion     Int                     @default(0) @map("session_version")
   dateOfJoining      String?                 @map("date_of_joining")
   createdById        String?                 @map("created_by_id")
   role               Role                    @relation(fields: [roleId], references: [id], onDelete: Restrict)
@@ -22,10 +26,61 @@ model User {
   provisioningRequests UserProvisioningRequest[] @relation("ProvisioningRequestedBy")
   provisioningReviews  UserProvisioningRequest[] @relation("ProvisioningReviewedBy")
   approvedFromRequest  UserProvisioningRequest?  @relation("ApprovedUser")
+  agentAssignments     AgentAssignment[]       @relation("AgentAssignments")
+  assignedAgents       AgentAssignment[]       @relation("AssignedAgentsTo")
+  assignmentsMade      AgentAssignment[]       @relation("AgentAssignedByQM")
+  securityAuditTargets SecurityAuditLog[]      @relation("SecurityAuditTarget")
+  securityAuditActions SecurityAuditLog[]      @relation("SecurityAuditActor")
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
 
   @@index([createdById])
+  @@index([isActive])
+  @@index([approvalStatus])
+  @@index([roleId])
+  @@index([createdAt])
+  @@index([roleId, isActive])
+}
+
+enum UserApprovalStatus {
+  ACTIVE
+  PENDING_APPROVAL
+  REJECTED
+}
+
+model AgentAssignment {
+  id           String   @id @default(cuid())
+  agentId      String   @map("agent_id")
+  assignedToId String   @map("assigned_to_id")
+  assignedById String   @map("assigned_by_id")
+  assignedAt   DateTime @default(now()) @map("assigned_at")
+
+  agent      User @relation("AgentAssignments", fields: [agentId], references: [id], onDelete: Cascade)
+  assignedTo User @relation("AssignedAgentsTo", fields: [assignedToId], references: [id], onDelete: Cascade)
+  assignedBy User @relation("AgentAssignedByQM", fields: [assignedById], references: [id], onDelete: Restrict)
+
+  @@unique([agentId, assignedToId])
+  @@index([assignedToId])
+  @@index([assignedById])
+  @@index([agentId])
+  @@map("agent_assignments")
+}
+
+model SecurityAuditLog {
+  id           String   @id @default(cuid())
+  action       String
+  actorUserId  String   @map("actor_user_id")
+  targetUserId String?  @map("target_user_id")
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  actor  User  @relation("SecurityAuditActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  target User? @relation("SecurityAuditTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([action])
+  @@index([actorUserId])
+  @@index([targetUserId])
+  @@map("security_audit_logs")
 }
 
 enum UserProvisioningStatus {
@@ -39,6 +94,7 @@ model UserProvisioningRequest {
   name           String
   email          String
   passwordHash   String                   @map("password_hash")
+  passwordEncrypted String?               @map("password_encrypted")
   dateOfJoining  String?                  @map("date_of_joining")
   targetRoleSlug String                   @map("target_role_slug")
   status         UserProvisioningStatus   @default(PENDING)
@@ -206,4 +262,12 @@ model AuditSubmission {
   @@index([lob])
   @@index([grade])
   @@index([createdAt])
+  @@index([submittedById])
+  @@index([templateId])
+  @@index([auditor])
+  @@index([auditDate])
+  @@index([feedbackStatus])
+  @@index([submittedById, auditDate])
+  @@index([templateId, auditDate])
+  @@index([id, createdAt])
 }

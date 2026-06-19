@@ -1,0 +1,304 @@
+/* Production light theme — full-width layout, refined sections & modals */
+
+/* ── Full-width page shells ─────────────────────────────────────── */
+.dash-analytics,
+.audit-logs,
+.qms-analytics,
+.platform-report,
+.platform-settings,
+.import-page {
+  max-width: none !important;
+  width: 100%;
+  margin-inline: 0 !important;
+}
+
+/* ── Section panels ─────────────────────────────────────────────── */
+.dash-topbar__panel,
+.dash-panel,
+.platform-kpi,
+.platform-report__toolbar,
+.platform-report-table-panel,
+.platform-settings__panel,
+.platform-settings__notice,
+.qms-toolbar,
+.qms-card,
+.audit-logs__filters-panel,
+.ui-card,
+.ui-stat-card {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+
+.dash-topbar__panel,
+.dash-panel {
+  padding: var(--space-5) var(--space-6);
+}
+
+.platform-kpi {
+  padding: var(--space-4) var(--space-5);
+}
+
+.platform-kpi__label {
+  color: var(--color-text-secondary);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wider);
+}
+
+.platform-kpi__value {
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.platform-kpi__hint {
+  color: var(--color-text-tertiary);
+}
+
+/* ── Settings & tabs ────────────────────────────────────────────── */
+.platform-settings__tab {
+  border-color: var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  font-weight: var(--weight-medium);
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.platform-settings__tab:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+.platform-settings__tab--active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-text);
+}
+
+.platform-settings__list li,
+.platform-settings__lob-card {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-border);
+}
+
+.platform-settings__search {
+  background: var(--color-bg);
+  border-color: var(--color-border-strong);
+  color: var(--color-text-primary);
+}
+
+.platform-settings__count {
+  color: var(--color-text-tertiary);
+  font-weight: var(--weight-medium);
+}
+
+/* ── Audit logs filters ─────────────────────────────────────────── */
+.audit-logs__filters-panel {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.audit-logs__title {
+  color: var(--color-text-primary);
+}
+
+.audit-logs__desc,
+.dash-cell-muted,
+.table-meta {
+  color: var(--color-text-secondary);
+}
+
+/* ── Forms (audit) — full width workspace ───────────────────────── */
+.audit-form-page__inner {
+  max-width: none !important;
+  width: 100%;
+  margin-inline: 0 !important;
+}
+
+.audit-form-page__chrome {
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.audit-form-scroll {
+  background: var(--color-bg);
+  border-right-color: var(--color-border);
+  scrollbar-color: color-mix(in srgb, var(--color-text-tertiary) 50%, transparent)
+    var(--color-bg-secondary);
+}
+
+.audit-form-scroll::-webkit-scrollbar-track {
+  background: var(--color-bg-secondary);
+}
+
+.audit-form-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-color: var(--color-bg-secondary);
+}
+
+.audit-form-section,
+.audit-form-card {
+  background: var(--color-bg);
+  border-color: var(--color-border);
+}
+
+/* ── Modals & dialogs ───────────────────────────────────────────── */
+.platform-modal__backdrop,
+.ui-modal-backdrop {
+  background: rgba(29, 29, 31, 0.32);
+  backdrop-filter: blur(6px);
+}
+
+.platform-modal__panel,
+.ui-modal-panel {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+}
+
+.platform-modal__title,
+.ui-modal-panel__title {
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.platform-modal__sub,
+.ui-modal-panel__desc {
+  color: var(--color-text-secondary);
+}
+
+.platform-modal__head {
+  border-bottom: 1px solid var(--color-divider);
+  background: var(--color-bg-secondary);
+}
+
+.platform-modal__body {
+  background: var(--color-bg);
+}
+
+/* ── Tables ─────────────────────────────────────────────────────── */
+.ui-table thead th,
+.platform-report-table thead th {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  border-bottom-color: var(--color-border);
+}
+
+.ui-table tbody tr:hover,
+.platform-report-table tbody tr:hover {
+  background: var(--color-bg-secondary);
+}
+
+.ui-table td,
+.platform-report-table td {
+  color: var(--color-text-primary);
+}
+
+.ui-table__empty {
+  color: var(--color-text-secondary);
+}
+
+/* ── Login (light, centered card is intentional) ────────────────── */
+.login-page {
+  background: linear-gradient(180deg, #f5f5f7 0%, #ffffff 48%);
+}
+
+.login-card {
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-md);
+}
+
+.login-card__title {
+  color: var(--color-text-primary);
+}
+
+.login-card__subtitle {
+  color: var(--color-text-secondary);
+}
+
+.login-card__logo {
+  background: var(--color-accent);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Dashboard panels text ──────────────────────────────────────── */
+.dash-panel__title,
+.dash-section-title,
+.qms-card__title {
+  color: var(--color-text-primary);
+}
+
+.dash-panel__sub,
+.qms-card__sub {
+  color: var(--color-text-secondary);
+}
+
+/* ── Import page ──────────────────────────────────────────────────── */
+.import-page {
+  max-width: none !important;
+}
+
+.import-page__notice {
+  border-radius: var(--radius-md);
+}
+
+/* ── Empty states ─────────────────────────────────────────────────── */
+.platform-empty {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+  border-color: var(--color-border);
+}
+
+/* ── Segmented controls / filter chips ────────────────────────────── */
+.audit-logs__filter-chip,
+.audit-logs__periods-btn {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.audit-logs__periods-btn--active,
+.audit-logs__filters-toggle--active {
+  background: var(--color-accent-subtle);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+/* ── Admin / team tables ──────────────────────────────────────────── */
+.platform-settings__item {
+  background: var(--color-bg);
+  border-color: var(--color-border);
+}
+
+.platform-settings__empty {
+  color: var(--color-text-tertiary);
+}
+
+/* ── Wide modals use more horizontal space ────────────────────────── */
+.platform-modal__panel--wide {
+  width: min(100%, min(960px, calc(100vw - 48px)));
+}
+
+.platform-modal__panel--adi {
+  width: min(100%, min(1100px, calc(100vw - 48px)));
+}
+
+.platform-modal__panel--adi-xl {
+  width: min(100%, min(1360px, calc(100vw - 24px)));
+  max-width: min(1360px, calc(100vw - 24px));
+}
+
+@media (min-width: 1280px) {
+  :root {
+    --content-padding: var(--space-8);
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --content-padding: var(--space-4);
+  }
+}

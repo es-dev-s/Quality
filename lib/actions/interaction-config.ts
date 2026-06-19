@@ -15,9 +15,10 @@ import {
   rowToInteractionConfig,
 } from "@/lib/audit/interaction-config-db";
 import {
-  enrichInteractionConfigWithRoleUsers,
+  enrichInteractionConfigForSession,
   stripInteractionPeopleLists,
 } from "@/lib/audit/interaction-config-people";
+import { dataScopeFromSession } from "@/lib/audit/data-scope";
 import { toIsoTimestamp } from "@/lib/db/to-iso-timestamp";
 import { withDbRetry } from "@/lib/db/with-db-retry";
 import { assertWriteRateLimit } from "@/lib/server/rate-limit";
@@ -60,17 +61,18 @@ function revalidateInteractionPaths() {
 }
 
 export async function getInteractionConfig(): Promise<InteractionConfig> {
-  await requireAuth();
+  const session = await requireAuth();
   const row = await fetchInteractionConfigRow();
   const config = rowToInteractionConfig(row);
-  return enrichInteractionConfigWithRoleUsers(config);
+  return enrichInteractionConfigForSession(config, dataScopeFromSession(session));
 }
 
 export async function getInteractionConfigManagerData() {
   const session = await requirePermission(PERMISSIONS.SETTINGS_WRITE);
   const row = await fetchInteractionConfigRow();
-  const config = await enrichInteractionConfigWithRoleUsers(
-    rowToInteractionConfig(row)
+  const config = await enrichInteractionConfigForSession(
+    rowToInteractionConfig(row),
+    dataScopeFromSession(session)
   );
 
   return {

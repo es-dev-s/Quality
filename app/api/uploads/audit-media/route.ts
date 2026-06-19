@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
-import { auth } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import { PERMISSIONS } from "@/lib/permissions";
 import { hasScope } from "@/lib/rbac";
 import {
@@ -10,12 +10,15 @@ import {
   resolveAuditMediaUploadPath,
   validateAuditMediaFile,
 } from "@/lib/upload/audit-media";
+import { validateAudioMagicBytes } from "@/lib/upload/validate-magic-bytes";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const session = await auth();
-  if (!session?.user) {
+  let session;
+  try {
+    session = await requireAuth();
+  } catch {
     return Response.json({ error: "Unauthorized." }, { status: 401 });
   }
 
@@ -47,6 +50,10 @@ export async function POST(request: Request) {
   try {
     await mkdir(absoluteDir, { recursive: true });
     const buffer = Buffer.from(await entry.arrayBuffer());
+    const magic = validateAudioMagicBytes(buffer);
+    if (!magic.ok) {
+      return Response.json({ error: magic.error }, { status: 400 });
+    }
     await writeFile(absolutePath, buffer);
   } catch (error) {
     console.error("[upload] audit media save failed:", error);

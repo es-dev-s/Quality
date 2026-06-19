@@ -101,8 +101,8 @@ export function RoleFormDialog({ open, onOpenChange, role }: RoleFormDialogProps
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={isPending}>
-            {isPending ? "Saving..." : isEditing ? "Save Changes" : "Create"}
+          <Button type="submit" loading={isPending}>
+            {isEditing ? "Save Changes" : "Create"}
           </Button>
         </ModalActions>
       </form>

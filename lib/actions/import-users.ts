@@ -1,6 +1,5 @@
 "use server";
 
-import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type {
@@ -12,6 +11,7 @@ import { IMPORT_ENABLED } from "@/lib/constants";
 import { PERMISSIONS } from "@/lib/permissions";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { prisma } from "@/lib/prisma";
+import { buildPasswordCredentials } from "@/lib/password-credentials";
 
 const importRowSchema = z.object({
   name: z.string().min(1),
@@ -113,12 +113,14 @@ export async function importUsers(
       }
 
       try {
+        const credentials = await buildPasswordCredentials(parsedRow.data.password);
         await prisma.user.update({
           where: { id: existing.id },
           data: {
             name: parsedRow.data.name,
             roleId,
-            password: await bcrypt.hash(parsedRow.data.password, 12),
+            password: credentials.password,
+            passwordEncrypted: credentials.passwordEncrypted,
           },
         });
         result.updated += 1;
@@ -134,11 +136,13 @@ export async function importUsers(
     }
 
     try {
+      const credentials = await buildPasswordCredentials(parsedRow.data.password);
       await prisma.user.create({
         data: {
           name: parsedRow.data.name,
           email,
-          password: await bcrypt.hash(parsedRow.data.password, 12),
+          password: credentials.password,
+          passwordEncrypted: credentials.passwordEncrypted,
           roleId,
         },
       });

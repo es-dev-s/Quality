@@ -36,7 +36,7 @@ export function validateInteractionDetails(
       typeof formData.referenceUrl !== "string" ||
       !formData.referenceUrl.trim()
     ) {
-      return "Reference URL or audio recording is required.";
+      return "Reference is required (URL, image, audio, or linked audit).";
     }
   }
 

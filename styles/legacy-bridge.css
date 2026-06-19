@@ -1,0 +1,59 @@
+/* Maps legacy app variables to design tokens */
+
+:root {
+  --sidebar-w: var(--sidebar-width);
+  --sidebar-collapsed-w: var(--sidebar-collapsed-width);
+  --header-h: var(--header-height);
+  --radius: var(--radius-md);
+  --shadow: var(--shadow-sm);
+
+  --color-fg: var(--color-text-primary);
+  --color-surface: var(--color-bg);
+  --color-muted: var(--color-bg-secondary);
+  --color-muted-fg: var(--color-text-secondary);
+  --color-accent-fg: var(--color-text-inverse);
+  --color-accent-soft: var(--color-accent-subtle);
+  --color-accent-muted: var(--color-accent-subtle);
+  --color-danger: var(--color-error);
+  --color-danger-fg: var(--color-text-inverse);
+  --color-primary: var(--color-accent);
+
+  --ds-space-1: var(--space-1);
+  --ds-space-2: var(--space-2);
+  --ds-space-3: var(--space-3);
+  --ds-space-4: var(--space-4);
+  --ds-space-5: var(--space-5);
+  --ds-space-6: var(--space-6);
+  --ds-space-8: var(--space-8);
+  --ds-space-10: var(--space-10);
+  --ds-space-12: var(--space-12);
+  --ds-space-16: var(--space-16);
+
+  --ds-text-xs: var(--text-xs);
+  --ds-text-sm: var(--text-sm);
+  --ds-text-base: var(--text-base);
+  --ds-text-md: var(--text-md);
+  --ds-text-lg: var(--text-lg);
+  --ds-text-xl: var(--text-xl);
+  --ds-text-2xl: var(--text-2xl);
+  --ds-text-3xl: var(--text-3xl);
+
+  --ds-radius-sm: var(--radius-sm);
+  --ds-radius-md: var(--radius-md);
+  --ds-radius-lg: var(--radius-lg);
+  --ds-radius-xl: var(--radius-xl);
+
+  --ds-shadow-sm: var(--shadow-sm);
+  --ds-shadow-md: var(--shadow-md);
+  --ds-shadow-lg: var(--shadow-lg);
+
+  --ds-duration-fast: var(--duration-fast);
+  --ds-duration-normal: var(--duration-normal);
+  --ds-duration-slow: var(--duration-slow);
+  --ds-ease-out: var(--ease-out);
+
+  --ds-z-dropdown: var(--z-dropdown);
+  --ds-z-modal: var(--z-modal);
+  --ds-z-modal-stack: var(--z-modal-stack);
+  --ds-z-toast: var(--z-toast);
+}

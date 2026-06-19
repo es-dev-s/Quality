@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --hostname 0.0.0.0 -p 4782",
+    "dev": "prisma generate && next dev --hostname 0.0.0.0 -p 4782",
     "clean": "node --input-type=module -e \"import fs from 'node:fs'; fs.rmSync('.next',{recursive:true,force:true});\"",
     "build": "prisma generate && next build",
     "start": "next start --hostname 0.0.0.0 -p 4782",
@@ -12,6 +12,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:uploads": "tsx scripts/migrate-uploads.ts",
     "db:seed:superadmin": "tsx prisma/seed-superadmin.ts",
     "db:seed:rbac": "tsx prisma/seed-rbac.ts",
     "db:seed": "tsx prisma/seed-rbac.ts && tsx prisma/seed-superadmin.ts",

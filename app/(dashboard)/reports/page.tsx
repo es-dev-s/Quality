@@ -11,10 +11,7 @@ async function ReportsContent() {
 
 export default function ReportsPage() {
   return (
-    <PageFrame
-      title="Reports"
-      description="Executive performance snapshot with date range, pass rate, and export"
-    >
+    <PageFrame>
       <Suspense fallback={<TablePageSkeleton rows={10} />}>
         <ReportsContent />
       </Suspense>

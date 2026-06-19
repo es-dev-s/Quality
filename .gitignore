@@ -42,8 +42,8 @@ next-env.d.ts
 
 /lib/generated/prisma
 
-# user-uploaded audit media (keep folder via .gitkeep)
-#!/public/uploads/audit-media/*
-!/public/uploads/audit-media/.gitkeep
-/public/uploads/audit-images/*
-!/public/uploads/audit-images/.gitkeep
+# user-uploaded audit media (private storage — not served from public/)
+/storage/uploads/audit-media/*
+!/storage/uploads/audit-media/.gitkeep
+/storage/uploads/audit-images/*
+!/storage/uploads/audit-images/.gitkeep

@@ -13,10 +13,7 @@ async function AnalyticsContent() {
 
 export default function AnalyticsPage() {
   return (
-    <PageFrame
-      title="Analytics"
-      description="QMS performance insights — overview, parameters, teams, agents, compliance, and auditors"
-    >
+    <PageFrame>
       <Suspense fallback={<CardsPageSkeleton />}>
         <AnalyticsContent />
       </Suspense>

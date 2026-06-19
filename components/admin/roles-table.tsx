@@ -6,9 +6,14 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/primitives/button";
 import { Badge } from "@/components/primitives/badge";
 import { Modal } from "@/components/primitives/modal";
+import {
+  TableRowAction,
+  TableRowActionsCell,
+} from "@/components/primitives/table-row-actions";
 import { useToast } from "@/components/primitives/toast";
 import { RoleAccessMatrix } from "@/components/admin/role-access-matrix";
 import { RoleFormDialog } from "@/components/admin/role-form-dialog";
+import { LoadingZone } from "@/components/primitives/loading-zone";
 import { BulkActionBar } from "@/components/admin/bulk-action-bar";
 import {
   DataTablePanel,
@@ -100,33 +105,46 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
   }
 
   return (
-    <>
+    <div className={embedded ? "settings-tab-layout" : undefined}>
+      <div className={embedded ? "settings-tab-layout__head" : undefined}>
       <RoleAccessMatrix />
 
-      <div className="admin-section-head">
-        {!embedded && (
+      {embedded ? (
+        <div className="section-toolbar">
+          <span className="section-toolbar__meta">
+            {roles.length} role{roles.length === 1 ? "" : "s"}
+          </span>
+          <div className="section-toolbar__actions">
+            <Button
+              onClick={() => {
+                setEditingRole(null);
+                setDialogOpen(true);
+              }}
+            >
+              <Plus size={16} />
+              Add Role
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="admin-section-head">
           <div>
             <h2 className="admin-section-head__title">All Roles</h2>
             <p className="admin-section-head__desc">
               System roles ship with predefined module permissions. Custom roles can be added for specialized access.
             </p>
           </div>
-        )}
-        {embedded && (
-          <p className="admin-section-head__desc">
-            Predefined system roles control module access. User and role management is super admin only.
-          </p>
-        )}
-        <Button
-          onClick={() => {
-            setEditingRole(null);
-            setDialogOpen(true);
-          }}
-        >
-          <Plus size={16} />
-          Add Role
-        </Button>
-      </div>
+          <Button
+            onClick={() => {
+              setEditingRole(null);
+              setDialogOpen(true);
+            }}
+          >
+            <Plus size={16} />
+            Add Role
+          </Button>
+        </div>
+      )}
 
       <BulkActionBar
         selectedCount={selectedCount}
@@ -135,7 +153,10 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
         deleteLabel="Delete selected"
         isPending={pending}
       />
+      </div>
 
+      <div className={embedded ? "settings-tab-layout__body" : undefined}>
+      <LoadingZone loading={pending} label="Updating roles…">
       {roles.length === 0 ? (
         <div className="ui-table-wrap">
           <table className="ui-table ui-table--selectable platform-report-table">
@@ -161,8 +182,9 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
       ) : (
         <DataTablePanel
           pagination={pagination}
+          fillViewport={embedded}
           renderTable={(slice) => (
-            <table className="ui-table ui-table--selectable platform-report-table">
+            <table className="ui-table ui-table--selectable platform-report-table settings-table">
               <thead>
                 <tr>
                   <th className="ui-table__check-col">
@@ -181,12 +203,12 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
                   <th>Slug</th>
                   <th>Users</th>
                   <th>Scopes</th>
-                  <th style={{ textAlign: "right" }}>Actions</th>
+                  <th className="col-actions" aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
                 {slice.map((role) => (
-                  <tr key={role.id}>
+                  <tr key={role.id} className="settings-table__row">
                     <td className="ui-table__check-col">
                       {!role.isSystem ? (
                         <input
@@ -220,28 +242,25 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
                     </td>
                     <td>{role._count.users}</td>
                     <td>{role._count.scopes}</td>
-                    <td>
-                      <div className="ui-table__actions">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setEditingRole(role);
-                            setDialogOpen(true);
-                          }}
-                        >
-                          <Pencil size={16} />
-                        </Button>
-                        <Button
-                          variant="danger"
-                          size="icon"
-                          disabled={pending || role.isSystem}
-                          onClick={() => handleDelete(role.id)}
-                        >
-                          <Trash2 size={16} />
-                        </Button>
-                      </div>
-                    </td>
+                    <TableRowActionsCell ariaLabel={`Actions for ${role.name}`}>
+                      <TableRowAction
+                        onClick={() => {
+                          setEditingRole(role);
+                          setDialogOpen(true);
+                        }}
+                      >
+                        <Pencil size={14} aria-hidden />
+                        Edit
+                      </TableRowAction>
+                      <TableRowAction
+                        variant="danger"
+                        disabled={pending || role.isSystem}
+                        onClick={() => handleDelete(role.id)}
+                      >
+                        <Trash2 size={14} aria-hidden />
+                        Delete
+                      </TableRowAction>
+                    </TableRowActionsCell>
                   </tr>
                 ))}
               </tbody>
@@ -249,6 +268,8 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
           )}
         />
       )}
+      </LoadingZone>
+      </div>
 
       <Modal
         open={bulkDeleteOpen}
@@ -281,6 +302,6 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
         onOpenChange={setDialogOpen}
         role={editingRole}
       />
-    </>
+    </div>
   );
 }

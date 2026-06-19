@@ -114,6 +114,10 @@ export function canManageManagedUsers(role?: SessionRole | null): boolean {
   return hasScope(role, PERMISSIONS.USERS_MANAGE_MANAGED);
 }
 
+export function canAssignAgents(role?: SessionRole | null): boolean {
+  return hasScope(role, PERMISSIONS.AGENT_ASSIGN);
+}
+
 export function canAccessTeamManagement(role?: SessionRole | null): boolean {
   if (!role) return false;
   return (
@@ -121,7 +125,8 @@ export function canAccessTeamManagement(role?: SessionRole | null): boolean {
     canProvisionAnalysts(role) ||
     canApproveAgentRequests(role) ||
     canApproveAnalystRequests(role) ||
-    canReadManagedUsers(role)
+    canReadManagedUsers(role) ||
+    canAssignAgents(role)
   );
 }
 
@@ -165,10 +170,6 @@ export function canDeleteAuditLogs(role?: SessionRole | null): boolean {
 
 export function canWriteAuditTemplates(role?: SessionRole | null): boolean {
   return hasScope(role, PERMISSIONS.AUDIT_TEMPLATES_WRITE);
-}
-
-export function canWriteAnalytics(role?: SessionRole | null): boolean {
-  return hasScope(role, PERMISSIONS.ANALYTICS_WRITE);
 }
 
 export function canImportData(role?: SessionRole | null): boolean {

@@ -5,6 +5,7 @@ import { ChevronDown, RefreshCw, SlidersHorizontal, X } from "lucide-react";
 import { getAnalyticsData, type AnalyticsPageData } from "@/lib/actions/analytics";
 import { summaryChipClass } from "@/lib/audit/analytics-metrics";
 import { cn } from "@/lib/utils";
+import { LoadingZone } from "@/components/primitives/loading-zone";
 import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
 import { AgentsTab } from "@/components/analytics/tabs/agents-tab";
 import { AuditorsTab } from "@/components/analytics/tabs/auditors-tab";
@@ -202,7 +203,11 @@ export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
         </div>
       </div>
 
-      <div className="qms-analytics__body">
+      <LoadingZone
+        loading={isLoading}
+        label="Loading analytics…"
+        className="qms-analytics__body loading-zone--min"
+      >
         {tab === "overview" && <OverviewTab data={analytics} />}
         {tab === "parameters" && <ParametersTab data={analytics} />}
         {tab === "teams" && <TeamsTab data={analytics} />}
@@ -212,7 +217,7 @@ export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
         {tab === "leaderboards" && (
           <LeaderboardsTab data={analytics.leaderboards} />
         )}
-      </div>
+      </LoadingZone>
 
       <footer className="qms-analytics__footer">
         Quality analytics · {data.kpis.total_audits.toLocaleString()} audits

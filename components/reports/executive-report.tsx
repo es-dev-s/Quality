@@ -6,6 +6,7 @@ import {
   DataTablePanel,
   usePaginatedRows,
 } from "@/components/primitives/data-table-panel";
+import { LoadingZone } from "@/components/primitives/loading-zone";
 import { getReportData, type ReportPageData } from "@/lib/actions/reports";
 import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
 import { useStaleRequestGuard } from "@/lib/hooks/use-stale-request-guard";
@@ -121,10 +122,11 @@ export function ExecutiveReport() {
         </div>
       </div>
 
-      {isPending && !data && (
-        <p className="platform-empty">Generating report…</p>
-      )}
-
+      <LoadingZone
+        loading={isPending}
+        label={data ? "Refreshing report…" : "Loading report…"}
+        className="loading-zone--min"
+      >
       {data && data.stats.total === 0 && (
         <p className="platform-empty">
           No audits found between {data.startDate} and {data.endDate} (by audit
@@ -225,6 +227,7 @@ export function ExecutiveReport() {
           />
         </>
       )}
+      </LoadingZone>
     </div>
   );
 }

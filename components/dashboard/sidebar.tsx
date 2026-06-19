@@ -15,9 +15,6 @@ import {
 import { cn } from "@/lib/utils";
 import {
   canWriteAuditTemplates,
-  canEditFeedbackFully,
-  canEditFeedbackStatus,
-  canWriteAuditForm,
 } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { hasScope } from "@/lib/rbac";
@@ -96,7 +93,7 @@ function NavLink({
         collapsed && "dashboard-nav-link--collapsed"
       )}
     >
-      <Icon size={18} />
+      <Icon size={16} />
       {!collapsed && <span>{label}</span>}
     </Link>
   );
@@ -136,6 +133,7 @@ function FormSubLink({
 export function DashboardSidebar() {
   const pathname = usePathname();
   const { user, collapsed, mobileOpen, closeMobile } = useDashboardShell();
+
   const showTemplateAdmin = canWriteAuditTemplates(user.role);
   const visibleMainNav = mainNav.filter((item) =>
     hasScope(user.role, item.permission)
@@ -259,17 +257,6 @@ export function DashboardSidebar() {
             </div>
           )}
         </nav>
-
-        {!collapsed && (
-          <div className="dashboard-sidebar__footer">
-            <div className="dashboard-sidebar__role-card">
-              <p className="dashboard-sidebar__role-name">{user.role.name}</p>
-              <p className="dashboard-sidebar__role-slug">
-                {user.role.slug.replace("-", " ")}
-              </p>
-            </div>
-          </div>
-        )}
       </aside>
     </>
   );

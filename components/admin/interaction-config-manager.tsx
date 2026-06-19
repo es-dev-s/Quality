@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { BulkActionBar } from "@/components/admin/bulk-action-bar";
 import { Modal } from "@/components/primitives/modal";
+import { LoadingZone } from "@/components/primitives/loading-zone";
 import { useToast } from "@/components/primitives/toast";
 import { saveInteractionConfig } from "@/lib/actions/interaction-config";
 import {
@@ -582,6 +583,10 @@ export function InteractionConfigManager({
         </div>
       )}
 
+      <LoadingZone
+        loading={isSaving || saveState === "saving"}
+        label="Saving settings…"
+      >
       <div className="platform-settings__tabs" role="tablist">
         {TABS.map((item) => {
           const Icon = item.icon;
@@ -986,6 +991,8 @@ export function InteractionConfigManager({
           </div>
         </div>
       )}
+
+      </LoadingZone>
 
       <Modal
         open={deleteTarget !== null}

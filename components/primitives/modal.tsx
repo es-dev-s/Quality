@@ -11,6 +11,7 @@ type ModalProps = {
   description?: string;
   children: React.ReactNode;
   className?: string;
+  rootClassName?: string;
 };
 
 export function Modal({
@@ -20,6 +21,7 @@ export function Modal({
   description,
   children,
   className,
+  rootClassName,
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -45,7 +47,7 @@ export function Modal({
   if (!open) return null;
 
   return createPortal(
-    <div className="ui-modal-root">
+    <div className={cn("ui-modal-root", rootClassName)}>
       <button
         type="button"
         aria-label="Close dialog"

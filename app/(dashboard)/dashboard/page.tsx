@@ -23,10 +23,7 @@ async function DashboardContent() {
 
 export default function DashboardPage() {
   return (
-    <PageFrame
-      title="Dashboard"
-      description="Quality performance overview with trends, distribution, and audit targets"
-    >
+    <PageFrame>
       <Suspense fallback={<CardsPageSkeleton />}>
         <DashboardContent />
       </Suspense>

@@ -15,10 +15,7 @@ export default async function ImportPage() {
 
   if (Array.isArray(roles)) {
     return (
-      <PageFrame
-        title="Import"
-        description="Bulk import users with name, email, password, and role"
-      >
+      <PageFrame>
         <DataImportPanel roles={roles} />
       </PageFrame>
     );

@@ -33,6 +33,7 @@ export function BulkActionBar({
           <Button
             variant="danger"
             size="sm"
+            loading={isPending}
             disabled={isPending}
             onClick={onDelete}
           >

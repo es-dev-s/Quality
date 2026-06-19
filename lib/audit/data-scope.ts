@@ -7,9 +7,9 @@ import {
 import { isSuperAdmin } from "@/lib/rbac";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
 import {
-  fetchManagedAgentNames,
-  fetchManagedAnalystNames,
-} from "@/lib/audit/managed-user-names";
+  fetchQmVisibleAgentNames,
+  fetchSupervisorTierVisibleAgentNames,
+} from "@/lib/audit/agent-assignment-scope";
 
 export type DataScopeContext = {
   userId: string;
@@ -18,7 +18,7 @@ export type DataScopeContext = {
   role: SessionRole;
 };
 
-function effectiveScopeName(ctx: DataScopeContext): string | null {
+export function effectiveScopeName(ctx: DataScopeContext): string | null {
   return resolveRoleUserName({
     name: ctx.userName ?? null,
     email: ctx.userEmail ?? "",
@@ -47,7 +47,7 @@ export async function auditSubmissionScopeWhere(
   const roleSlug = ctx.role.slug as SystemRoleSlug;
 
   if (roleSlug === SYSTEM_ROLE_SLUGS.SUPERVISOR) {
-    const agentNames = await fetchManagedAgentNames(ctx.userId);
+    const agentNames = await fetchSupervisorTierVisibleAgentNames(ctx.userId);
     if (agentNames.length === 0) {
       return noAccessFilter();
     }
@@ -55,11 +55,11 @@ export async function auditSubmissionScopeWhere(
   }
 
   if (roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
-    const analystNames = await fetchManagedAnalystNames(ctx.userId);
-    if (analystNames.length === 0) {
+    const agentNames = await fetchQmVisibleAgentNames(ctx.userId);
+    if (agentNames.length === 0) {
       return noAccessFilter();
     }
-    return { auditor: { in: analystNames } };
+    return { agent: { in: agentNames } };
   }
 
   const name = effectiveScopeName(ctx);
@@ -69,9 +69,18 @@ export async function auditSubmissionScopeWhere(
 
   switch (roleSlug) {
     case SYSTEM_ROLE_SLUGS.AGENT:
-      return { agent: name };
-    case SYSTEM_ROLE_SLUGS.QUALITY_ANALYST:
-      return { auditor: name };
+      return {
+        OR: [{ submittedById: ctx.userId }, { agent: name }],
+      };
+    case SYSTEM_ROLE_SLUGS.QUALITY_ANALYST: {
+      const agentNames = await fetchSupervisorTierVisibleAgentNames(ctx.userId);
+      if (agentNames.length === 0) {
+        return { auditor: name };
+      }
+      return {
+        OR: [{ auditor: name }, { agent: { in: agentNames } }],
+      };
+    }
     default:
       return noAccessFilter();
   }

@@ -3,15 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAuth } from "@/lib/auth";
-import { canManageSettings, canManageUsers, canReadManagedUsers } from "@/lib/rbac";
-import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { canManageSettings } from "@/lib/rbac";
 import { normalizeAgentName } from "@/lib/audit/agent-name";
-import {
-  fetchAgentRoleUsers,
-} from "@/lib/audit/role-users";
-import { fetchAuditCountsByAgentName } from "@/lib/audit/agent-db";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { prisma } from "@/lib/prisma";
+import { cacheScopeFromSession } from "@/lib/cache";
+import { getCachedAgentsForManagement } from "@/lib/cached-queries/agents";
+import { invalidateAgentCaches } from "@/lib/invalidate-cache";
 
 const isoDateSchema = z
   .string()
@@ -36,6 +34,10 @@ function revalidateAgentPaths() {
   revalidatePath("/audit-logs");
   revalidatePath("/analytics");
   revalidatePath("/dashboard");
+}
+
+function invalidateAgentsAfterMutation() {
+  invalidateAgentCaches();
 }
 
 export type AgentListItem = {
@@ -75,40 +77,8 @@ export async function getAgentsForManagement(): Promise<{
   canManage: boolean;
 }> {
   const session = await requireAuth();
-  const role = session.user.role;
-
-  let rows = await fetchAgentRoleUsers();
-
-  if (
-    canReadManagedUsers(role) &&
-    !canManageSettings(role) &&
-    !canManageUsers(role)
-  ) {
-    const managed = await prisma.user.findMany({
-      where: {
-        createdById: session.user.id,
-        role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
-      },
-      select: { id: true },
-    });
-    const managedIds = new Set(managed.map((user) => user.id));
-    rows = rows.filter((row) => managedIds.has(row.id));
-  }
-
-  const auditCountByAgent = await fetchAuditCountsByAgentName();
-
-  return {
-    canManage: canManageSettings(role),
-    agents: rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      email: row.email,
-      hasProfileName: row.hasProfileName,
-      dateOfJoining: row.dateOfJoining,
-      auditCount: auditCountByAgent.get(row.name) ?? 0,
-      createdAt: row.createdAt.toISOString(),
-    })),
-  };
+  const scope = cacheScopeFromSession(session);
+  return getCachedAgentsForManagement(scope)();
 }
 
 export async function createAgent(input: {
@@ -147,6 +117,7 @@ export async function createAgent(input: {
       },
     });
     revalidateAgentPaths();
+    invalidateAgentsAfterMutation();
     return { ok: true };
   } catch (error) {
     if (isPrismaUniqueViolation(error, "name_key")) {
@@ -214,6 +185,7 @@ export async function updateAgent(input: {
     });
 
     revalidateAgentPaths();
+    invalidateAgentsAfterMutation();
     return { ok: true };
   } catch (error) {
     if (error instanceof Error) {
@@ -254,6 +226,7 @@ export async function deleteAgent(id: string): Promise<AgentMutationResult> {
     });
 
     revalidateAgentPaths();
+    invalidateAgentsAfterMutation();
     return { ok: true };
   } catch (error) {
     if (error instanceof Error) {
@@ -335,6 +308,7 @@ export async function bulkDeleteAgents(
 
   if (deleted > 0) {
     revalidateAgentPaths();
+    invalidateAgentsAfterMutation();
   }
 
   return {
@@ -382,6 +356,7 @@ export async function setAgentsActive(
     });
 
     revalidateAgentPaths();
+    invalidateAgentsAfterMutation();
     return { ok: true, updated };
   } catch (error) {
     if (error instanceof Error && error.message === "LAST_ACTIVE_AGENT") {

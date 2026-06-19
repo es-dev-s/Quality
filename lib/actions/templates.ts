@@ -7,6 +7,8 @@ import { requireAuth } from "@/lib/auth";
 import { requirePermission } from "@/lib/auth-guards";
 import { canManageSettings, canWriteAuditTemplates, hasScope, isSuperAdmin } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+import { dataScopeFromSession } from "@/lib/audit/data-scope";
+import { buildFormsScopeSummary } from "@/lib/audit/interaction-config-people";
 import {
   ensureDefaultTemplate,
   fetchAuditTemplateForEdit,
@@ -14,6 +16,7 @@ import {
 } from "@/lib/audit/template-db";
 import type { AuditTemplate } from "@/lib/audit/types";
 import type { SessionRole } from "@/lib/rbac";
+import { invalidateTemplateCaches } from "@/lib/invalidate-cache";
 
 export type TemplateListItem = AuditTemplate & {
   roleIds: string[];
@@ -32,6 +35,7 @@ function revalidateTemplatePaths() {
   revalidatePath("/forms");
   revalidatePath("/forms/templates");
   revalidatePath("/forms/audit");
+  invalidateTemplateCaches();
 }
 
 const fetchTemplateRows = cache(async () => {
@@ -128,6 +132,9 @@ export async function getFormsPageData() {
   });
 
   const templates = filterRowsForRole(rows, session.user.role).map(mapTemplateRow);
+  const scopeSummary = await buildFormsScopeSummary(
+    dataScopeFromSession(session)
+  );
 
   return {
     templates,
@@ -137,6 +144,7 @@ export async function getFormsPageData() {
       pref?.activeTemplateId
     ),
     canManage: canWriteAuditTemplates(session.user.role),
+    scopeSummary,
   };
 }
 
@@ -173,7 +181,7 @@ export async function getTemplatesManagerData() {
 }
 
 export async function getAuditFormPageData(templateId: string) {
-  const session = await requireAuth();
+  const session = await requirePermission(PERMISSIONS.AUDIT_FORM_READ);
   const rows = await fetchTemplateRows();
   const accessible = filterRowsForRole(rows, session.user.role);
   const row = accessible.find((r) => r.id === templateId);
@@ -186,7 +194,7 @@ export async function getAuditFormPageData(templateId: string) {
 }
 
 export async function getAuditFormRubrics() {
-  await requireAuth();
+  await requirePermission(PERMISSIONS.AUDIT_FORM_READ);
   await ensureDefaultTemplate();
 
   const rows = await prisma.formTemplate.findMany({
@@ -205,7 +213,7 @@ export async function getAuditFormRubrics() {
 }
 
 export async function getAuditFormWorkbench() {
-  const session = await requireAuth();
+  const session = await requirePermission(PERMISSIONS.AUDIT_FORM_READ);
   const rows = await fetchTemplateRows();
   const pref = await prisma.userTemplatePreference.findUnique({
     where: { userId: session.user.id },
@@ -434,3 +442,19 @@ export async function canManageTemplates(): Promise<boolean> {
   const session = await requireAuth();
   return canWriteAuditTemplates(session.user.role);
 }
+
+/*
+ * AUTH AUDIT — lib/actions/ using requireAuth() on mutating operations (review separately):
+ * - templates.ts: saveTemplate, deleteTemplate, rememberActiveTemplate, setActiveTemplateId
+ *   (each checks canWriteAuditTemplates or userCanAccessTemplate after requireAuth)
+ * - audit.ts: updateSupervisorRemarks, deleteAuditSubmissions
+ *   (canEditSupervisorRemarks / isSuperAdmin checked after requireAuth)
+ * - interaction-config.ts: saveInteractionConfig
+ *   (canManageSettings checked after requireAuth)
+ * - agents.ts: createAgent, updateAgent, deleteAgent, bulkDeleteAgents, setAgentsActive
+ *   (requireAgentManager -> requireAuth + canManageSettings)
+ * - user-provisioning.ts: requestAgentUser, requestQualityAnalystUser, approveAgentRequest,
+ *   approveAnalystRequest, rejectProvisioningRequest, resetManagedUserPassword
+ *   (requirePermission and/or role slug checks mixed with requireAuth)
+ * - admin.ts: signOutAction (intentionally auth-only)
+ */

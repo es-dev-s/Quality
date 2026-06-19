@@ -33,6 +33,15 @@ import {
   updateSupervisorRemarksSchema,
 } from "@/lib/validation/audit";
 import { paginationLimitSchema } from "@/lib/validation/common";
+import { toIsoTimestamp } from "@/lib/db/to-iso-timestamp";
+import { cacheScopeFromSession } from "@/lib/cache";
+import {
+  getCachedAuditLogs,
+  getCachedAuditSubmissionsPage,
+  getCachedDashboardRecords,
+  parseAuditPageLimit,
+} from "@/lib/cached-queries/audit-submissions";
+import { invalidateAuditCaches } from "@/lib/invalidate-cache";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
 import {
   defaultAuditFeedback,
@@ -101,6 +110,40 @@ export async function getAuditors() {
   await requirePermission(PERMISSIONS.AUDIT_FORM_READ);
   const config = await getInteractionConfig();
   return config.auditors;
+}
+
+export type AuditReferenceOption = {
+  id: string;
+  auditCode: string;
+  agent: string;
+  auditDate: string;
+  type: string;
+};
+
+export async function getAuditReferenceOptions(): Promise<AuditReferenceOption[]> {
+  const session = await requirePermission(PERMISSIONS.AUDIT_FORM_READ);
+  const where = await scopedAuditWhere(session);
+
+  const rows = await prisma.auditSubmission.findMany({
+    where,
+    select: {
+      id: true,
+      auditCode: true,
+      agent: true,
+      auditDate: true,
+      type: true,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 40,
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    auditCode: row.auditCode,
+    agent: row.agent,
+    auditDate: row.auditDate,
+    type: row.type,
+  }));
 }
 
 export async function saveAuditSubmission(
@@ -231,10 +274,15 @@ export async function saveAuditSubmission(
     submissionKey: submissionKey ?? null,
   };
 
+  let createdId: string | undefined;
+
   try {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
-        await prisma.auditSubmission.create({ data: submissionData });
+        const created = await prisma.auditSubmission.create({
+          data: submissionData,
+        });
+        createdId = created.id;
         break;
       } catch (error) {
         if (
@@ -280,6 +328,12 @@ export async function saveAuditSubmission(
   revalidatePath("/forms");
   revalidatePath("/forms/audit");
 
+  invalidateAuditCaches(session.user.id, {
+    type: "audit:created",
+    auditId: createdId ?? record.id,
+    submittedById: session.user.id,
+  });
+
   return { success: true, record };
 }
 
@@ -298,9 +352,34 @@ function parseRows(value: unknown): AuditRow[] {
   return value as AuditRow[];
 }
 
-function mapAuditSubmission(
-  s: Awaited<ReturnType<typeof fetchRecentAuditSubmissions>>[number]
-): AuditLogEntry {
+type AuditLogRow = {
+  id: string;
+  auditCode: string;
+  agent: string;
+  supervisor: string | null;
+  lob: string;
+  sublob: string | null;
+  reason: string | null;
+  type: string;
+  businessType: string;
+  callDate: string;
+  auditDate: string;
+  auditor: string | null;
+  qualityPct: number;
+  finalPct: number;
+  grade: string;
+  hasFatal: boolean;
+  feedbackSecurity: string;
+  feedbackStatus: string;
+  feedbackDate: string | null;
+  feedbackStatusAt: string | null;
+  agentFeedback: string;
+  supervisorRemarks: string;
+  submittedBy: { name: string | null; email: string };
+  createdAt: Date | string;
+};
+
+function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
   return {
     id: s.id,
     auditCode: s.auditCode,
@@ -325,22 +404,8 @@ function mapAuditSubmission(
     agentFeedback: s.agentFeedback ?? "",
     supervisorRemarks: s.supervisorRemarks ?? "",
     submittedBy: s.submittedBy.name ?? s.submittedBy.email,
-    createdAt: s.createdAt.toISOString(),
+    createdAt: toIsoTimestamp(s.createdAt),
   };
-}
-
-async function fetchRecentAuditSubmissions(
-  where: Prisma.AuditSubmissionWhereInput,
-  take = 500
-) {
-  return prisma.auditSubmission.findMany({
-    where,
-    include: {
-      submittedBy: { select: { name: true, email: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take,
-  });
 }
 
 export async function getAuditLogs(limit = 500) {
@@ -348,14 +413,48 @@ export async function getAuditLogs(limit = 500) {
   const parsedLimit = paginationLimitSchema.safeParse(limit);
   const take = parsedLimit.success ? parsedLimit.data : 500;
 
-  const submissions = await fetchRecentAuditSubmissions(
-    await scopedAuditWhere(session),
-    take
-  );
+  const scope = cacheScopeFromSession(session);
+  const submissions = await getCachedAuditLogs(scope, take)();
 
   return {
     total: submissions.length,
     submissions: submissions.map(mapAuditSubmission),
+  };
+}
+
+export async function getAuditSubmissions(input?: {
+  cursor?: string;
+  limit?: number;
+}) {
+  const session = await requirePermission(PERMISSIONS.AUDIT_LOGS_READ);
+  const scope = cacheScopeFromSession(session);
+  const limit = parseAuditPageLimit(input?.limit);
+
+  const page = await getCachedAuditSubmissionsPage(
+    scope,
+    input?.cursor,
+    limit
+  )();
+
+  return {
+    items: page.items.map((row) => ({
+      id: row.id,
+      auditCode: row.auditCode,
+      auditDate: row.auditDate,
+      auditor: row.auditor,
+      finalPct: row.finalPct,
+      feedbackStatus: parseFeedbackStatus(row.feedbackStatus),
+      createdAt: toIsoTimestamp(row.createdAt),
+      agent: row.agent,
+      type: row.type,
+      grade: row.grade,
+      hasFatal: row.hasFatal,
+      templateName: row.template?.name ?? null,
+      submittedBy:
+        row.submittedBy.name ?? row.submittedBy.email ?? "Unknown",
+    })),
+    nextCursor: page.nextCursor,
+    hasMore: page.hasMore,
   };
 }
 
@@ -671,6 +770,11 @@ export async function updateAuditSubmission(
   revalidatePath("/forms");
   revalidatePath("/forms/audit");
 
+  invalidateAuditCaches(session.user.id, {
+    type: "audit:updated",
+    auditId: validId,
+  });
+
   return { success: true, record };
 }
 
@@ -796,6 +900,17 @@ export async function updateAuditFeedback(
   revalidatePath("/analytics");
   revalidatePath("/reports");
 
+  invalidateAuditCaches(session.user.id, {
+    type: "audit:updated",
+    auditId: parsed.data.id,
+    changes: {
+      feedbackSecurity: feedback.feedbackSecurity,
+      feedbackStatus: feedback.feedbackStatus,
+      feedbackDate: feedback.feedbackDate || null,
+      feedbackStatusAt: feedback.feedbackStatusAt || null,
+    },
+  });
+
   return {
     success: true as const,
     feedbackDate: feedback.feedbackDate || null,
@@ -840,6 +955,12 @@ export async function updateSupervisorRemarks(
   }
 
   revalidatePath("/audit-logs");
+
+  invalidateAuditCaches(session.user.id, {
+    type: "audit:updated",
+    auditId: parsed.data.id,
+  });
+
   return { success: true as const };
 }
 
@@ -875,6 +996,13 @@ export async function deleteAuditSubmissions(ids: string[]) {
 
     revalidateAuditPaths();
 
+    for (const id of uniqueIds) {
+      invalidateAuditCaches(session.user.id, {
+        type: "audit:deleted",
+        auditId: id,
+      });
+    }
+
     return { success: true as const, deleted: result.count };
   } catch (error) {
     console.error("deleteAuditSubmissions failed:", error);
@@ -887,8 +1015,16 @@ export async function updateAuditFeedbackStatus(
   id: string,
   feedbackStatus: FeedbackStatus
 ) {
-  const existing = await prisma.auditSubmission.findUnique({
-    where: { id },
+  const session = await requirePermission(PERMISSIONS.AUDIT_LOGS_READ);
+  if (
+    !canChangeFeedbackStatusInAuditLogs(session.user.role) &&
+    !canEditFeedbackFully(session.user.role)
+  ) {
+    return permissionError();
+  }
+
+  const existing = await prisma.auditSubmission.findFirst({
+    where: await scopedAuditByIdWhere(session, id),
     select: { feedbackSecurity: true, feedbackDate: true },
   });
   if (!existing) {
@@ -903,37 +1039,13 @@ export async function updateAuditFeedbackStatus(
   });
 }
 
-async function fetchDashboardAuditRecords(
-  where: Prisma.AuditSubmissionWhereInput
-) {
-  return prisma.auditSubmission.findMany({
-    where,
-    select: {
-      id: true,
-      auditCode: true,
-      agent: true,
-      supervisor: true,
-      auditor: true,
-      lob: true,
-      type: true,
-      callDate: true,
-      auditDate: true,
-      qualityPct: true,
-      finalPct: true,
-      hasFatal: true,
-      fatalList: true,
-    },
-    orderBy: { createdAt: "desc" },
-  });
-}
-
 export async function getDashboardAuditData(): Promise<DashboardAuditData> {
   const session = await requirePermission(PERMISSIONS.OVERVIEW_READ);
 
   try {
-    const scope = await scopedAuditWhere(session);
+    const cacheScope = cacheScopeFromSession(session);
     const submissions = await withDbRetry(() =>
-      fetchDashboardAuditRecords(scope)
+      getCachedDashboardRecords(cacheScope)()
     );
 
     return {

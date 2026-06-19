@@ -7,7 +7,7 @@ import { Field, Input, Label, Select } from "@/components/primitives/field";
 import { FormStack, Modal, ModalActions } from "@/components/primitives/modal";
 import { useToast } from "@/components/primitives/toast";
 import { createUser, updateUser } from "@/lib/actions/admin";
-import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { isLegacySystemRole, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 
 type Role = {
   id: string;
@@ -18,10 +18,11 @@ type Role = {
 };
 
 function roleOptionLabel(role: Role) {
+  const legacy = isLegacySystemRole(role.slug) ? " (legacy)" : "";
   const suffix = role.isSystem ? " (system)" : "";
   const scopeHint =
     !role.isSystem && role._count?.scopes === 0 ? " — no permissions" : "";
-  return `${role.name}${suffix}${scopeHint}`;
+  return `${role.name}${legacy}${suffix}${scopeHint}`;
 }
 
 type User = {
@@ -181,8 +182,8 @@ export function UserFormDialog({
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={isPending}>
-            {isPending ? "Saving..." : isEditing ? "Save Changes" : "Create"}
+          <Button type="submit" loading={isPending}>
+            {isEditing ? "Save Changes" : "Create"}
           </Button>
         </ModalActions>
       </form>

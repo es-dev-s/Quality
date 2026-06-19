@@ -1,6 +1,14 @@
 /** Edge-safe deployment helpers (no Node.js built-ins). */
 
 export function ensureAuthEnv(): void {
+  if (!process.env.AUTH_SECRET?.trim()) {
+    throw new Error("AUTH_SECRET is required — app cannot start");
+  }
+
+  if (!process.env.DATABASE_URL?.trim() && !process.env.DATABASE_URL_SESSION?.trim()) {
+    throw new Error("DATABASE_URL is required");
+  }
+
   const appUrl = process.env.APP_URL?.trim();
   if (appUrl && !process.env.AUTH_URL?.trim()) {
     process.env.AUTH_URL = appUrl;

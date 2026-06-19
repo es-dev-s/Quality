@@ -3,13 +3,10 @@ import { SUPERADMIN_ROLE_SLUG } from "@/lib/constants";
 /** Module permission slugs stored in Scope.slug and JWT session. */
 export const PERMISSIONS = {
   OVERVIEW_READ: "overview:read",
-  OVERVIEW_WRITE: "overview:write",
   AUDIT_LOGS_READ: "audit-logs:read",
   AUDIT_LOGS_WRITE: "audit-logs:write",
   ANALYTICS_READ: "analytics:read",
-  ANALYTICS_WRITE: "analytics:write",
   REPORTS_READ: "reports:read",
-  REPORTS_WRITE: "reports:write",
   AUDIT_FORM_READ: "audit-form:read",
   AUDIT_FORM_WRITE: "audit-form:write",
   AUDIT_TEMPLATES_READ: "audit-templates:read",
@@ -28,18 +25,50 @@ export const PERMISSIONS = {
   USERS_APPROVE_ANALYST: "users:approve-analyst",
   USERS_READ_MANAGED: "users:read-managed",
   USERS_MANAGE_MANAGED: "users:manage-managed",
+  AGENT_ASSIGN: "users:assign-agent",
+  USER_READ_SENSITIVE: "admin:user-sensitive",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
-export const ALL_PERMISSIONS: Permission[] = Object.values(PERMISSIONS);
+/** Scopes persisted to DB — excludes reserved/legacy slugs not enforced in code. */
+export const SEED_PERMISSIONS: Permission[] = Object.values(PERMISSIONS);
+
+/** Canonical spec roles (5). */
+export const CANONICAL_ROLE_SLUGS = [
+  "superadmin",
+  "quality-manager",
+  "supervisor",
+  "quality-analyst",
+  "agent",
+] as const;
+
+/**
+ * Legacy operational role — analyst provisioning approver + template admin.
+ * Not part of the 5-role canonical spec; retained for existing deployments.
+ */
+export const LEGACY_ADMIN_ROLE_SLUG = "admin" as const;
+
+/** Identical permission tier for supervisor and quality-analyst (canonical spec). */
+export const SUPERVISOR_TIER_PERMISSIONS: Permission[] = [
+  PERMISSIONS.OVERVIEW_READ,
+  PERMISSIONS.AUDIT_LOGS_READ,
+  PERMISSIONS.FEEDBACK_READ,
+  PERMISSIONS.SETTINGS_READ,
+  PERMISSIONS.USERS_PROVISION_AGENT,
+  PERMISSIONS.USERS_READ_MANAGED,
+  PERMISSIONS.USERS_MANAGE_MANAGED,
+  PERMISSIONS.AUDIT_FORM_READ,
+  PERMISSIONS.AUDIT_FORM_WRITE,
+  PERMISSIONS.FEEDBACK_STATUS,
+];
 
 export const SYSTEM_ROLE_SLUGS = {
   AGENT: "agent",
   SUPERVISOR: "supervisor",
   QUALITY_ANALYST: "quality-analyst",
   QUALITY_MANAGER: "quality-manager",
-  ADMIN: "admin",
+  ADMIN: LEGACY_ADMIN_ROLE_SLUG,
   SUPERADMIN: SUPERADMIN_ROLE_SLUG,
 } as const;
 
@@ -50,6 +79,7 @@ type RoleDefinition = {
   name: string;
   description: string;
   permissions: Permission[];
+  legacy?: boolean;
 };
 
 export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleSlug, RoleDefinition> = {
@@ -66,33 +96,19 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleSlug, RoleDefinition> = {
   [SYSTEM_ROLE_SLUGS.SUPERVISOR]: {
     name: "Supervisor",
     description:
-      "Views team audits for agents they onboard. Can request new agent accounts pending Quality Manager approval.",
-    permissions: [
-      PERMISSIONS.OVERVIEW_READ,
-      PERMISSIONS.AUDIT_LOGS_READ,
-      PERMISSIONS.FEEDBACK_READ,
-      PERMISSIONS.SETTINGS_READ,
-      PERMISSIONS.USERS_PROVISION_AGENT,
-      PERMISSIONS.USERS_READ_MANAGED,
-      PERMISSIONS.USERS_MANAGE_MANAGED,
-    ],
+      "Team-management tier: onboard agents (QM approval), view scoped audits.",
+    permissions: [...SUPERVISOR_TIER_PERMISSIONS],
   },
   [SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]: {
     name: "Quality Analyst",
     description:
-      "Performs audits and views aligned agent records. Can update feedback status.",
-    permissions: [
-      PERMISSIONS.OVERVIEW_READ,
-      PERMISSIONS.AUDIT_LOGS_READ,
-      PERMISSIONS.AUDIT_FORM_READ,
-      PERMISSIONS.AUDIT_FORM_WRITE,
-      PERMISSIONS.FEEDBACK_STATUS,
-    ],
+      "Same permission tier as Supervisor — team management and audit forms.",
+    permissions: [...SUPERVISOR_TIER_PERMISSIONS],
   },
   [SYSTEM_ROLE_SLUGS.QUALITY_MANAGER]: {
     name: "Quality Manager",
     description:
-      "Operational view scoped to onboarded analysts. Approves supervisor agent requests and submits analyst accounts for admin approval.",
+      "Approves agent requests and assigns agents to quality analysts.",
     permissions: [
       PERMISSIONS.OVERVIEW_READ,
       PERMISSIONS.AUDIT_LOGS_READ,
@@ -108,12 +124,14 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleSlug, RoleDefinition> = {
       PERMISSIONS.USERS_PROVISION_ANALYST,
       PERMISSIONS.USERS_READ_MANAGED,
       PERMISSIONS.USERS_MANAGE_MANAGED,
+      PERMISSIONS.AGENT_ASSIGN,
     ],
   },
   [SYSTEM_ROLE_SLUGS.ADMIN]: {
-    name: "Admin",
+    name: "Admin (legacy)",
     description:
-      "Platform administrator with settings and template management. Approves Quality Manager analyst requests.",
+      "Legacy operational admin — templates/settings. Prefer superadmin for user RBAC.",
+    legacy: true,
     permissions: [
       PERMISSIONS.OVERVIEW_READ,
       PERMISSIONS.AUDIT_LOGS_READ,
@@ -132,7 +150,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleSlug, RoleDefinition> = {
   [SYSTEM_ROLE_SLUGS.SUPERADMIN]: {
     name: "Super Admin",
     description: "Full platform access including users, roles, and import.",
-    permissions: ALL_PERMISSIONS,
+    permissions: SEED_PERMISSIONS,
   },
 };
 
@@ -168,4 +186,8 @@ export function resolveRoutePermission(pathname: string): Permission | null {
   }
 
   return null;
+}
+
+export function isLegacySystemRole(slug: string): boolean {
+  return slug === LEGACY_ADMIN_ROLE_SLUG;
 }

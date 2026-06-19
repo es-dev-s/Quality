@@ -1,5 +1,10 @@
 import { redirect } from "next/navigation";
 import { requireAuth } from "@/lib/auth";
+import {
+  AccountDeactivatedError,
+  AccountNotApprovedError,
+  SessionRevokedError,
+} from "@/lib/auth-errors";
 import { PERMISSIONS, type Permission } from "@/lib/permissions";
 import { canAccessPath, firstAccessiblePath, hasScope } from "@/lib/rbac";
 
@@ -19,7 +24,20 @@ export async function requirePermission(permission: Permission) {
 }
 
 export async function requirePageAccess(pathname: string) {
-  const session = await requireAuth();
+  let session;
+  try {
+    session = await requireAuth();
+  } catch (error) {
+    if (
+      error instanceof AccountDeactivatedError ||
+      error instanceof AccountNotApprovedError ||
+      error instanceof SessionRevokedError
+    ) {
+      redirect("/login");
+    }
+    throw error;
+  }
+
   if (canAccessPath(session.user.role, pathname)) {
     return session;
   }

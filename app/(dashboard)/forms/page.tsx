@@ -7,22 +7,20 @@ import { getFormsPageData } from "@/lib/actions/templates";
 
 async function FormsHubContent() {
   await requirePageAccess("/forms");
-  const { templates, activeTemplateId, canManage } = await getFormsPageData();
+  const { templates, activeTemplateId, canManage, scopeSummary } = await getFormsPageData();
   return (
     <FormsHub
       templates={templates}
       activeTemplateId={activeTemplateId}
       canManage={canManage}
+      scopeSummary={scopeSummary}
     />
   );
 }
 
 export default function FormsPage() {
   return (
-    <PageFrame
-      title="Forms"
-      description="Select an audit form assigned to your role and begin scoring"
-    >
+    <PageFrame>
       <Suspense fallback={<FormsHubSkeleton />}>
         <FormsHubContent />
       </Suspense>

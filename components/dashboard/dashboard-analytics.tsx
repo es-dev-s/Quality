@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Award, ChevronDown, RefreshCw, SlidersHorizontal, X } from "lucide-react";
+import { Badge } from "@/components/primitives/badge";
 import { Select } from "@/components/primitives/field";
+import { LoadingZone } from "@/components/primitives/loading-zone";
 import { cn } from "@/lib/utils";
 import { FatalOccurrencesModal } from "@/components/dashboard/fatal-occurrences-modal";
 import type { DashboardAuditData } from "@/lib/audit/audit-records";
@@ -160,6 +163,18 @@ export function DashboardAnalytics({
 
   const distMax = Math.max(1, ...distribution.map((b) => b.count));
   const filtersActive = hasActiveIncludeFilters(includeFilters);
+
+  function scoreValueClass(score: number): string {
+    if (score >= 90) return "score-value--success";
+    if (score >= 70) return "score-value--warning";
+    return "score-value--error";
+  }
+
+  const recentSubmissions = useMemo(() => {
+    return [...records]
+      .sort((a, b) => b.auditDate.localeCompare(a.auditDate))
+      .slice(0, 5);
+  }, [records]);
 
   function handleRefresh() {
     startRefresh(() => {
@@ -379,6 +394,7 @@ export function DashboardAnalytics({
         </div>
       </div>
 
+      <LoadingZone loading={isRefreshing} label="Refreshing dashboard…">
       <div className="dash-kpi-grid">
         <article className="dash-kpi">
           <p className="dash-kpi__label">Total audits</p>
@@ -723,6 +739,61 @@ export function DashboardAnalytics({
           </div>
         </section>
       </div>
+
+      <section className="recent-submissions">
+        <div className="recent-submissions__head">
+          <h2 className="recent-submissions__title">Recent submissions</h2>
+          <Link href="/audit-logs" className="recent-submissions__link">
+            View all →
+          </Link>
+        </div>
+        <div className="ui-table-wrap">
+          <table className="ui-table platform-report-table">
+            <thead>
+              <tr>
+                <th className="col-agent">Agent</th>
+                <th className="col-template">Type</th>
+                <th className="col-date">Date</th>
+                <th className="col-status">Status</th>
+                <th className="col-score">Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentSubmissions.length === 0 ? (
+                <tr>
+                  <td colSpan={5}>
+                    <p className="ui-empty-state__desc" style={{ padding: "var(--space-8)" }}>
+                      No submissions in your scope yet.
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                recentSubmissions.map((row) => (
+                  <tr key={row.id}>
+                    <td>
+                      <span className="user-cell__name">{row.agent}</span>
+                    </td>
+                    <td>{row.type}</td>
+                    <td>{row.auditDate}</td>
+                    <td>
+                      <Badge variant={row.hasFatal ? "error" : "success"} dot>
+                        {row.hasFatal ? "Flagged" : "Complete"}
+                      </Badge>
+                    </td>
+                    <td>
+                      <span className={scoreValueClass(row.finalPct)}>
+                        {row.finalPct}%
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      </LoadingZone>
 
       <FatalOccurrencesModal
         fatalName={selectedFatal}

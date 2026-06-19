@@ -1,6 +1,5 @@
 "use server";
 
-import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -10,8 +9,19 @@ import { resolveRoleUserName } from "@/lib/audit/role-users";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { PERMISSIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import {
+  assertActorManagesUser,
+  buildManagedUsersWhere,
+  fetchQmScopedAgentUserIds,
+} from "@/lib/user-roster-scope";
+import {
+  invalidateAgentCaches,
+  invalidateUserCaches,
+} from "@/lib/invalidate-cache";
+import { buildPasswordCredentials } from "@/lib/password-credentials";
+import {
   canApproveAgentRequests,
   canApproveAnalystRequests,
+  canAssignAgents,
   canManageManagedUsers,
   canProvisionAgents,
   canProvisionAnalysts,
@@ -64,18 +74,44 @@ export type ManagedUserRow = {
   createdAt: string;
 };
 
+export type AssignableAgentRow = {
+  id: string;
+  name: string;
+  email: string;
+};
+
+export type AssigneeOptionRow = {
+  id: string;
+  name: string;
+  email: string;
+  roleSlug: string;
+  roleName: string;
+};
+
+export type AgentAssignmentRow = {
+  id: string;
+  agentId: string;
+  agentName: string;
+  assignToId: string;
+  assignToName: string;
+};
+
 function normalizeJoiningDate(value: string | null | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
 }
 
-function revalidateProvisioningPaths() {
+function revalidateProvisioningPaths(actorId?: string) {
   revalidatePath("/settings");
   revalidatePath("/forms/audit");
   revalidatePath("/forms");
   revalidatePath("/audit-logs");
   revalidatePath("/dashboard");
   revalidatePath("/analytics");
+  if (actorId) {
+    invalidateUserCaches(actorId);
+    invalidateAgentCaches();
+  }
 }
 
 function mapRequest(row: {
@@ -184,16 +220,18 @@ export async function getTeamManagementData() {
   const session = await requireAuth();
   const role = session.user.role;
 
+  const isSuperAdminRole = isSuperAdmin(role);
   const canProvisionAgent = canProvisionAgents(role);
   const canProvisionAnalyst = canProvisionAnalysts(role);
   const canApproveAgent =
     canApproveAgentRequests(role) &&
-    role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER;
+    (role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER || isSuperAdminRole);
   const canApproveAnalyst =
     canApproveAnalystRequests(role) &&
-    (role.slug === SYSTEM_ROLE_SLUGS.ADMIN || isSuperAdmin(role));
+    (role.slug === SYSTEM_ROLE_SLUGS.ADMIN || isSuperAdminRole);
   const canReadManaged = canReadManagedUsers(role);
   const canManageManaged = canManageManagedUsers(role);
+  const canAssign = canAssignAgents(role);
 
   if (
     !canProvisionAgent &&
@@ -201,6 +239,7 @@ export async function getTeamManagementData() {
     !canApproveAgent &&
     !canApproveAnalyst &&
     !canReadManaged &&
+    !canAssign &&
     !hasScope(role, PERMISSIONS.ADMIN_USERS)
   ) {
     return {
@@ -210,9 +249,13 @@ export async function getTeamManagementData() {
       canApproveAnalyst: false,
       canReadManaged: false,
       canManageManaged: false,
+      canAssignAgents: false,
       myRequests: [] as ProvisioningRequestRow[],
       pendingApprovals: [] as ProvisioningRequestRow[],
       managedUsers: [] as ManagedUserRow[],
+      assignableAgents: [] as AssignableAgentRow[],
+      assigneeOptions: [] as AssigneeOptionRow[],
+      agentAssignments: [] as AgentAssignmentRow[],
     };
   }
 
@@ -221,7 +264,40 @@ export async function getTeamManagementData() {
     reviewedBy: { select: { name: true, email: true } },
   } as const;
 
-  const [myRequests, pendingApprovals, managedUsers] = await Promise.all([
+  const pendingAgentFilter = canApproveAgent
+    ? isSuperAdminRole
+      ? {
+          status: "PENDING" as const,
+          targetRoleSlug: SYSTEM_ROLE_SLUGS.AGENT,
+        }
+      : {
+          status: "PENDING" as const,
+          targetRoleSlug: SYSTEM_ROLE_SLUGS.AGENT,
+          requestedBy: {
+            role: {
+              slug: {
+                in: [
+                  SYSTEM_ROLE_SLUGS.SUPERVISOR,
+                  SYSTEM_ROLE_SLUGS.QUALITY_ANALYST,
+                ],
+              },
+            },
+          },
+        }
+    : null;
+
+  const managedUsersWhere = canReadManaged
+    ? await buildManagedUsersWhere(session.user.id, role)
+    : null;
+
+  const [
+    myRequests,
+    pendingApprovals,
+    managedUsers,
+    assignableAgents,
+    assigneeOptions,
+    agentAssignments,
+  ] = await Promise.all([
     prisma.userProvisioningRequest.findMany({
       where: { requestedById: session.user.id },
       include: requestInclude,
@@ -233,9 +309,7 @@ export async function getTeamManagementData() {
           where: {
             status: "PENDING",
             OR: [
-              ...(canApproveAgent
-                ? [{ targetRoleSlug: SYSTEM_ROLE_SLUGS.AGENT }]
-                : []),
+              ...(pendingAgentFilter ? [pendingAgentFilter] : []),
               ...(canApproveAnalyst
                 ? [{ targetRoleSlug: SYSTEM_ROLE_SLUGS.QUALITY_ANALYST }]
                 : []),
@@ -246,12 +320,73 @@ export async function getTeamManagementData() {
           take: 100,
         })
       : Promise.resolve([]),
-    canReadManaged
+    managedUsersWhere
       ? prisma.user.findMany({
-          where: { createdById: session.user.id },
+          where: managedUsersWhere,
           include: { role: true },
           orderBy: { createdAt: "desc" },
         })
+      : Promise.resolve([]),
+    canAssign
+      ? isSuperAdminRole
+        ? prisma.user.findMany({
+            where: {
+              role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
+              isActive: true,
+              approvalStatus: "ACTIVE",
+            },
+            select: { id: true, name: true, email: true },
+            orderBy: { name: "asc" },
+          })
+        : prisma.user.findMany({
+            where: {
+              id: { in: await fetchQmScopedAgentUserIds(session.user.id) },
+              role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
+              isActive: true,
+              approvalStatus: "ACTIVE",
+            },
+            select: { id: true, name: true, email: true },
+            orderBy: { name: "asc" },
+          })
+      : Promise.resolve([]),
+    canAssign
+      ? prisma.user.findMany({
+          where: {
+            role: { slug: SYSTEM_ROLE_SLUGS.QUALITY_ANALYST },
+            isActive: true,
+            approvalStatus: "ACTIVE",
+          },
+          include: { role: { select: { slug: true, name: true } } },
+          orderBy: { name: "asc" },
+        })
+      : Promise.resolve([]),
+    canAssign
+      ? isSuperAdminRole
+        ? prisma.agentAssignment.findMany({
+            where: {
+              assignedTo: { role: { slug: SYSTEM_ROLE_SLUGS.QUALITY_ANALYST } },
+            },
+            include: {
+              agent: { select: { id: true, name: true, email: true } },
+              assignedTo: {
+                select: { id: true, name: true, email: true },
+              },
+            },
+            orderBy: { assignedAt: "desc" },
+          })
+        : prisma.agentAssignment.findMany({
+            where: {
+              assignedById: session.user.id,
+              assignedTo: { role: { slug: SYSTEM_ROLE_SLUGS.QUALITY_ANALYST } },
+            },
+            include: {
+              agent: { select: { id: true, name: true, email: true } },
+              assignedTo: {
+                select: { id: true, name: true, email: true },
+              },
+            },
+            orderBy: { assignedAt: "desc" },
+          })
       : Promise.resolve([]),
   ]);
 
@@ -317,9 +452,29 @@ export async function getTeamManagementData() {
     canApproveAnalyst,
     canReadManaged,
     canManageManaged,
+    canAssignAgents: canAssign,
     myRequests: myRequests.map(mapRequest),
     pendingApprovals: pendingApprovals.map(mapRequest),
     managedUsers: managedWithCounts,
+    assignableAgents: assignableAgents.map((user) => ({
+      id: user.id,
+      name: resolveRoleUserName(user),
+      email: user.email,
+    })),
+    assigneeOptions: assigneeOptions.map((user) => ({
+      id: user.id,
+      name: resolveRoleUserName(user),
+      email: user.email,
+      roleSlug: user.role.slug,
+      roleName: user.role.name,
+    })),
+    agentAssignments: agentAssignments.map((row) => ({
+      id: row.id,
+      agentId: row.agent.id,
+      agentName: resolveRoleUserName(row.agent),
+      assignToId: row.assignedTo.id,
+      assignToName: resolveRoleUserName(row.assignedTo),
+    })),
   };
 }
 
@@ -349,14 +504,15 @@ export async function requestAgentUser(formData: FormData) {
     return { error: emailError };
   }
 
-  const passwordHash = await bcrypt.hash(parsed.data.password, 12);
+  const credentials = await buildPasswordCredentials(parsed.data.password);
 
   try {
     await prisma.userProvisioningRequest.create({
       data: {
         name: parsed.data.name.trim(),
         email,
-        passwordHash,
+        passwordHash: credentials.password,
+        passwordEncrypted: credentials.passwordEncrypted,
         dateOfJoining,
         targetRoleSlug: SYSTEM_ROLE_SLUGS.AGENT,
         requestedById: session.user.id,
@@ -369,7 +525,7 @@ export async function requestAgentUser(formData: FormData) {
     throw error;
   }
 
-  revalidateProvisioningPaths();
+  revalidateProvisioningPaths(session.user.id);
   return {
     success: true,
     message: "Agent request submitted for Quality Manager approval.",
@@ -397,14 +553,15 @@ export async function requestQualityAnalystUser(formData: FormData) {
     return { error: emailError };
   }
 
-  const passwordHash = await bcrypt.hash(parsed.data.password, 12);
+  const credentials = await buildPasswordCredentials(parsed.data.password);
 
   try {
     await prisma.userProvisioningRequest.create({
       data: {
         name: parsed.data.name.trim(),
         email,
-        passwordHash,
+        passwordHash: credentials.password,
+        passwordEncrypted: credentials.passwordEncrypted,
         dateOfJoining: normalizeJoiningDate(parsed.data.dateOfJoining),
         targetRoleSlug: SYSTEM_ROLE_SLUGS.QUALITY_ANALYST,
         requestedById: session.user.id,
@@ -417,7 +574,7 @@ export async function requestQualityAnalystUser(formData: FormData) {
     throw error;
   }
 
-  revalidateProvisioningPaths();
+  revalidateProvisioningPaths(session.user.id);
   return {
     success: true,
     message: "Quality Analyst request submitted for Admin approval.",
@@ -474,9 +631,12 @@ async function approveRequest(requestId: string, reviewerId: string, note?: stri
           name: fresh.name,
           email: fresh.email,
           password: fresh.passwordHash,
+          passwordEncrypted: fresh.passwordEncrypted,
           roleId,
           dateOfJoining: fresh.dateOfJoining,
           createdById: fresh.requestedById,
+          isActive: true,
+          approvalStatus: "ACTIVE",
         },
       });
 
@@ -489,6 +649,7 @@ async function approveRequest(requestId: string, reviewerId: string, note?: stri
           reviewedAt: new Date(),
           createdUserId: user.id,
           passwordHash: "",
+          passwordEncrypted: "",
         },
       });
     });
@@ -510,15 +671,18 @@ async function approveRequest(requestId: string, reviewerId: string, note?: stri
     throw error;
   }
 
-  revalidateProvisioningPaths();
+  revalidateProvisioningPaths(reviewerId);
   return { success: true, message: "User approved and account created." };
 }
 
 export async function approveAgentRequest(formData: FormData) {
   const session = await requireAuth();
-  if (session.user.role.slug !== SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
+  if (
+    session.user.role.slug !== SYSTEM_ROLE_SLUGS.QUALITY_MANAGER &&
+    !isSuperAdmin(session.user.role)
+  ) {
     return {
-      error: "Agent requests must be approved by a Quality Manager in Team management.",
+      error: "Agent requests must be approved by a Quality Manager or Super Admin in Team management.",
     };
   }
   await requirePermission(PERMISSIONS.USERS_APPROVE_AGENT);
@@ -607,8 +771,9 @@ export async function rejectProvisioningRequest(formData: FormData) {
 
   const canReject =
     (request.targetRoleSlug === SYSTEM_ROLE_SLUGS.AGENT &&
-      session.user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER &&
-      canApproveAgentRequests(session.user.role)) ||
+      ((session.user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER &&
+        canApproveAgentRequests(session.user.role)) ||
+        isSuperAdmin(session.user.role))) ||
     (request.targetRoleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST &&
       (session.user.role.slug === SYSTEM_ROLE_SLUGS.ADMIN ||
         isSuperAdmin(session.user.role)) &&
@@ -629,7 +794,7 @@ export async function rejectProvisioningRequest(formData: FormData) {
     },
   });
 
-  revalidateProvisioningPaths();
+  revalidateProvisioningPaths(session.user.id);
   return { success: true, message: "Request rejected." };
 }
 
@@ -645,26 +810,34 @@ export async function resetManagedUserPassword(formData: FormData) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  const managed = await prisma.user.findFirst({
-    where: {
-      id: parsed.data.userId,
-      createdById: session.user.id,
-    },
+  const manageError = await assertActorManagesUser(
+    session.user.id,
+    session.user.role,
+    parsed.data.userId
+  );
+  if (manageError) {
+    return { error: manageError };
+  }
+
+  const managed = await prisma.user.findUnique({
+    where: { id: parsed.data.userId },
     select: { id: true, email: true },
   });
 
   if (!managed) {
-    return {
-      error: "You can only reset passwords for team members you onboarded.",
-    };
+    return { error: "User not found." };
   }
 
-  const passwordHash = await bcrypt.hash(parsed.data.password, 12);
+  const credentials = await buildPasswordCredentials(parsed.data.password);
   await prisma.user.update({
     where: { id: managed.id },
-    data: { password: passwordHash },
+    data: {
+      password: credentials.password,
+      passwordEncrypted: credentials.passwordEncrypted,
+      sessionVersion: { increment: 1 },
+    },
   });
 
-  revalidateProvisioningPaths();
+  revalidateProvisioningPaths(session.user.id);
   return { success: true, message: `Password updated for ${managed.email}.` };
 }

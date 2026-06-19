@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition, useEffect } from "react";
+import { useMemo, useState, useTransition, useEffect, useOptimistic, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronDown, Download, Eye, Pencil, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { AuditDetailModal } from "@/components/audit-logs/audit-detail-modal";
 import {
@@ -16,6 +17,7 @@ import {
   usePaginatedRows,
 } from "@/components/primitives/data-table-panel";
 import { useToast } from "@/components/primitives/toast";
+import { LoadingZone } from "@/components/primitives/loading-zone";
 import { cn } from "@/lib/utils";
 import { deleteAuditSubmissions, updateAuditFeedback } from "@/lib/actions/audit";
 import type { AuditLogEntry } from "@/lib/audit/audit-records";
@@ -38,6 +40,9 @@ import {
 import { canEditFeedbackDateTimeForStatus } from "@/lib/audit/feedback-status-access";
 import { resolveMetricDate } from "@/lib/audit/metric-dates";
 import type { SessionRole } from "@/lib/rbac";
+import { formatSecondsAgo } from "@/lib/format-relative-time";
+import { useRealtime } from "@/lib/hooks/use-realtime";
+import { isAuditSSEEvent } from "@/lib/sse-events";
 
 type AuditLogsTableProps = {
   submissions: AuditLogEntry[];
@@ -203,7 +208,10 @@ export function AuditLogsTable({
   canDeleteAudits = false,
   isSuperAdmin = false,
 }: AuditLogsTableProps) {
+  const router = useRouter();
   const { toast } = useToast();
+  const [lastSyncedAt, setLastSyncedAt] = useState(() => Date.now());
+  const [secondsSinceSync, setSecondsSinceSync] = useState(0);
   const [search, setSearch] = useState("");
   const [scorePreset, setScorePreset] = useState<ScorePreset>("all");
   const [grade, setGrade] = useState("");
@@ -215,20 +223,82 @@ export function AuditLogsTable({
   const [customRange, setCustomRange] = useState<DateRangeValue>({ from: "", to: "" });
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
-  const [rows, setRows] = useState(submissions);
+  const [optimisticRows, applyOptimisticRows] = useOptimistic(
+    submissions,
+    (
+      current: AuditLogEntry[],
+      action:
+        | { type: "delete"; ids: string[] }
+        | { type: "patch"; id: string; patch: Partial<AuditLogEntry> }
+        | { type: "replace"; rows: AuditLogEntry[] }
+    ) => {
+      if (action.type === "delete") {
+        const idSet = new Set(action.ids);
+        return current.filter((row) => !idSet.has(row.id));
+      }
+      if (action.type === "replace") {
+        return action.rows;
+      }
+      return current.map((row) =>
+        row.id === action.id ? { ...row, ...action.patch } : row
+      );
+    }
+  );
+  const rows = optimisticRows;
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<{
     ids: string[];
     label: string;
   } | null>(null);
-  const [, startFeedback] = useTransition();
+  const [feedbackPending, startFeedback] = useTransition();
   const [deletePending, startDelete] = useTransition();
+  const tableBusy = deletePending || feedbackPending;
 
   const columnCount = canDeleteAudits ? 12 : 11;
 
   useEffect(() => {
-    setRows(submissions);
+    setLastSyncedAt(Date.now());
   }, [submissions]);
+
+  const handleRealtime = useCallback(
+    (event: Parameters<typeof isAuditSSEEvent>[0]) => {
+      if (!isAuditSSEEvent(event)) return;
+
+      switch (event.type) {
+        case "audit:created":
+        case "invalidate":
+          router.refresh();
+          setLastSyncedAt(Date.now());
+          break;
+        case "audit:updated":
+          if (event.changes) {
+            applyOptimisticRows({
+              type: "patch",
+              id: event.auditId,
+              patch: event.changes as Partial<AuditLogEntry>,
+            });
+          } else {
+            router.refresh();
+          }
+          setLastSyncedAt(Date.now());
+          break;
+        case "audit:deleted":
+          applyOptimisticRows({ type: "delete", ids: [event.auditId] });
+          setLastSyncedAt(Date.now());
+          break;
+      }
+    },
+    [router, applyOptimisticRows]
+  );
+
+  useRealtime(handleRealtime);
+
+  useEffect(() => {
+    const tick = window.setInterval(() => {
+      setSecondsSinceSync(Math.floor((Date.now() - lastSyncedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(tick);
+  }, [lastSyncedAt]);
 
   useEffect(() => {
     setSelectedIds((current) => {
@@ -319,14 +389,15 @@ export function AuditLogsTable({
     setDeleteConfirm(null);
 
     startDelete(async () => {
+      applyOptimisticRows({ type: "delete", ids });
       const result = await deleteAuditSubmissions(ids);
       if ("error" in result && result.error) {
         toast(result.error, "error");
+        router.refresh();
         return;
       }
 
       const deleted = "deleted" in result ? result.deleted : ids.length;
-      setRows((current) => current.filter((row) => !ids.includes(row.id)));
       setSelectedIds((current) => {
         const next = new Set(current);
         for (const id of ids) next.delete(id);
@@ -459,34 +530,29 @@ export function AuditLogsTable({
     let nextRow: AuditLogEntry | undefined;
     let previousRow: AuditLogEntry | undefined;
 
-    setRows((current) =>
-      current.map((row) => {
-        if (row.id !== id) return row;
-        previousRow = row;
+    const currentRow = rows.find((row) => row.id === id);
+    if (!currentRow) return;
+    previousRow = currentRow;
 
-        let next: AuditLogEntry = { ...row, ...patch };
+    let next: AuditLogEntry = { ...currentRow, ...patch };
 
-        if (patch.feedbackStatus && patch.feedbackStatus !== row.feedbackStatus) {
-          next = { ...next, ...applyFeedbackStatusChange(row, patch.feedbackStatus) };
-        }
+    if (patch.feedbackStatus && patch.feedbackStatus !== currentRow.feedbackStatus) {
+      next = { ...next, ...applyFeedbackStatusChange(currentRow, patch.feedbackStatus) };
+    }
 
-        if (patch.feedbackDate !== undefined || patch.feedbackStatusAt !== undefined) {
-          const localValue =
-            patch.feedbackStatusAt !== undefined
-              ? (patch.feedbackStatusAt ?? "")
-              : (patch.feedbackDate ?? "");
-          next = {
-            ...next,
-            ...applyFeedbackDateTimeChange(next, localValue),
-          };
-        }
+    if (patch.feedbackDate !== undefined || patch.feedbackStatusAt !== undefined) {
+      const localValue =
+        patch.feedbackStatusAt !== undefined
+          ? (patch.feedbackStatusAt ?? "")
+          : (patch.feedbackDate ?? "");
+      next = {
+        ...next,
+        ...applyFeedbackDateTimeChange(next, localValue),
+      };
+    }
 
-        nextRow = next;
-        return next;
-      })
-    );
-
-    if (!nextRow || !previousRow) return;
+    nextRow = next;
+    applyOptimisticRows({ type: "patch", id, patch: nextRow });
 
     startFeedback(async () => {
       const result = await updateAuditFeedback(id, {
@@ -498,25 +564,20 @@ export function AuditLogsTable({
 
       if ("error" in result && result.error) {
         toast(result.error, "error");
-        setRows((current) =>
-          current.map((row) => (row.id === id ? previousRow! : row))
-        );
+        applyOptimisticRows({ type: "patch", id, patch: previousRow! });
         return;
       }
 
       if ("success" in result && result.success) {
-        setRows((current) =>
-          current.map((row) =>
-            row.id === id
-              ? {
-                  ...row,
-                  feedbackStatus: result.feedbackStatus ?? row.feedbackStatus,
-                  feedbackDate: result.feedbackDate ?? null,
-                  feedbackStatusAt: result.feedbackStatusAt ?? null,
-                }
-              : row
-          )
-        );
+        applyOptimisticRows({
+          type: "patch",
+          id,
+          patch: {
+            feedbackStatus: result.feedbackStatus ?? nextRow!.feedbackStatus,
+            feedbackDate: result.feedbackDate ?? null,
+            feedbackStatusAt: result.feedbackStatusAt ?? null,
+          },
+        });
       }
     });
   }
@@ -550,6 +611,9 @@ export function AuditLogsTable({
             <p className="audit-logs__desc">{resultLabel}</p>
           </div>
           <div className="audit-logs__head-actions">
+            <span className="table-meta" style={{ marginRight: "auto" }}>
+              Updated {formatSecondsAgo(secondsSinceSync)}
+            </span>
             {canDeleteAudits && selectedCount > 0 ? (
               <>
                 <span className="audit-logs__bulk-count">
@@ -822,7 +886,17 @@ export function AuditLogsTable({
         <p className="audit-logs__result-count">{resultLabel}</p>
       )}
 
-      <div className="audit-logs-page__table-zone">
+      <LoadingZone
+        loading={tableBusy}
+        label={
+          deletePending
+            ? "Deleting audits…"
+            : feedbackPending
+              ? "Saving feedback…"
+              : "Updating…"
+        }
+        className="audit-logs-page__table-zone loading-zone--fill"
+      >
         {rows.length === 0 || filtered.length === 0 ? (
           <div className="platform-report-table-panel audit-logs-page__empty-panel">
             <div className="platform-report-table__scroll audit-logs-page__empty-scroll">
@@ -840,7 +914,7 @@ export function AuditLogsTable({
                     <th>Feedback</th>
                     <th>Date &amp; time</th>
                     <th>Feedback for the agent</th>
-                    <th aria-label="Actions" />
+                    <th className="col-actions" aria-label="Actions" />
                   </tr>
                 </thead>
                 <tbody>
@@ -905,7 +979,7 @@ export function AuditLogsTable({
                     <th>Feedback</th>
                     <th>Date &amp; time</th>
                     <th>Feedback for the agent</th>
-                    <th aria-label="Actions" />
+                    <th className="col-actions" aria-label="Actions" />
                   </tr>
                 </thead>
                 <tbody>
@@ -913,6 +987,7 @@ export function AuditLogsTable({
                 <tr
                   key={row.id}
                   className={cn(
+                    "audit-logs__row",
                     selectedIds.has(row.id) && "audit-logs__row--selected"
                   )}
                 >
@@ -1048,34 +1123,37 @@ export function AuditLogsTable({
                       {row.agentFeedback.trim() || "—"}
                     </span>
                   </td>
-                  <td>
-                    <div className="audit-logs__actions">
+                  <td className="col-actions">
+                    <span className="audit-logs__actions-hint" aria-hidden>
+                      ⋯
+                    </span>
+                    <div className="audit-logs__actions" role="group" aria-label={`Actions for ${row.agent}`}>
                       <button
                         type="button"
-                        className="audit-logs__action-btn"
+                        className="audit-logs__row-action"
                         onClick={() => setViewId(row.id)}
-                        title="View details"
                       >
-                        <Eye size={15} aria-hidden />
+                        <Eye size={14} aria-hidden />
+                        <span>View</span>
                       </button>
                       {canEditAudits ? (
                         <Link
                           href={`/audit-logs/${row.id}/edit`}
-                          className="audit-logs__action-btn"
-                          title="Edit audit"
+                          className="audit-logs__row-action"
                         >
-                          <Pencil size={15} aria-hidden />
+                          <Pencil size={14} aria-hidden />
+                          <span>Edit</span>
                         </Link>
                       ) : null}
                       {canDeleteAudits ? (
                         <button
                           type="button"
-                          className="audit-logs__action-btn audit-logs__action-btn--danger"
-                          title="Delete audit"
+                          className="audit-logs__row-action audit-logs__row-action--danger"
                           disabled={deletePending}
                           onClick={() => openDeleteConfirm([row.id])}
                         >
-                          <Trash2 size={15} aria-hidden />
+                          <Trash2 size={14} aria-hidden />
+                          <span>Delete</span>
                         </button>
                       ) : null}
                     </div>
@@ -1087,7 +1165,7 @@ export function AuditLogsTable({
             )}
           />
         )}
-      </div>
+      </LoadingZone>
 
       <AuditDetailModal
         auditId={viewId}

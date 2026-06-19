@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/primitives/button";
+import { LoadingZone } from "@/components/primitives/loading-zone";
 import { Field, Input, Label, Select } from "@/components/primitives/field";
 import { useToast } from "@/components/primitives/toast";
 import {
@@ -181,6 +182,7 @@ export function AuditTemplatesManager({
         )}
       </div>
 
+      <LoadingZone loading={pending} label="Updating templates…">
       <div className="tpl-manager__grid">
         {templates.map((tpl) => {
           const isActive = tpl.id === activeTemplateId;
@@ -272,6 +274,7 @@ export function AuditTemplatesManager({
           );
         })}
       </div>
+      </LoadingZone>
     </div>
   );
 }
@@ -394,6 +397,7 @@ function TemplateEditor({
         </Button>
       </div>
 
+      <LoadingZone loading={pending} label="Saving template…">
       <div className="tpl-editor__meta">
         <div className="tpl-editor__meta-main">
           <Field>
@@ -585,6 +589,7 @@ function TemplateEditor({
           Add new section
         </button>
       </div>
+      </LoadingZone>
     </div>
   );
 }
