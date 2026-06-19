@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
+import { AuthError } from "next-auth";
 import type { SessionRole } from "@/lib/rbac";
 import {
   buildHttpAuthCookies,
@@ -15,6 +16,20 @@ export const authConfig = {
     signIn: "/login",
   },
   providers: [],
+  logger: {
+    error(error: Error) {
+      if (error instanceof AuthError && error.type === "CredentialsSignin") {
+        return;
+      }
+      console.error("[auth][error]", error);
+    },
+    warn(code: string) {
+      console.warn("[auth][warn]", code);
+    },
+    debug() {
+      // Auth.js debug logs are very noisy in development.
+    },
+  },
   callbacks: {
     jwt({ token, user }) {
       if (user) {

@@ -1,5 +1,5 @@
-import { signOutAction } from "@/lib/actions/admin";
-import { Button } from "@/components/primitives/button";
+import Link from "next/link";
+import { CLEAR_SESSION_PATH } from "@/lib/auth-redirects";
 
 export default function AccessDeniedPage() {
   return (
@@ -15,11 +15,9 @@ export default function AccessDeniedPage() {
           </p>
         </div>
 
-        <form action={signOutAction}>
-          <Button type="submit" block>
-            Sign out
-          </Button>
-        </form>
+        <Link href={CLEAR_SESSION_PATH} className="ui-btn ui-btn--primary ui-btn--block">
+          Sign out
+        </Link>
       </div>
     </div>
   );

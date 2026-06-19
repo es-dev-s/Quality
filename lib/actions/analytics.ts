@@ -9,6 +9,7 @@ import {
   computeQmsAnalytics,
   type AnalyticsAuditRecord,
 } from "@/lib/audit/analytics-metrics";
+import { parseFeedbackSecurity } from "@/lib/audit/feedback";
 import { computeLeaderboardAnalytics } from "@/lib/audit/leaderboard-metrics";
 
 function parseRows(value: unknown): AuditRow[] {
@@ -42,6 +43,7 @@ async function fetchAnalyticsRecords(
       finalPct: true,
       hasFatal: true,
       feedbackStatus: true,
+      feedbackSecurity: true,
       reason: true,
       fatalList: true,
       rows: true,
@@ -61,6 +63,7 @@ async function fetchAnalyticsRecords(
     finalPct: s.finalPct,
     hasFatal: s.hasFatal,
     feedbackStatus: s.feedbackStatus,
+    feedbackSecurity: parseFeedbackSecurity(s.feedbackSecurity),
     reason: s.reason,
     fatalList: s.fatalList,
     rows: parseRows(s.rows),

@@ -13,6 +13,10 @@ if (process.env.NODE_ENV === "production") {
   console.info(
     `[deploy] AUTH_SECURE_COOKIES=${process.env.AUTH_SECURE_COOKIES ?? "unset"} APP_URL=${process.env.APP_URL ?? "unset"}`
   );
+} else {
+  console.info(
+    `[dev] LAN Server Action origins (${allowedOrigins.length}): ${allowedOrigins.slice(0, 8).join(", ")}${allowedOrigins.length > 8 ? "…" : ""}`
+  );
 }
 
 const nextConfig: NextConfig = {

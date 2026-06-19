@@ -1,6 +1,7 @@
 import { IMPORT_ENABLED, SUPERADMIN_ROLE_SLUG } from "@/lib/constants";
 import {
   PERMISSIONS,
+  isDefinedSystemRole,
   resolveRoutePermission,
   ROUTE_PERMISSIONS,
   SYSTEM_ROLE_DEFINITIONS,
@@ -26,15 +27,14 @@ export function hasScope(
 ): boolean {
   if (!role) return false;
   if (isSuperAdmin(role)) return true;
-  if (role.scopes.includes(permission)) return true;
 
-  const slug = role.slug as SystemRoleSlug;
-  const systemRole = SYSTEM_ROLE_DEFINITIONS[slug];
-  if (systemRole?.permissions.includes(permission as Permission)) {
-    return true;
+  if (isDefinedSystemRole(role.slug)) {
+    return SYSTEM_ROLE_DEFINITIONS[role.slug].permissions.includes(
+      permission as Permission
+    );
   }
 
-  return false;
+  return role.scopes.includes(permission);
 }
 
 export function hasAnyScope(
@@ -200,6 +200,16 @@ export function canEditSupervisorRemarks(role?: SessionRole | null): boolean {
   return (
     role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR ||
     role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
+  );
+}
+
+/** CSV export — Quality Manager, legacy Admin, and Super Admin only. */
+export function canExportAuditData(role?: SessionRole | null): boolean {
+  if (!role) return false;
+  if (isSuperAdmin(role)) return true;
+  return (
+    role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER ||
+    role.slug === SYSTEM_ROLE_SLUGS.ADMIN
   );
 }
 

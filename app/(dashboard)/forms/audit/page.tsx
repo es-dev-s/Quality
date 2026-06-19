@@ -8,6 +8,7 @@ import { getAuditors, getAuditReferenceOptions } from "@/lib/actions/audit";
 import { getInteractionConfig } from "@/lib/actions/interaction-config";
 import { getAuditFormWorkbench } from "@/lib/actions/templates";
 import { resolveAuditFormTemplateId } from "@/lib/audit/audit-form-utils";
+import { buildSupervisorAgentMap } from "@/lib/audit/supervisor-agent-map";
 import type { InteractionType } from "@/lib/audit/types";
 
 type AuditFormPageProps = {
@@ -54,6 +55,12 @@ async function AuditFormContent({
     }
   );
 
+  const supervisorAgentMap = await buildSupervisorAgentMap(
+    session,
+    interactionConfig.supervisors,
+    interactionConfig.agents
+  );
+
   return (
     <AuditForm
       auditors={auditors}
@@ -63,6 +70,7 @@ async function AuditFormContent({
       auditReferenceOptions={auditReferenceOptions}
       initialTemplateId={initialTemplateId}
       initialType={initialType}
+      supervisorAgentMap={supervisorAgentMap}
     />
   );
 }

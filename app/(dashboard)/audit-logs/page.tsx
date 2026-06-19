@@ -4,13 +4,14 @@ import { TablePageSkeleton } from "@/components/dashboard/page-skeletons";
 import { AuditLogsTable } from "@/components/dashboard/audit-logs-table";
 import { requirePageAccess } from "@/lib/auth-guards";
 import { getAuditLogs } from "@/lib/actions/audit";
-import type { SessionRole } from "@/lib/rbac";
 import {
   canEditAuditSubmissions,
   canEditFeedbackDate,
   canEditFeedbackFully,
   canEditSupervisorRemarks,
   canDeleteAuditLogs,
+  canExportAuditData,
+  canWriteAuditForm,
   isSuperAdmin,
 } from "@/lib/rbac";
 
@@ -27,6 +28,8 @@ async function AuditLogsContent() {
       canEditSupervisorRemarks={canEditSupervisorRemarks(session.user.role)}
       canEditAudits={canEditAuditSubmissions(session.user.role)}
       canDeleteAudits={canDeleteAuditLogs(session.user.role)}
+      canCreateAudit={canWriteAuditForm(session.user.role)}
+      canExport={canExportAuditData(session.user.role)}
       isSuperAdmin={isSuperAdmin(session.user.role)}
     />
   );

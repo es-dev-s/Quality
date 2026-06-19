@@ -25,6 +25,9 @@ export const FEEDBACK_STATUS_OPTIONS: FeedbackStatus[] = [
   "Disputed",
 ];
 
+/** User-facing label for feedbackSecurity (issue severity level). */
+export const FEEDBACK_SEVERITY_LABEL = "Severity";
+
 export type AuditFeedbackFields = {
   feedbackSecurity: FeedbackSecurity;
   feedbackStatus: FeedbackStatus;

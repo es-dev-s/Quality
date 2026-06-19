@@ -21,6 +21,11 @@ const assignSchema = z.object({
   assignToUserId: z.string().min(1),
 });
 
+const bulkAssignSchema = z.object({
+  agentIds: z.array(z.string().min(1)).min(1, "Select at least one agent."),
+  assignToUserId: z.string().min(1),
+});
+
 function revalidateAssignmentPaths() {
   revalidatePath("/settings");
   revalidatePath("/audit-logs");
@@ -125,6 +130,80 @@ export async function assignAgentToUser(agentId: string, assignToUserId: string)
     assignedToId: parsed.data.assignToUserId,
   });
   return { success: true as const };
+}
+
+export async function assignAgentsToUser(
+  agentIds: string[],
+  assignToUserId: string
+) {
+  const session = await requirePermission(PERMISSIONS.AGENT_ASSIGN);
+
+  const parsed = bulkAssignSchema.safeParse({ agentIds, assignToUserId });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid assignment." };
+  }
+
+  const uniqueAgentIds = [...new Set(parsed.data.agentIds)];
+
+  const assigneeError = await assertAssigneeIsQualityAnalyst(
+    parsed.data.assignToUserId
+  );
+  if (assigneeError) return { error: assigneeError };
+
+  let assigned = 0;
+  let skipped = 0;
+  let firstError: string | null = null;
+
+  for (const agentId of uniqueAgentIds) {
+    const agentError = await assertQmCanManageAgent(
+      agentId,
+      session.user.id,
+      session.user.role
+    );
+    if (agentError) {
+      if (!firstError) firstError = agentError;
+      skipped += 1;
+      continue;
+    }
+
+    try {
+      await prisma.agentAssignment.create({
+        data: {
+          agentId,
+          assignedToId: parsed.data.assignToUserId,
+          assignedById: session.user.id,
+        },
+      });
+      assigned += 1;
+      invalidateAgentAssignmentCaches(
+        session.user.id,
+        parsed.data.assignToUserId,
+        {
+          type: "agent:assigned",
+          agentId,
+          assignedToId: parsed.data.assignToUserId,
+        }
+      );
+    } catch (error) {
+      if (isPrismaUniqueViolation(error)) {
+        skipped += 1;
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  if (assigned === 0) {
+    if (skipped > 0 && !firstError) {
+      return {
+        error: "All selected agents are already assigned to that analyst.",
+      };
+    }
+    return { error: firstError ?? "No agents could be assigned." };
+  }
+
+  revalidateAssignmentPaths();
+  return { success: true as const, assigned, skipped };
 }
 
 export async function removeAgentFromUser(

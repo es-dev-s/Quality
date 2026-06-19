@@ -49,7 +49,7 @@ export const CANONICAL_ROLE_SLUGS = [
  */
 export const LEGACY_ADMIN_ROLE_SLUG = "admin" as const;
 
-/** Identical permission tier for supervisor and quality-analyst (canonical spec). */
+/** Team-management tier for supervisors (no audit forms). */
 export const SUPERVISOR_TIER_PERMISSIONS: Permission[] = [
   PERMISSIONS.OVERVIEW_READ,
   PERMISSIONS.AUDIT_LOGS_READ,
@@ -58,9 +58,14 @@ export const SUPERVISOR_TIER_PERMISSIONS: Permission[] = [
   PERMISSIONS.USERS_PROVISION_AGENT,
   PERMISSIONS.USERS_READ_MANAGED,
   PERMISSIONS.USERS_MANAGE_MANAGED,
+  PERMISSIONS.FEEDBACK_STATUS,
+];
+
+/** Quality Analyst: supervisor tier + audit forms. */
+export const QUALITY_ANALYST_TIER_PERMISSIONS: Permission[] = [
+  ...SUPERVISOR_TIER_PERMISSIONS,
   PERMISSIONS.AUDIT_FORM_READ,
   PERMISSIONS.AUDIT_FORM_WRITE,
-  PERMISSIONS.FEEDBACK_STATUS,
 ];
 
 export const SYSTEM_ROLE_SLUGS = {
@@ -102,8 +107,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleSlug, RoleDefinition> = {
   [SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]: {
     name: "Quality Analyst",
     description:
-      "Same permission tier as Supervisor — team management and audit forms.",
-    permissions: [...SUPERVISOR_TIER_PERMISSIONS],
+      "Team management and audit forms for aligned agents.",
+    permissions: [...QUALITY_ANALYST_TIER_PERMISSIONS],
   },
   [SYSTEM_ROLE_SLUGS.QUALITY_MANAGER]: {
     name: "Quality Manager",
@@ -153,6 +158,24 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleSlug, RoleDefinition> = {
     permissions: SEED_PERMISSIONS,
   },
 };
+
+export function isDefinedSystemRole(slug: string): slug is SystemRoleSlug {
+  return Object.prototype.hasOwnProperty.call(SYSTEM_ROLE_DEFINITIONS, slug);
+}
+
+/** System roles use code definitions; custom roles use DB-assigned scopes. */
+export function resolveEffectiveScopes(
+  roleSlug: string,
+  dbScopeSlugs: string[]
+): Permission[] {
+  if (isDefinedSystemRole(roleSlug)) {
+    return [...SYSTEM_ROLE_DEFINITIONS[roleSlug].permissions];
+  }
+
+  return dbScopeSlugs.filter((slug): slug is Permission =>
+    (SEED_PERMISSIONS as readonly string[]).includes(slug)
+  );
+}
 
 /** Minimum permission required to open a route (read access). */
 export const ROUTE_PERMISSIONS: Record<string, Permission> = {

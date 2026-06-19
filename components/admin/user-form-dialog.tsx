@@ -5,8 +5,14 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/primitives/button";
 import { Field, Input, Label, Select } from "@/components/primitives/field";
 import { FormStack, Modal, ModalActions } from "@/components/primitives/modal";
+import {
+  isPasswordFormValid,
+  PasswordConfirmField,
+  PasswordField,
+} from "@/components/primitives/password-field";
 import { useToast } from "@/components/primitives/toast";
 import { createUser, updateUser } from "@/lib/actions/admin";
+import { generateClientPassword } from "@/lib/password-client";
 import { isLegacySystemRole, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 
 type Role = {
@@ -47,9 +53,11 @@ export function UserFormDialog({
   roles,
 }: UserFormDialogProps) {
   const router = useRouter();
-  const { toast } = useToast();
+  const { toast, toastPasswordReveal } = useToast();
   const [isPending, startTransition] = useTransition();
   const [roleId, setRoleId] = useState(user?.roleId ?? roles[0]?.id ?? "");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const isEditing = !!user;
 
   const selectedRole = useMemo(
@@ -61,10 +69,42 @@ export function UserFormDialog({
   useEffect(() => {
     if (open) {
       setRoleId(user?.roleId ?? roles[0]?.id ?? "");
+      if (!user) {
+        const generated = generateClientPassword(12);
+        setPassword(generated);
+        setConfirmPassword(generated);
+      } else {
+        setPassword("");
+        setConfirmPassword("");
+      }
     }
   }, [open, user, roles]);
 
   function handleSubmit(formData: FormData) {
+    const passwordRequired = !isEditing;
+    const passwordProvided = password.length > 0;
+
+    if (
+      passwordRequired &&
+      !isPasswordFormValid(password, confirmPassword, { minLength: 6 })
+    ) {
+      toast("Enter a matching password of at least 6 characters.", "error");
+      return;
+    }
+
+    if (
+      isEditing &&
+      passwordProvided &&
+      !isPasswordFormValid(password, confirmPassword, { minLength: 6 })
+    ) {
+      toast("Enter a matching password of at least 6 characters.", "error");
+      return;
+    }
+
+    if (passwordProvided) {
+      formData.set("password", password);
+    }
+
     startTransition(async () => {
       const result = isEditing
         ? await updateUser(formData)
@@ -75,7 +115,16 @@ export function UserFormDialog({
         return;
       }
 
-      toast(isEditing ? "User updated" : "User created");
+      if ("success" in result && result.success && result.password && result.email) {
+        toastPasswordReveal(result.email, result.password, {
+          note: isEditing
+            ? "Password updated. The user must sign in with the new password."
+            : "Account created. Share this password securely with the user.",
+        });
+      } else {
+        toast(isEditing ? "User updated." : "User created.", "success");
+      }
+
       onOpenChange(false);
       router.refresh();
     });
@@ -85,10 +134,10 @@ export function UserFormDialog({
     <Modal
       open={open}
       onClose={() => onOpenChange(false)}
-      title={isEditing ? "Edit User" : "Create User"}
+      title={isEditing ? "Edit user" : "Create user"}
       description={
         isEditing
-          ? "Update user details and role assignment."
+          ? "Update profile details and role. Leave password blank to keep the current one."
           : "Add a platform user with a system role. Agent users require a joining date."
       }
     >
@@ -120,19 +169,31 @@ export function UserFormDialog({
             />
           </Field>
 
-          <Field>
-            <Label htmlFor="password">
-              Password {isEditing && "(leave blank to keep current)"}
-            </Label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              required={!isEditing}
-              minLength={isEditing ? undefined : 6}
+          <PasswordField
+            id="password"
+            label={isEditing ? "New password (optional)" : "Password"}
+            value={password}
+            onChange={setPassword}
+            required={!isEditing}
+            disabled={isPending}
+            minLength={6}
+            showGenerator
+            hint={
+              isEditing
+                ? "Leave blank to keep the current password. Minimum 6 characters when set."
+                : "Minimum 6 characters. Use Generate for a secure temporary password."
+            }
+          />
+          {(password.length > 0 || !isEditing) && (
+            <PasswordConfirmField
+              id="password-confirm"
+              password={password}
+              value={confirmPassword}
+              onChange={setConfirmPassword}
+              required={!isEditing || password.length > 0}
               disabled={isPending}
             />
-          </Field>
+          )}
 
           <Field>
             <Label htmlFor="roleId">Role</Label>
@@ -183,7 +244,7 @@ export function UserFormDialog({
             Cancel
           </Button>
           <Button type="submit" loading={isPending}>
-            {isEditing ? "Save Changes" : "Create"}
+            {isEditing ? "Save changes" : "Create user"}
           </Button>
         </ModalActions>
       </form>

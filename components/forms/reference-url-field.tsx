@@ -146,6 +146,11 @@ export function ReferenceUrlField({
   }, [auditReferenceOptions, draftAuditCode]);
 
   const label = isChat ? "Interaction reference" : "Call reference";
+  const optionalHint = required
+    ? null
+    : isChat
+      ? "Optional — URL, screenshot, recording, or linked audit"
+      : "Optional — URL, recording, image, or linked audit";
 
   useLayoutEffect(() => {
     if (!menuOpen) {
@@ -438,6 +443,10 @@ export function ReferenceUrlField({
             document.body
           )
         : null}
+
+      {optionalHint ? (
+        <p className="audit-field__hint ui-hint">{optionalHint}</p>
+      ) : null}
 
       <input
         ref={fileInputRef}

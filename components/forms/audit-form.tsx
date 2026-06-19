@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { MessageSquare, Phone } from "lucide-react";
 import {
   FEEDBACK_SECURITY_OPTIONS,
+  FEEDBACK_SEVERITY_LABEL,
   FEEDBACK_STATUS_OPTIONS,
   defaultAuditFeedback,
 } from "@/lib/audit/feedback";
@@ -77,7 +78,9 @@ function templateIdForType(
 }
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
 function createInitialFormData(): AuditFormData {
@@ -116,6 +119,8 @@ type AuditFormProps = {
   initialScores?: ScoresMap;
   successRedirect?: string;
   cancelHref?: string;
+  /** Supervisor name → agents linked via provisioning and audit history. */
+  supervisorAgentMap?: Record<string, string[]>;
 };
 
 function scoringMaxForTemplate(template: TemplateListItem): number {
@@ -140,6 +145,7 @@ export function AuditForm({
   initialScores,
   successRedirect = "/dashboard",
   cancelHref,
+  supervisorAgentMap = {},
 }: AuditFormProps) {
   const isEditMode = Boolean(editAuditId);
   const router = useRouter();
@@ -167,6 +173,14 @@ export function AuditForm({
     if (!isEditMode && !submissionKeyRef.current) {
       submissionKeyRef.current = createRandomUUID();
     }
+  }, [isEditMode]);
+
+  useEffect(() => {
+    if (isEditMode) return;
+    const today = todayISO();
+    setFormData((prev) =>
+      prev.auditDate === today ? prev : { ...prev, auditDate: today }
+    );
   }, [isEditMode]);
   const config = interactionConfig;
 
@@ -225,12 +239,17 @@ export function AuditForm({
   );
 
   const agentOptions = useMemo(() => {
-    const names = new Set(config.agents);
+    const supervisor = formData.supervisor.trim();
+    if (!supervisor) {
+      return formData.agent.trim() ? [formData.agent.trim()] : [];
+    }
+    const linked = supervisorAgentMap[supervisor] ?? [];
+    const names = new Set(linked);
     if (formData.agent.trim()) {
       names.add(formData.agent.trim());
     }
     return [...names].sort((a, b) => a.localeCompare(b));
-  }, [config.agents, formData.agent]);
+  }, [supervisorAgentMap, formData.supervisor, formData.agent]);
 
   const supervisorOptions = useMemo(() => {
     const names = new Set(config.supervisors);
@@ -273,6 +292,16 @@ export function AuditForm({
 
   const handleBusinessType = (businessType: BusinessType) => {
     updateForm({ businessType, lob: "", sublob: "", reason: "" });
+  };
+
+  const handleSupervisorChange = (supervisor: string) => {
+    const linked = supervisorAgentMap[supervisor] ?? [];
+    const currentAgent = formData.agent.trim();
+    const agentStillValid = !currentAgent || linked.includes(currentAgent);
+    updateForm({
+      supervisor,
+      agent: agentStillValid ? formData.agent : "",
+    });
   };
 
   const handleLOB = (lob: string) => {
@@ -336,8 +365,12 @@ export function AuditForm({
 
   const handleSave = () => {
     startTransition(async () => {
+      const submitFormData = isEditMode
+        ? formData
+        : { ...formData, auditDate: todayISO() };
+
       const calc = calculateResults(
-        formData,
+        submitFormData,
         scores,
         activeTemplate,
         previewRecordContext
@@ -350,11 +383,11 @@ export function AuditForm({
       const res = isEditMode
         ? await updateAuditSubmission(
             editAuditId!,
-            formData,
+            submitFormData,
             scores,
             activeTemplate.id
           )
-        : await saveAuditSubmission(formData, scores, activeTemplate.id, {
+        : await saveAuditSubmission(submitFormData, scores, activeTemplate.id, {
             submissionKey: submissionKeyRef.current ?? undefined,
           });
 
@@ -508,6 +541,27 @@ export function AuditForm({
 
                 <div className="audit-details__row">
                   <Field className="audit-field">
+                    <Label htmlFor="supervisor">
+                      Supervisor <span className="audit-required">*</span>
+                    </Label>
+                    <Select
+                      id="supervisor"
+                      className="audit-control"
+                      value={formData.supervisor}
+                      required
+                      disabled={pending}
+                      onChange={(e) => handleSupervisorChange(e.target.value)}
+                    >
+                      <option value="">Select supervisor</option>
+                      {supervisorOptions.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+
+                  <Field className="audit-field">
                     <Label htmlFor="agent">
                       Agent <span className="audit-required">*</span>
                     </Label>
@@ -516,34 +570,19 @@ export function AuditForm({
                       className="audit-control"
                       value={formData.agent}
                       required
+                      disabled={!formData.supervisor.trim() || pending}
                       onChange={(e) => updateForm({ agent: e.target.value })}
                     >
-                      <option value="">Select Agent</option>
+                      <option value="">
+                        {!formData.supervisor.trim()
+                          ? "Select supervisor first"
+                          : agentOptions.length === 0
+                            ? "No agents assigned to this supervisor"
+                            : "Select agent"}
+                      </option>
                       {agentOptions.map((a) => (
                         <option key={a} value={a}>
                           {a}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-
-                  <Field className="audit-field">
-                    <Label htmlFor="supervisor">
-                      Supervisor Name <span className="audit-required">*</span>
-                    </Label>
-                    <Select
-                      id="supervisor"
-                      className="audit-control"
-                      value={formData.supervisor}
-                      required
-                      onChange={(e) =>
-                        updateForm({ supervisor: e.target.value })
-                      }
-                    >
-                      <option value="">Select Supervisor</option>
-                      {supervisorOptions.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
                         </option>
                       ))}
                     </Select>
@@ -573,7 +612,7 @@ export function AuditForm({
                 <div className="audit-details__row">
                   <Field className="audit-field">
                     <Label htmlFor="callDate">
-                      {isCallInteraction ? "Call Date" : "Chat Date"}{" "}
+                      {isCallInteraction ? "Call date" : "Chat date"}{" "}
                       <span className="audit-required">*</span>
                     </Label>
                     <Input
@@ -583,20 +622,6 @@ export function AuditForm({
                       value={formData.callDate}
                       required
                       onChange={(e) => updateForm({ callDate: e.target.value })}
-                    />
-                  </Field>
-
-                  <Field className="audit-field">
-                    <Label htmlFor="auditDate">
-                      Audit Date <span className="audit-required">*</span>
-                    </Label>
-                    <Input
-                      id="auditDate"
-                      className="audit-control"
-                      type="date"
-                      value={formData.auditDate}
-                      required
-                      onChange={(e) => updateForm({ auditDate: e.target.value })}
                     />
                   </Field>
 
@@ -618,6 +643,24 @@ export function AuditForm({
                         </option>
                       ))}
                     </Select>
+                  </Field>
+
+                  <Field className="audit-field audit-field--audit-date">
+                    <Label htmlFor="auditDate">Audit date</Label>
+                    <Input
+                      id="auditDate"
+                      className="audit-control audit-control--readonly"
+                      type="date"
+                      value={formData.auditDate}
+                      readOnly
+                      tabIndex={-1}
+                      aria-readonly="true"
+                    />
+                    <p className="audit-field-hint">
+                      {isEditMode
+                        ? "Original audit date."
+                        : "Set automatically to today."}
+                    </p>
                   </Field>
                 </div>
 
@@ -701,40 +744,39 @@ export function AuditForm({
                   </Field>
                 </div>
 
-                <div
-                  className={cn(
-                    "audit-details__row",
-                    isCallInteraction
-                      ? "audit-details__row--pair audit-details__row--contact"
-                      : "audit-details__row--full"
-                  )}
-                >
-                  {isCallInteraction ? (
-                    <Field className="audit-field audit-contact-field">
-                      <div className="audit-contact-field__label-row">
-                        <Label htmlFor="mobile">
-                          Mobile Number <span className="audit-required">*</span>
-                        </Label>
-                      </div>
-                      <Input
-                        id="mobile"
-                        className="audit-control"
-                        type="tel"
-                        inputMode="tel"
-                        autoComplete="tel"
-                        placeholder="e.g. 916393540300"
-                        value={formData.mobile}
-                        required
-                        onChange={(e) => updateForm({ mobile: e.target.value })}
-                      />
-                    </Field>
-                  ) : null}
+                <div className="audit-details__row audit-details__row--pair audit-details__row--contact">
+                  <Field className="audit-field audit-contact-field">
+                    <div className="audit-contact-field__label-row">
+                      <Label htmlFor="mobile">
+                        {formData.type === "Call" ? "Mobile number" : "Number / name"}
+                      </Label>
+                    </div>
+                    <Input
+                      id="mobile"
+                      className="audit-control"
+                      type={formData.type === "Call" ? "tel" : "text"}
+                      inputMode={formData.type === "Call" ? "tel" : "text"}
+                      autoComplete={formData.type === "Call" ? "tel" : "off"}
+                      placeholder={
+                        formData.type === "Call"
+                          ? "e.g. 916393540300"
+                          : "e.g. guest name, ticket ID, or phone number"
+                      }
+                      value={formData.mobile}
+                      onChange={(e) => updateForm({ mobile: e.target.value })}
+                    />
+                    <p className="audit-field__hint ui-hint">
+                      Optional — {formData.type === "Call"
+                        ? "customer phone number for this call"
+                        : "identifier for this chat (name, number, or ticket ID)"}
+                    </p>
+                  </Field>
 
                   <ReferenceUrlField
                     value={formData.referenceUrl}
                     interactionType={formData.type}
-                    required={!isCallInteraction}
-                    inline={isCallInteraction}
+                    required={false}
+                    inline
                     auditReferenceOptions={auditReferenceOptions}
                     onChange={(referenceUrl) => updateForm({ referenceUrl })}
                   />
@@ -906,7 +948,7 @@ export function AuditForm({
               <div className="audit-details">
                 <div className="audit-details__row">
                   <Field className="audit-field">
-                    <Label htmlFor="feedbackSecurity">Security</Label>
+                    <Label htmlFor="feedbackSecurity">{FEEDBACK_SEVERITY_LABEL}</Label>
                     <Select
                       id="feedbackSecurity"
                       className="audit-control"

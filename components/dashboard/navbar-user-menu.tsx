@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { LogOut } from "lucide-react";
-import { signOutAction } from "@/lib/actions/admin";
+import { CLEAR_SESSION_PATH } from "@/lib/auth-redirects";
 import { useDashboardShell } from "@/components/dashboard/shell";
 import { useToast } from "@/components/primitives/toast";
 
@@ -64,7 +64,7 @@ export function NavbarUserMenu() {
             onClick={() => {
               setOpen(false);
               dismissPasswordToasts();
-              void signOutAction();
+              window.location.assign(CLEAR_SESSION_PATH);
             }}
           >
             <LogOut size={16} aria-hidden />

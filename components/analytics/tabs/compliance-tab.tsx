@@ -16,22 +16,26 @@ import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
 
 export function ComplianceTab({ data }: { data: QmsAnalyticsData }) {
   const { kpis } = data;
-  const feedbackTotal = kpis.fb_done + kpis.fb_pending || 1;
-  const complianceRate = Math.round((kpis.fb_done / feedbackTotal) * 100);
+  const feedbackTotal = kpis.fb_done + kpis.fb_pending + kpis.fb_disputed;
+  const complianceRate =
+    feedbackTotal > 0
+      ? Math.round((kpis.fb_done / feedbackTotal) * 100)
+      : 0;
   const fatalRate =
     kpis.total_audits > 0
       ? ((kpis.fatal_count / kpis.total_audits) * 100).toFixed(1)
       : "0.0";
 
   const sevData = [
-    { name: "Low", value: kpis.low_count, color: CHART_COLORS.green },
-    { name: "Medium", value: kpis.medium_count, color: CHART_COLORS.amber },
-    { name: "Critical", value: kpis.critical_count, color: CHART_COLORS.red },
+    { name: "Critical", value: kpis.issue_sev_critical, color: CHART_COLORS.red },
+    { name: "Medium", value: kpis.issue_sev_medium, color: CHART_COLORS.amber },
+    { name: "Low", value: kpis.issue_sev_low, color: CHART_COLORS.green },
   ].filter((d) => d.value > 0);
 
   const fbData = [
-    { name: "Done", value: kpis.fb_done, color: CHART_COLORS.green },
+    { name: "Completed", value: kpis.fb_done, color: CHART_COLORS.green },
     { name: "Pending", value: kpis.fb_pending, color: CHART_COLORS.amber },
+    { name: "Disputed", value: kpis.fb_disputed, color: CHART_COLORS.red },
   ].filter((d) => d.value > 0);
 
   const criticalParams = data.params.filter((p) => p.score < 80);
@@ -46,15 +50,15 @@ export function ComplianceTab({ data }: { data: QmsAnalyticsData }) {
           tone="danger"
         />
         <QmsKpiTile
-          label="Critical issues"
-          value={kpis.critical_count}
-          sub="Escalate immediately"
+          label="Critical severity"
+          value={kpis.issue_sev_critical}
+          sub={`Medium: ${kpis.issue_sev_medium} · Low: ${kpis.issue_sev_low}`}
           tone="danger"
         />
         <QmsKpiTile
           label="Feedback compliance"
           value={`${complianceRate}%`}
-          sub={`${kpis.fb_pending} still pending`}
+          sub={`${kpis.fb_pending} pending · ${kpis.fb_disputed} disputed`}
           tone={complianceRate >= 90 ? "success" : "warn"}
         />
         <QmsKpiTile
@@ -71,9 +75,13 @@ export function ComplianceTab({ data }: { data: QmsAnalyticsData }) {
           <QmsChartFrame
             className="qms-chart--pie"
             empty={sevData.length === 0}
-            emptyMessage="No severity data available."
+            emptyMessage={
+              kpis.issue_sev_na > 0
+                ? "No Low/Medium/Critical ratings yet — audits are marked N/A."
+                : "No severity data available."
+            }
           >
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minHeight={220}>
               <PieChart>
                 <Pie
                   data={sevData}
@@ -110,7 +118,7 @@ export function ComplianceTab({ data }: { data: QmsAnalyticsData }) {
             empty={fbData.length === 0}
             emptyMessage="No feedback data available."
           >
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minHeight={220}>
               <PieChart>
                 <Pie
                   data={fbData}

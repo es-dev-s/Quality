@@ -1,15 +1,29 @@
-import { Suspense } from "react";
-import { DashboardChrome } from "@/components/dashboard/dashboard-chrome";
-import { DashboardChromeFallback } from "@/components/dashboard/dashboard-chrome-fallback";
+import { redirect } from "next/navigation";
+import { DashboardSidebar } from "@/components/dashboard/sidebar";
+import { DashboardShell } from "@/components/dashboard/shell";
+import { requireAuth } from "@/lib/auth";
+import { isInvalidSessionError } from "@/lib/auth-guards";
+import { redirectForInvalidSession } from "@/lib/auth-redirects";
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <Suspense fallback={<DashboardChromeFallback>{children}</DashboardChromeFallback>}>
-      <DashboardChrome>{children}</DashboardChrome>
-    </Suspense>
-  );
+  try {
+    const session = await requireAuth();
+
+    return (
+      <DashboardShell user={session.user}>
+        <DashboardSidebar />
+        {children}
+      </DashboardShell>
+    );
+  } catch (error) {
+    if (isInvalidSessionError(error)) {
+      redirectForInvalidSession();
+    }
+
+    redirect("/login");
+  }
 }

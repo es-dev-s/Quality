@@ -229,7 +229,7 @@ export async function createUser(formData: FormData) {
 
   revalidateUserRosterPaths();
   invalidateUserCaches(session.user.id);
-  return { success: true };
+  return { success: true, email, password: parsed.data.password };
 }
 
 export async function updateUser(formData: FormData) {
@@ -301,10 +301,6 @@ export async function updateUser(formData: FormData) {
     data.sessionVersion = { increment: 1 };
   }
 
-  if (existingUser && existingUser.roleId !== parsed.data.roleId) {
-    data.sessionVersion = { increment: 1 };
-  }
-
   await prisma.user.update({
     where: { id: parsed.data.id },
     data,
@@ -312,7 +308,11 @@ export async function updateUser(formData: FormData) {
 
   revalidateUserRosterPaths();
   invalidateUserCaches(session.user.id);
-  return { success: true };
+  return {
+    success: true,
+    email,
+    ...(parsed.data.password ? { password: parsed.data.password } : {}),
+  };
 }
 
 export async function deleteUser(userId: string) {
@@ -657,8 +657,9 @@ export async function bulkDeleteRoles(roleIds: string[]) {
 }
 
 export async function signOutAction() {
-  const { signOut } = await import("@/lib/auth");
-  await signOut({ redirectTo: "/login" });
+  const { redirect } = await import("next/navigation");
+  const { CLEAR_SESSION_PATH } = await import("@/lib/auth-redirects");
+  redirect(CLEAR_SESSION_PATH);
 }
 
 export async function setUserActive(userId: string, isActive: boolean) {

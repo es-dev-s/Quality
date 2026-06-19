@@ -29,7 +29,7 @@ function gradeClass(grade: string) {
   return "dash-grade dash-grade--needs";
 }
 
-export function ExecutiveReport() {
+export function ExecutiveReport({ canExport = false }: { canExport?: boolean }) {
   const initial = defaultRange();
   const [range, setRange] = useState(initial);
   const [appliedRange, setAppliedRange] = useState(initial);
@@ -57,8 +57,8 @@ export function ExecutiveReport() {
   }
 
   function handleExport() {
-    if (!pagination.slice.length) return;
-    exportReportCsv(pagination.slice);
+    if (!data?.rows.length) return;
+    exportReportCsv(data.rows);
   }
 
   return (
@@ -110,15 +110,17 @@ export function ExecutiveReport() {
             <Printer size={15} aria-hidden />
             Print
           </button>
-          <button
-            type="button"
-            className="ui-btn ui-btn--primary ui-btn--sm"
-            onClick={handleExport}
-            disabled={!pagination.slice.length}
-          >
-            <Download size={15} aria-hidden />
-            Export CSV ({pagination.slice.length})
-          </button>
+          {canExport ? (
+            <button
+              type="button"
+              className="ui-btn ui-btn--primary ui-btn--sm"
+              onClick={handleExport}
+              disabled={!data?.rows.length}
+            >
+              <Download size={15} aria-hidden />
+              Export CSV ({data?.rows.length ?? 0})
+            </button>
+          ) : null}
         </div>
       </div>
 

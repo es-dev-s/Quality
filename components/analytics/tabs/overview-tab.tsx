@@ -49,8 +49,8 @@ export function OverviewTab({ data }: { data: QmsAnalyticsData }) {
         />
         <QmsKpiTile
           label="Issue severity"
-          value={kpis.critical_count}
-          sub={`Medium: ${kpis.medium_count} · Low: ${kpis.low_count}`}
+          value={kpis.issue_sev_critical}
+          sub={`Medium: ${kpis.issue_sev_medium} · Low: ${kpis.issue_sev_low}`}
           tone="warn"
         />
         <QmsKpiTile

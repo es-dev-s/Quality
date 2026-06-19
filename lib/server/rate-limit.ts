@@ -48,10 +48,21 @@ export function checkRateLimit(
   return { allowed: true };
 }
 
-export function rateLimitError(retryAfterMs: number): { error: string } {
+export function formatRateLimitRetryMessage(retryAfterMs: number): string {
   const seconds = Math.max(1, Math.ceil(retryAfterMs / 1000));
+  if (seconds < 60) {
+    return `Too many attempts. Try again in ${seconds} second${seconds === 1 ? "" : "s"}.`;
+  }
+  const minutes = Math.ceil(seconds / 60);
+  return `Too many attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
+}
+
+export function rateLimitError(retryAfterMs: number): { error: string } {
   return {
-    error: `Too many requests. Please wait ${seconds}s and try again.`,
+    error: formatRateLimitRetryMessage(retryAfterMs).replace(
+      "Too many attempts.",
+      "Too many requests."
+    ),
   };
 }
 

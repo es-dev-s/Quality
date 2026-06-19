@@ -14,8 +14,10 @@ import {
   normalizeUploadedReferencePath,
 } from "@/lib/upload/reference-url-paths";
 import type { AuditDetail } from "@/lib/audit/audit-records";
+import { interactionContactFieldLabel, interactionReferenceSectionLabel } from "@/lib/audit/interaction-labels";
 import type { AuditRow } from "@/lib/audit/types";
 import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
+import { FEEDBACK_SEVERITY_LABEL } from "@/lib/audit/feedback";
 import { useStaleRequestGuard } from "@/lib/hooks/use-stale-request-guard";
 import { LoadingIndicator, LoadingZone } from "@/components/primitives/loading-zone";
 import { cn } from "@/lib/utils";
@@ -271,7 +273,9 @@ export function AuditDetailModal({
                   <Field label="Call date">{detail.callDate}</Field>
                   <Field label="Audit date">{detail.auditDate}</Field>
                   {detail.mobile ? (
-                    <Field label="Mobile">{detail.mobile}</Field>
+                    <Field label={interactionContactFieldLabel(detail.type)}>
+                      {detail.mobile}
+                    </Field>
                   ) : null}
                   <Field label="Submitted by">{detail.submittedBy}</Field>
                   <Field label="Submitted at">{formatDateTime(detail.createdAt)}</Field>
@@ -287,12 +291,12 @@ export function AuditDetailModal({
                         <>
                     <span className="adi-field__label">
                       {isUploadedImagePath(referenceUrl)
-                        ? "Reference image"
+                        ? interactionReferenceSectionLabel(detail.type, "image")
                         : isUploadedAudioPath(referenceUrl)
-                          ? "Call recording"
+                          ? interactionReferenceSectionLabel(detail.type, "audio")
                           : isAuditReferencePath(referenceUrl)
-                            ? "Linked audit"
-                            : "Reference URL"}
+                            ? interactionReferenceSectionLabel(detail.type, "audit")
+                            : interactionReferenceSectionLabel(detail.type, "url")}
                     </span>
                     <div className="adi-reference__media">
                       {isUploadedImagePath(referenceUrl) ? (
@@ -347,7 +351,7 @@ export function AuditDetailModal({
                   Feedback
                 </h3>
                 <div className="adi-grid adi-grid--4">
-                  <Field label="Security">{detail.feedbackSecurity}</Field>
+                  <Field label={FEEDBACK_SEVERITY_LABEL}>{detail.feedbackSecurity}</Field>
                   <Field label="Status">{detail.feedbackStatus}</Field>
                   <Field label="Feedback date">{formatFeedbackDateTime(detail.feedbackDate)}</Field>
                   {(detail.feedbackStatus === "Acknowledged" ||

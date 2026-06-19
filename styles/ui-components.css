@@ -425,6 +425,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  user-select: all;
+  cursor: text;
 }
 
 .toast-password__copy {
@@ -458,6 +460,61 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--color-text-tertiary);
+}
+
+.password-field {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.password-field__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.password-field__input--invalid {
+  border-color: var(--color-danger);
+}
+
+.password-field__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.password-field__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.password-field__icon-btn:hover:not(:disabled) {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.password-field__icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.password-field__generate {
+  white-space: nowrap;
+}
+
+.ui-hint--error {
+  color: var(--color-danger);
 }
 
 @keyframes toast-in {

@@ -7,6 +7,7 @@ import { requirePageAccess } from "@/lib/auth-guards";
 import { getAuditors, getAuditForEdit, getAuditReferenceOptions } from "@/lib/actions/audit";
 import { getInteractionConfig } from "@/lib/actions/interaction-config";
 import { getAuditFormWorkbenchForEdit } from "@/lib/actions/templates";
+import { buildSupervisorAgentMap } from "@/lib/audit/supervisor-agent-map";
 import { canEditAuditSubmissions } from "@/lib/rbac";
 
 type EditAuditPageProps = {
@@ -32,6 +33,12 @@ async function EditAuditContent({ id }: { id: string }) {
       getAuditReferenceOptions(),
     ]);
 
+  const supervisorAgentMap = await buildSupervisorAgentMap(
+    session,
+    interactionConfig.supervisors,
+    interactionConfig.agents
+  );
+
   return (
     <AuditForm
       auditors={auditors}
@@ -49,6 +56,7 @@ async function EditAuditContent({ id }: { id: string }) {
       initialScores={editData.scores}
       successRedirect="/audit-logs"
       cancelHref="/audit-logs"
+      supervisorAgentMap={supervisorAgentMap}
     />
   );
 }

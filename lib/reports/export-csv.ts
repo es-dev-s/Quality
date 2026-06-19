@@ -1,4 +1,5 @@
 import type { ReportRow } from "@/lib/actions/reports";
+import { FEEDBACK_SEVERITY_LABEL } from "@/lib/audit/feedback";
 import type { AuditRow } from "@/lib/audit/types";
 
 function csvCell(value: unknown): string {
@@ -36,8 +37,8 @@ export function exportReportCsv(rows: ReportRow[], filenamePrefix = "quality-rep
     "Sub-reason",
     "Call date",
     "Audit date",
-    "Mobile",
-    "Reference URL",
+    "Contact (number / name)",
+    "Reference",
     "Response",
     "Quality %",
     "Final %",
@@ -46,7 +47,7 @@ export function exportReportCsv(rows: ReportRow[], filenamePrefix = "quality-rep
     "Fatal parameters",
     "Points scored",
     "Points max",
-    "Feedback security",
+    FEEDBACK_SEVERITY_LABEL,
     "Feedback status",
     "Feedback date",
     "Acknowledged / disputed at",

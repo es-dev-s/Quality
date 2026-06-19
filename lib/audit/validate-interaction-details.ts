@@ -25,21 +25,6 @@ export function validateInteractionDetails(
     }
   }
 
-  if (formData.type === "Call") {
-    if (typeof formData.mobile !== "string" || !formData.mobile.trim()) {
-      return "Mobile Number is required.";
-    }
-  }
-
-  if (formData.type === "Chat") {
-    if (
-      typeof formData.referenceUrl !== "string" ||
-      !formData.referenceUrl.trim()
-    ) {
-      return "Reference is required (URL, image, audio, or linked audit).";
-    }
-  }
-
   return null;
 }
 

@@ -1,5 +1,6 @@
 import { PASS_RATE_QUALITY_THRESHOLD } from "@/lib/audit/metrics-config";
 import { resolveMetricDate } from "@/lib/audit/metric-dates";
+import type { FeedbackSecurity } from "@/lib/audit/feedback";
 import type { AuditRow } from "@/lib/audit/types";
 
 export type AnalyticsAuditRecord = {
@@ -14,6 +15,7 @@ export type AnalyticsAuditRecord = {
   finalPct: number;
   hasFatal: boolean;
   feedbackStatus: string;
+  feedbackSecurity: FeedbackSecurity;
   rows: AuditRow[];
 };
 
@@ -50,12 +52,17 @@ export type QmsKpis = {
   critical_count: number;
   medium_count: number;
   low_count: number;
+  issue_sev_low: number;
+  issue_sev_medium: number;
+  issue_sev_critical: number;
+  issue_sev_na: number;
   call_score: number;
   chat_score: number;
   call_count: number;
   chat_count: number;
   fb_done: number;
   fb_pending: number;
+  fb_disputed: number;
   week1: number;
   week2: number;
   below_80: number;
@@ -246,6 +253,32 @@ function computeAgentBands(agentStats: QmsAgentStat[]) {
   };
 }
 
+function computeIssueSeverityCounts(records: AnalyticsAuditRecord[]) {
+  let low = 0;
+  let medium = 0;
+  let critical = 0;
+  let na = 0;
+
+  for (const record of records) {
+    switch (record.feedbackSecurity) {
+      case "Low":
+        low++;
+        break;
+      case "Medium":
+        medium++;
+        break;
+      case "Critical":
+        critical++;
+        break;
+      default:
+        na++;
+        break;
+    }
+  }
+
+  return { low, medium, critical, na };
+}
+
 function computeWeekSplit(records: AnalyticsAuditRecord[], now = new Date()) {
   const month = now.getMonth();
   const year = now.getFullYear();
@@ -288,9 +321,14 @@ export function computeQmsAnalytics(
       r.feedbackStatus === "Shared" ||
       r.feedbackStatus === "Acknowledged"
   ).length;
-  const fbPending = records.filter(
-    (r) => r.feedbackStatus === "Pending" || r.feedbackStatus === "Disputed"
+  const fbDisputed = records.filter(
+    (r) => r.feedbackStatus === "Disputed"
   ).length;
+  const fbPending = records.filter(
+    (r) => r.feedbackStatus === "Pending"
+  ).length;
+
+  const issueSeverity = computeIssueSeverityCounts(records);
 
   const agentStats = computeAgentStats(records);
   const bands = computeAgentBands(agentStats);
@@ -308,6 +346,10 @@ export function computeQmsAnalytics(
       critical_count: criticalCount,
       medium_count: mediumCount,
       low_count: lowCount,
+      issue_sev_low: issueSeverity.low,
+      issue_sev_medium: issueSeverity.medium,
+      issue_sev_critical: issueSeverity.critical,
+      issue_sev_na: issueSeverity.na,
       call_score:
         callRecords.length > 0
           ? round1(avg(callRecords.map((r) => r.qualityPct)))
@@ -320,6 +362,7 @@ export function computeQmsAnalytics(
       chat_count: chatRecords.length,
       fb_done: fbDone,
       fb_pending: fbPending,
+      fb_disputed: fbDisputed,
       week1: weekSplit.week1,
       week2: weekSplit.week2,
       ...bands,

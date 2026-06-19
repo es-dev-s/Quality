@@ -5,6 +5,7 @@ import {
   AccountNotApprovedError,
   SessionRevokedError,
 } from "@/lib/auth-errors";
+import { redirectForInvalidSession } from "@/lib/auth-redirects";
 import { PERMISSIONS, type Permission } from "@/lib/permissions";
 import { canAccessPath, firstAccessiblePath, hasScope } from "@/lib/rbac";
 
@@ -13,6 +14,14 @@ export class ForbiddenError extends Error {
     super(message);
     this.name = "ForbiddenError";
   }
+}
+
+export function isInvalidSessionError(error: unknown): boolean {
+  return (
+    error instanceof AccountDeactivatedError ||
+    error instanceof AccountNotApprovedError ||
+    error instanceof SessionRevokedError
+  );
 }
 
 export async function requirePermission(permission: Permission) {
@@ -28,12 +37,8 @@ export async function requirePageAccess(pathname: string) {
   try {
     session = await requireAuth();
   } catch (error) {
-    if (
-      error instanceof AccountDeactivatedError ||
-      error instanceof AccountNotApprovedError ||
-      error instanceof SessionRevokedError
-    ) {
-      redirect("/login");
+    if (isInvalidSessionError(error)) {
+      redirectForInvalidSession(pathname);
     }
     throw error;
   }

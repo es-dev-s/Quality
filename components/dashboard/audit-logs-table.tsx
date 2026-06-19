@@ -23,6 +23,7 @@ import { deleteAuditSubmissions, updateAuditFeedback } from "@/lib/actions/audit
 import type { AuditLogEntry } from "@/lib/audit/audit-records";
 import {
   FEEDBACK_SECURITY_OPTIONS,
+  FEEDBACK_SEVERITY_LABEL,
   FEEDBACK_STATUS_OPTIONS,
   type FeedbackSecurity,
   type FeedbackStatus,
@@ -54,6 +55,8 @@ type AuditLogsTableProps = {
   canEditSupervisorRemarks?: boolean;
   canEditAudits?: boolean;
   canDeleteAudits?: boolean;
+  canCreateAudit?: boolean;
+  canExport?: boolean;
   isSuperAdmin?: boolean;
 };
 
@@ -158,7 +161,7 @@ function exportCsv(rows: AuditLogEntry[]) {
     "Quality %",
     "Final %",
     "Grade",
-    "Security",
+    FEEDBACK_SEVERITY_LABEL,
     "Feedback Status",
     "Feedback Date & Time",
     "Acknowledged/Disputed Date & Time",
@@ -206,6 +209,8 @@ export function AuditLogsTable({
   canEditSupervisorRemarks = false,
   canEditAudits = false,
   canDeleteAudits = false,
+  canCreateAudit = false,
+  canExport = false,
   isSuperAdmin = false,
 }: AuditLogsTableProps) {
   const router = useRouter();
@@ -602,6 +607,55 @@ export function AuditLogsTable({
               filtered.length === 1 ? "" : "s"
             }.`;
 
+  const toolbarActions = (
+    <>
+      {canDeleteAudits && selectedCount > 0 ? (
+        <>
+          <span className="audit-logs__bulk-count">
+            {selectedCount} selected
+          </span>
+          <button
+            type="button"
+            className="ui-btn ui-btn--danger ui-btn--sm"
+            disabled={deletePending}
+            onClick={() => openDeleteConfirm(Array.from(selectedIds))}
+          >
+            <Trash2 size={15} aria-hidden />
+            Delete selected
+          </button>
+          <button
+            type="button"
+            className="ui-btn ui-btn--secondary ui-btn--sm"
+            disabled={deletePending}
+            onClick={() => setSelectedIds(new Set())}
+          >
+            Clear selection
+          </button>
+        </>
+      ) : null}
+      {canExport && filtered.length > 0 ? (
+        <button
+          type="button"
+          className="ui-btn ui-btn--secondary ui-btn--sm"
+          onClick={() => exportCsv(filtered)}
+        >
+          <Download size={15} aria-hidden />
+          Export CSV ({filtered.length})
+        </button>
+      ) : null}
+      {canCreateAudit ? (
+        <Link href="/forms/audit" className="ui-btn ui-btn--primary ui-btn--sm">
+          New audit
+        </Link>
+      ) : null}
+    </>
+  );
+
+  const showToolbarActions =
+    rows.length > 0 &&
+    filtered.length > 0 &&
+    (canExport || canCreateAudit || (canDeleteAudits && selectedCount > 0));
+
   return (
     <div className="audit-logs audit-logs-page">
       {showSectionHead && (
@@ -614,46 +668,16 @@ export function AuditLogsTable({
             <span className="table-meta" style={{ marginRight: "auto" }}>
               Updated {formatSecondsAgo(secondsSinceSync)}
             </span>
-            {canDeleteAudits && selectedCount > 0 ? (
-              <>
-                <span className="audit-logs__bulk-count">
-                  {selectedCount} selected
-                </span>
-                <button
-                  type="button"
-                  className="ui-btn ui-btn--danger ui-btn--sm"
-                  disabled={deletePending}
-                  onClick={() => openDeleteConfirm(Array.from(selectedIds))}
-                >
-                  <Trash2 size={15} aria-hidden />
-                  Delete selected
-                </button>
-                <button
-                  type="button"
-                  className="ui-btn ui-btn--secondary ui-btn--sm"
-                  disabled={deletePending}
-                  onClick={() => setSelectedIds(new Set())}
-                >
-                  Clear selection
-                </button>
-              </>
-            ) : null}
-            {filtered.length > 0 && (
-              <button
-                type="button"
-                className="ui-btn ui-btn--secondary ui-btn--sm"
-                onClick={() => exportCsv(pagination.slice)}
-              >
-                <Download size={15} aria-hidden />
-                Export CSV ({pagination.slice.length})
-              </button>
-            )}
-            <Link href="/forms/audit" className="ui-btn ui-btn--primary ui-btn--sm">
-              New audit
-            </Link>
+            {toolbarActions}
           </div>
         </div>
       )}
+
+      {!showSectionHead && showToolbarActions ? (
+        <div className="audit-logs__page-actions">
+          <div className="audit-logs__head-actions">{toolbarActions}</div>
+        </div>
+      ) : null}
 
       {enableFilters && rows.length > 0 && (
         <section
@@ -904,17 +928,17 @@ export function AuditLogsTable({
                 <thead>
                   <tr>
                     {canDeleteAudits ? <th className="audit-logs__select-col" /> : null}
-                    <th>Agent</th>
-                    <th>Type / LOB</th>
+                    <th className="col-agent">Agent</th>
+                    <th className="col-type-lob">Type / LOB</th>
                     <th>Audit date</th>
                     <th>Auditor</th>
                     <th>Score</th>
                     <th>Grade</th>
-                    <th>Security</th>
-                    <th>Feedback</th>
-                    <th>Date &amp; time</th>
-                    <th>Feedback for the agent</th>
-                    <th className="col-actions" aria-label="Actions" />
+                    <th>{FEEDBACK_SEVERITY_LABEL}</th>
+                    <th className="col-feedback-status">Feedback</th>
+                    <th className="col-feedback-datetime">Date &amp; time</th>
+                    <th className="col-agent-feedback">Feedback for the agent</th>
+                    <th className="col-actions">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -922,10 +946,15 @@ export function AuditLogsTable({
                     <td colSpan={columnCount} className="ui-table__empty">
                       {rows.length === 0 ? (
                         <>
-                          No audits yet.{" "}
-                          <Link href="/forms/audit" className="audit-logs__empty-link">
-                            Start your first audit
-                          </Link>
+                          No audits yet.
+                          {canCreateAudit ? (
+                            <>
+                              {" "}
+                              <Link href="/forms/audit" className="audit-logs__empty-link">
+                                Start your first audit
+                              </Link>
+                            </>
+                          ) : null}
                         </>
                       ) : (
                         <>
@@ -969,17 +998,17 @@ export function AuditLogsTable({
                         />
                       </th>
                     ) : null}
-                    <th>Agent</th>
-                    <th>Type / LOB</th>
+                    <th className="col-agent">Agent</th>
+                    <th className="col-type-lob">Type / LOB</th>
                     <th>Audit date</th>
                     <th>Auditor</th>
                     <th>Score</th>
                     <th>Grade</th>
-                    <th>Security</th>
-                    <th>Feedback</th>
-                    <th>Date &amp; time</th>
-                    <th>Feedback for the agent</th>
-                    <th className="col-actions" aria-label="Actions" />
+                    <th>{FEEDBACK_SEVERITY_LABEL}</th>
+                    <th className="col-feedback-status">Feedback</th>
+                    <th className="col-feedback-datetime">Date &amp; time</th>
+                    <th className="col-agent-feedback">Feedback for the agent</th>
+                    <th className="col-actions">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1005,7 +1034,7 @@ export function AuditLogsTable({
                       />
                     </td>
                   ) : null}
-                  <td>
+                  <td className="col-agent">
                     <div className="audit-logs__agent-cell">
                       <span className="audit-logs__avatar" aria-hidden>
                         {agentInitials(row.agent)}
@@ -1018,7 +1047,7 @@ export function AuditLogsTable({
                       </div>
                     </div>
                   </td>
-                  <td>
+                  <td className="col-type-lob">
                     <span className="audit-logs__type">
                       {row.type}
                       <span className="audit-logs__type-meta">
@@ -1055,7 +1084,7 @@ export function AuditLogsTable({
                             feedbackSecurity: e.target.value as FeedbackSecurity,
                           })
                         }
-                        aria-label={`Security for ${row.agent}`}
+                        aria-label={`${FEEDBACK_SEVERITY_LABEL} for ${row.agent}`}
                       >
                         {FEEDBACK_SECURITY_LEVELS.map((level) => (
                           <option key={level} value={level}>
@@ -1074,7 +1103,7 @@ export function AuditLogsTable({
                       </span>
                     )}
                   </td>
-                  <td>
+                  <td className="col-feedback-status">
                     {isSuperAdmin || canEditFeedbackFully ? (
                       <Select
                         className={cn(
@@ -1106,7 +1135,7 @@ export function AuditLogsTable({
                       />
                     )}
                   </td>
-                  <td>
+                  <td className="col-feedback-datetime">
                     <FeedbackStatusDateTimeCell
                       row={row}
                       editable={canEditRowFeedbackDateTime(row)}
@@ -1115,45 +1144,49 @@ export function AuditLogsTable({
                       }
                     />
                   </td>
-                  <td>
+                    <td className="col-agent-feedback">
                     <span
                       className="audit-logs__agent-feedback"
-                      title={row.agentFeedback || undefined}
+                      title={row.agentFeedback.trim() || undefined}
                     >
                       {row.agentFeedback.trim() || "—"}
                     </span>
-                  </td>
-                  <td className="col-actions">
-                    <span className="audit-logs__actions-hint" aria-hidden>
-                      ⋯
-                    </span>
-                    <div className="audit-logs__actions" role="group" aria-label={`Actions for ${row.agent}`}>
+                    </td>
+                  <td className="col-actions audit-logs__actions-cell">
+                    <div
+                      className="audit-logs__actions-bar"
+                      role="group"
+                      aria-label={`Actions for ${row.agent}`}
+                    >
                       <button
                         type="button"
-                        className="audit-logs__row-action"
+                        className="audit-logs__icon-action"
+                        title="View audit"
+                        aria-label={`View audit for ${row.agent}`}
                         onClick={() => setViewId(row.id)}
                       >
-                        <Eye size={14} aria-hidden />
-                        <span>View</span>
+                        <Eye size={15} aria-hidden />
                       </button>
                       {canEditAudits ? (
                         <Link
                           href={`/audit-logs/${row.id}/edit`}
-                          className="audit-logs__row-action"
+                          className="audit-logs__icon-action"
+                          title="Edit audit"
+                          aria-label={`Edit audit for ${row.agent}`}
                         >
-                          <Pencil size={14} aria-hidden />
-                          <span>Edit</span>
+                          <Pencil size={15} aria-hidden />
                         </Link>
                       ) : null}
                       {canDeleteAudits ? (
                         <button
                           type="button"
-                          className="audit-logs__row-action audit-logs__row-action--danger"
+                          className="audit-logs__icon-action audit-logs__icon-action--danger"
+                          title="Delete audit"
+                          aria-label={`Delete audit for ${row.agent}`}
                           disabled={deletePending}
                           onClick={() => openDeleteConfirm([row.id])}
                         >
-                          <Trash2 size={14} aria-hidden />
-                          <span>Delete</span>
+                          <Trash2 size={15} aria-hidden />
                         </button>
                       ) : null}
                     </div>

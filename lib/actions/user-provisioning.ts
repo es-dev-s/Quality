@@ -839,5 +839,9 @@ export async function resetManagedUserPassword(formData: FormData) {
   });
 
   revalidateProvisioningPaths(session.user.id);
-  return { success: true, message: `Password updated for ${managed.email}.` };
+  return {
+    success: true,
+    email: managed.email,
+    password: parsed.data.password,
+  };
 }

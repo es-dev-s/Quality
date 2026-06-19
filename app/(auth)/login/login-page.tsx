@@ -11,7 +11,14 @@ const initialState: LoginState = {};
 export default function LoginPage() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/dashboard";
+  const sessionReason = searchParams.get("reason");
+  const sessionWasCleared = sessionReason === "session";
   const [state, formAction, pending] = useActionState(loginAction, initialState);
+
+  const sessionNotice =
+    sessionReason === "session"
+      ? "Your session expired or was signed out elsewhere. Please sign in again."
+      : null;
 
   return (
     <div className="login-page">
@@ -26,6 +33,15 @@ export default function LoginPage() {
 
         <form action={formAction} className="login-form">
           <input type="hidden" name="callbackUrl" value={callbackUrl} />
+          {sessionWasCleared ? (
+            <input type="hidden" name="sessionWasCleared" value="1" />
+          ) : null}
+
+          {sessionNotice ? (
+            <p role="status" className="ui-alert">
+              {sessionNotice}
+            </p>
+          ) : null}
 
           {state.error && (
             <p role="alert" className="ui-alert">

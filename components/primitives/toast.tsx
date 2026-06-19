@@ -12,6 +12,7 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import { Check, Copy, X } from "lucide-react";
+import { copyTextToClipboard } from "@/lib/copy-to-clipboard";
 
 type ToastType = "success" | "error" | "warning" | "info";
 
@@ -28,6 +29,7 @@ type PasswordToast = {
   email: string;
   password: string;
   wasReset?: boolean;
+  note?: string;
   copied?: boolean;
 };
 
@@ -38,7 +40,7 @@ type ToastContextValue = {
   toastPasswordReveal: (
     email: string,
     password: string,
-    options?: { wasReset?: boolean }
+    options?: { wasReset?: boolean; note?: string }
   ) => void;
   dismissPasswordToasts: () => void;
 };
@@ -102,9 +104,12 @@ function PasswordToastItem({
           )}
         </button>
       </div>
-      {entry.wasReset ? (
-        <p className="toast-password__note">New temporary password set</p>
-      ) : null}
+      <p className="toast-password__note">
+        {entry.note ??
+          (entry.wasReset
+            ? "Temporary password set. The user must sign in again."
+            : "Copy and share this password securely.")}
+      </p>
     </div>
   );
 }
@@ -162,7 +167,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     (
       email: string,
       password: string,
-      options?: { wasReset?: boolean }
+      options?: { wasReset?: boolean; note?: string }
     ) => {
       const id = Date.now() + Math.floor(Math.random() * 1000);
       const next: PasswordToast = {
@@ -171,6 +176,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         email,
         password,
         wasReset: options?.wasReset,
+        note: options?.note,
       };
 
       setToasts((prev) => {
@@ -200,8 +206,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 
   const copyPassword = useCallback(async (id: number, password: string) => {
-    try {
-      await navigator.clipboard.writeText(password);
+    const copied = await copyTextToClipboard(password);
+    if (copied) {
       setToasts((prev) =>
         prev.map((t) =>
           t.id === id && t.kind === "password" ? { ...t, copied: true } : t
@@ -214,9 +220,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           )
         );
       }, 2000);
-    } catch {
-      toast("Could not copy to clipboard.", "error");
+      return;
     }
+    toast(
+      "Could not copy automatically — select the password above and copy manually.",
+      "warning"
+    );
   }, [toast]);
 
   const value = useMemo(

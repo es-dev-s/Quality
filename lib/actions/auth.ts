@@ -3,8 +3,15 @@
 import { headers } from "next/headers";
 import { AuthError } from "next-auth";
 import { signIn } from "@/lib/auth";
+import {
+  loginFailureMessage,
+  verifyCredentialsForLogin,
+} from "@/lib/auth-credentials";
 import { prisma } from "@/lib/prisma";
-import { checkRateLimit } from "@/lib/server/rate-limit";
+import {
+  checkRateLimit,
+  formatRateLimitRetryMessage,
+} from "@/lib/server/rate-limit";
 import { loginSchema, safeCallbackUrl } from "@/lib/validation/auth";
 
 export type LoginState = {
@@ -29,25 +36,23 @@ export async function loginAction(
     .trim()
     .toLowerCase();
 
+  const sessionWasCleared = formData.get("sessionWasCleared") === "1";
+
   const hdrs = await headers();
   const clientIp =
     hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     hdrs.get("x-real-ip")?.trim() ||
     "unknown";
 
-  const ipLimit = checkRateLimit(`login-ip:${clientIp}`, 20, 15 * 60_000);
+  const ipLimit = checkRateLimit(`login-ip:${clientIp}`, 15, 60_000);
   if (!ipLimit.allowed) {
-    return {
-      error: `Too many attempts. Try again in ${Math.max(1, Math.ceil(ipLimit.retryAfterMs / 60_000))} minutes.`,
-    };
+    return { error: formatRateLimitRetryMessage(ipLimit.retryAfterMs) };
   }
 
   if (emailRaw) {
-    const emailLimit = checkRateLimit(`login:${emailRaw}`, 5, 15 * 60_000);
+    const emailLimit = checkRateLimit(`login:${emailRaw}`, 5, 30_000);
     if (!emailLimit.allowed) {
-      return {
-        error: `Too many attempts. Try again in ${Math.max(1, Math.ceil(emailLimit.retryAfterMs / 60_000))} minutes.`,
-      };
+      return { error: formatRateLimitRetryMessage(emailLimit.retryAfterMs) };
     }
   }
 
@@ -66,6 +71,31 @@ export async function loginAction(
   const { email, password } = parsed.data;
   const callbackUrl = safeCallbackUrl(parsed.data.callbackUrl);
 
+  const credentialCheck = await verifyCredentialsForLogin(email, password);
+  if (!credentialCheck.ok) {
+    if (credentialCheck.reason === "not_approved") {
+      const pending = await prisma.userProvisioningRequest.findFirst({
+        where: {
+          email: email.toLowerCase(),
+          status: "PENDING",
+        },
+        select: { id: true },
+      });
+      if (pending) {
+        return {
+          error:
+            "This account is still awaiting approval. You can sign in only after a Quality Manager or Admin approves the request in Settings → Team.",
+        };
+      }
+    }
+
+    return {
+      error: loginFailureMessage(credentialCheck.reason, {
+        sessionWasCleared: sessionWasCleared,
+      }),
+    };
+  }
+
   try {
     await signIn("credentials", {
       email,
@@ -78,25 +108,15 @@ export async function loginAction(
       throw error;
     }
     if (error instanceof AuthError && error.type === "CredentialsSignin") {
-      const pending = await prisma.userProvisioningRequest.findFirst({
-        where: {
-          email: email.toLowerCase(),
-          status: "PENDING",
-        },
-        select: { targetRoleSlug: true },
-      });
-      if (pending) {
-        return {
-          error:
-            "This account is still awaiting approval. You can sign in only after a Quality Manager or Admin approves the request in Settings → Team.",
-        };
-      }
-      return { error: "Invalid email or password." };
+      return {
+        error: loginFailureMessage("invalid_password", {
+          sessionWasCleared: sessionWasCleared,
+        }),
+      };
     }
     console.error("[auth] loginAction failed:", error);
     return {
-      error:
-        "Unable to sign in right now. Check your database connection and try again.",
+      error: loginFailureMessage("db_error"),
     };
   }
 }

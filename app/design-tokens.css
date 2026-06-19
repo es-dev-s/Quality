@@ -79,4 +79,5 @@
   --ds-chart-height: 300px;
   --ds-chart-height-tall: 340px;
   --ds-chart-height-pie: 260px;
+  --ds-chart-height-parameters: clamp(400px, 52vh, 560px);
 }

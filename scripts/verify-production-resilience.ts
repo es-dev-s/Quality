@@ -49,6 +49,7 @@ async function main() {
   runScript("scripts/verify-interaction-config.ts", "Interaction config");
   runScript("scripts/verify-agents.ts", "Agent roster");
   runScript("scripts/verify-agent-roster.ts", "Agent roster file parse");
+  runScript("scripts/verify-lan-config.ts", "LAN / HTTP config");
 
   testRateLimiter();
 

@@ -5,6 +5,12 @@ import { useRouter } from "next/navigation";
 import { Check, KeyRound, Plus, X } from "lucide-react";
 import { Button } from "@/components/primitives/button";
 import { Field, Input, Label, Select } from "@/components/primitives/field";
+import {
+  isPasswordFormValid,
+  PasswordConfirmField,
+  PasswordField,
+} from "@/components/primitives/password-field";
+import { generateClientPassword } from "@/lib/password-client";
 import { FormStack, Modal, ModalActions } from "@/components/primitives/modal";
 import {
   TableRowAction,
@@ -31,6 +37,7 @@ import {
 } from "@/lib/actions/user-provisioning";
 import {
   assignAgentToUser,
+  assignAgentsToUser,
   removeAgentFromUser,
 } from "@/lib/actions/agent-assignment";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
@@ -70,9 +77,26 @@ function RequestFormModal({
   const router = useRouter();
   const { toast } = useToast();
   const [pending, startTransition] = useTransition();
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const isAgent = mode === "agent";
 
+  useEffect(() => {
+    if (open) {
+      const generated = generateClientPassword(12);
+      setPassword(generated);
+      setConfirmPassword(generated);
+    }
+  }, [open, mode]);
+
   function handleSubmit(formData: FormData) {
+    if (!isPasswordFormValid(password, confirmPassword, { minLength: 6 })) {
+      toast("Enter a matching password of at least 6 characters.", "error");
+      return;
+    }
+
+    formData.set("password", password);
+
     startTransition(async () => {
       try {
         const result = isAgent
@@ -128,17 +152,23 @@ function RequestFormModal({
               disabled={pending}
             />
           </Field>
-          <Field>
-            <Label htmlFor="team-password">Temporary password</Label>
-            <Input
-              id="team-password"
-              name="password"
-              type="password"
-              minLength={6}
-              required
-              disabled={pending}
-            />
-          </Field>
+          <PasswordField
+            id="team-password"
+            label="Temporary password"
+            value={password}
+            onChange={setPassword}
+            required
+            disabled={pending}
+            minLength={6}
+            hint="Minimum 6 characters. Use Generate for a secure temporary password."
+          />
+          <PasswordConfirmField
+            id="team-password-confirm"
+            password={password}
+            value={confirmPassword}
+            onChange={setConfirmPassword}
+            disabled={pending}
+          />
           <Field>
             <Label htmlFor="team-doj">
               Date of joining{isAgent ? "" : " (optional)"}
@@ -180,15 +210,32 @@ function ResetPasswordModal({
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const { toast } = useToast();
+  const { toast, toastPasswordReveal } = useToast();
   const [pending, startTransition] = useTransition();
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const userId = user?.id ?? "";
+
+  useEffect(() => {
+    if (open && userId) {
+      const generated = generateClientPassword(12);
+      setPassword(generated);
+      setConfirmPassword(generated);
+    }
+  }, [open, userId]);
 
   if (!user) return null;
 
-  const userId = user.id;
   const userLabel = `${user.name} (${user.email})`;
 
   function handleSubmit(formData: FormData) {
+    if (!isPasswordFormValid(password, confirmPassword, { minLength: 6 })) {
+      toast("Enter a matching password of at least 6 characters.", "error");
+      return;
+    }
+
+    formData.set("password", password);
+
     startTransition(async () => {
       formData.set("userId", userId);
       const result = await resetManagedUserPassword(formData);
@@ -196,10 +243,13 @@ function ResetPasswordModal({
         toast(result.error, "error");
         return;
       }
-      toast(
-        "message" in result && result.message ? result.message : "Password updated",
-        "success"
-      );
+      if ("success" in result && result.success && result.password && result.email) {
+        toastPasswordReveal(result.email, result.password, {
+          note: "Password updated. The user must sign in with the new password.",
+        });
+      } else {
+        toast("Password updated.", "success");
+      }
       onOpenChange(false);
       router.refresh();
     });
@@ -210,21 +260,27 @@ function ResetPasswordModal({
       open={open}
       onClose={() => !pending && onOpenChange(false)}
       title="Reset password"
-      description={`Set a new password for ${userLabel}.`}
+      description={`Set a new password for ${userLabel}. They will be signed out of existing sessions.`}
     >
       <form action={handleSubmit}>
         <FormStack>
-          <Field>
-            <Label htmlFor="managed-password">New password</Label>
-            <Input
-              id="managed-password"
-              name="password"
-              type="password"
-              minLength={6}
-              required
-              disabled={pending}
-            />
-          </Field>
+          <PasswordField
+            id="managed-password"
+            label="New password"
+            value={password}
+            onChange={setPassword}
+            required
+            disabled={pending}
+            minLength={6}
+            hint="Minimum 6 characters. Use Generate for a secure temporary password."
+          />
+          <PasswordConfirmField
+            id="managed-password-confirm"
+            password={password}
+            value={confirmPassword}
+            onChange={setConfirmPassword}
+            disabled={pending}
+          />
         </FormStack>
         <ModalActions>
           <Button
@@ -382,23 +438,106 @@ function AgentAssignmentPanel({
   fillViewport?: boolean;
 }) {
   const { toast } = useToast();
+  const [mode, setMode] = useState<"single" | "multiple">("single");
   const [agentId, setAgentId] = useState(assignableAgents[0]?.id ?? "");
+  const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
   const [assignToId, setAssignToId] = useState(assigneeOptions[0]?.id ?? "");
   const [, startTransition] = useTransition();
   const assignmentPagination = usePaginatedRows(agentAssignments);
 
-  function handleAssign() {
-    if (!agentId || !assignToId) {
-      toast("Select an agent and assignee.", "error");
+  const alreadyAssignedToTarget = useMemo(() => {
+    return new Set(
+      agentAssignments
+        .filter((row) => row.assignToId === assignToId)
+        .map((row) => row.agentId)
+    );
+  }, [agentAssignments, assignToId]);
+
+  const selectableAgents = useMemo(
+    () =>
+      assignableAgents.filter((agent) => !alreadyAssignedToTarget.has(agent.id)),
+    [assignableAgents, alreadyAssignedToTarget]
+  );
+
+  useEffect(() => {
+    if (!agentId && assignableAgents[0]?.id) {
+      setAgentId(assignableAgents[0].id);
+    }
+  }, [agentId, assignableAgents]);
+
+  useEffect(() => {
+    setSelectedAgentIds((current) =>
+      current.filter((id) => selectableAgents.some((agent) => agent.id === id))
+    );
+  }, [selectableAgents]);
+
+  const allSelectableSelected =
+    selectableAgents.length > 0 &&
+    selectableAgents.every((agent) => selectedAgentIds.includes(agent.id));
+  const someSelectableSelected =
+    selectableAgents.some((agent) => selectedAgentIds.includes(agent.id)) &&
+    !allSelectableSelected;
+
+  function toggleAgentSelection(id: string) {
+    setSelectedAgentIds((current) =>
+      current.includes(id)
+        ? current.filter((entry) => entry !== id)
+        : [...current, id]
+    );
+  }
+
+  function toggleAllSelectable() {
+    if (allSelectableSelected) {
+      setSelectedAgentIds([]);
       return;
     }
+    setSelectedAgentIds(selectableAgents.map((agent) => agent.id));
+  }
+
+  function handleAssign() {
+    if (!assignToId) {
+      toast("Select a quality analyst.", "error");
+      return;
+    }
+
+    if (mode === "single") {
+      if (!agentId) {
+        toast("Select an agent.", "error");
+        return;
+      }
+      startTransition(async () => {
+        const result = await assignAgentToUser(agentId, assignToId);
+        if ("error" in result && result.error) {
+          toast(result.error, "error");
+          return;
+        }
+        toast("Agent assigned.", "success");
+        onChanged();
+      });
+      return;
+    }
+
+    if (selectedAgentIds.length === 0) {
+      toast("Select at least one agent.", "error");
+      return;
+    }
+
     startTransition(async () => {
-      const result = await assignAgentToUser(agentId, assignToId);
+      const result = await assignAgentsToUser(selectedAgentIds, assignToId);
       if ("error" in result && result.error) {
         toast(result.error, "error");
         return;
       }
-      toast("Agent assigned.", "success");
+
+      const assigned = result.assigned ?? selectedAgentIds.length;
+      const skipped = result.skipped ?? 0;
+      const message =
+        skipped > 0
+          ? `${assigned} agent${assigned === 1 ? "" : "s"} assigned. ${skipped} skipped (already assigned or unavailable).`
+          : `${assigned} agent${assigned === 1 ? "" : "s"} assigned.`;
+
+      toast(message, "success");
+      setSelectedAgentIds([]);
       onChanged();
     });
   }
@@ -428,23 +567,51 @@ function AgentAssignmentPanel({
 
   return (
     <>
-      <div className="team-management__assign-form">
-        <Field>
-          <Label htmlFor="assign-agent">Agent</Label>
-          <Select
-            id="assign-agent"
-            className="ui-select"
-            value={agentId}
-            disabled={pending}
-            onChange={(e) => setAgentId(e.target.value)}
+      <div
+        className={
+          mode === "multiple"
+            ? "team-management__assign-form team-management__assign-form--multiple"
+            : "team-management__assign-form"
+        }
+      >
+        <Field className="team-management__assign-mode">
+          <Label>Assignment mode</Label>
+          <div
+            className="segmented-tabs team-management__assign-mode-tabs"
+            role="tablist"
+            aria-label="Assignment mode"
           >
-            {assignableAgents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name} ({agent.email})
-              </option>
-            ))}
-          </Select>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "single"}
+              className={
+                mode === "single"
+                  ? "segmented-tabs__btn segmented-tabs__btn--active"
+                  : "segmented-tabs__btn"
+              }
+              disabled={pending}
+              onClick={() => setMode("single")}
+            >
+              Single agent
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "multiple"}
+              className={
+                mode === "multiple"
+                  ? "segmented-tabs__btn segmented-tabs__btn--active"
+                  : "segmented-tabs__btn"
+              }
+              disabled={pending}
+              onClick={() => setMode("multiple")}
+            >
+              Multiple agents
+            </button>
+          </div>
         </Field>
+
         <Field>
           <Label htmlFor="assign-to">Quality analyst</Label>
           <Select
@@ -461,12 +628,100 @@ function AgentAssignmentPanel({
             ))}
           </Select>
         </Field>
+
+        {mode === "single" ? (
+          <Field>
+            <Label htmlFor="assign-agent">Agent</Label>
+            <Select
+              id="assign-agent"
+              className="ui-select"
+              value={agentId}
+              disabled={pending}
+              onChange={(e) => setAgentId(e.target.value)}
+            >
+              {assignableAgents.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name} ({agent.email})
+                  {alreadyAssignedToTarget.has(agent.id)
+                    ? " — already assigned"
+                    : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : (
+          <Field className="team-management__agent-picker-field">
+            <div className="team-management__agent-picker-head">
+              <Label htmlFor="assign-agent-all">Agents</Label>
+              <span className="team-management__agent-picker-count">
+                {selectedAgentIds.length} selected
+              </span>
+            </div>
+            <div className="team-management__agent-picker">
+              <label className="team-management__agent-picker-row team-management__agent-picker-row--all">
+                <input
+                  id="assign-agent-all"
+                  type="checkbox"
+                  checked={allSelectableSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someSelectableSelected;
+                  }}
+                  disabled={pending || selectableAgents.length === 0}
+                  onChange={toggleAllSelectable}
+                />
+                <span>Select all available</span>
+              </label>
+              {assignableAgents.map((agent) => {
+                const alreadyAssigned = alreadyAssignedToTarget.has(agent.id);
+                return (
+                  <label
+                    key={agent.id}
+                    className={
+                      alreadyAssigned
+                        ? "team-management__agent-picker-row team-management__agent-picker-row--disabled"
+                        : "team-management__agent-picker-row"
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedAgentIds.includes(agent.id)}
+                      disabled={pending || alreadyAssigned}
+                      onChange={() => toggleAgentSelection(agent.id)}
+                    />
+                    <span>
+                      {agent.name}
+                      <span className="team-management__agent-picker-email">
+                        {agent.email}
+                      </span>
+                      {alreadyAssigned ? (
+                        <span className="team-management__agent-picker-note">
+                          Already assigned
+                        </span>
+                      ) : null}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </Field>
+        )}
+
         <Button
           type="button"
-          disabled={pending || !assignToId}
+          disabled={
+            pending ||
+            !assignToId ||
+            (mode === "single"
+              ? !agentId
+              : selectedAgentIds.length === 0)
+          }
           onClick={handleAssign}
         >
-          Assign agent
+          {mode === "single"
+            ? "Assign agent"
+            : `Assign ${selectedAgentIds.length || ""} agent${
+                selectedAgentIds.length === 1 ? "" : "s"
+              }`.trim()}
         </Button>
       </div>
 
@@ -691,7 +946,10 @@ export function TeamManagement({
         return;
       }
 
-      toast("message" in result ? result.message : "Updated", "success");
+      toast(
+        "message" in result && result.message ? result.message : "Updated",
+        "success"
+      );
       router.refresh();
     });
   }
@@ -830,7 +1088,7 @@ export function TeamManagement({
           {subTab === "assignments" && canAssignAgents ? (
             <TeamTabPanel
               title="Agent assignments"
-              description="Link approved agents to quality analysts. Assignments refresh automatically every 10 seconds for assignees."
+              description="Assign one or many approved agents to a quality analyst. Assignments refresh automatically every 10 seconds for assignees."
             >
               <AgentAssignmentPanel
                 assignableAgents={assignableAgents}
