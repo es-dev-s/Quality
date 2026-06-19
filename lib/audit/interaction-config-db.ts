@@ -146,6 +146,11 @@ export async function fetchInteractionConfigRow() {
   return getCachedInteractionConfigRow();
 }
 
+/** Direct DB read for CLI scripts (no Next.js incremental cache). */
+export async function fetchInteractionConfigRowDirect() {
+  return fetchInteractionConfigRowUncached();
+}
+
 const getCachedInteractionConfigRow = unstable_cache(
   async () => fetchInteractionConfigRowUncached(),
   ["interaction-config-row"],

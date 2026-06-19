@@ -1616,8 +1616,13 @@ textarea {
 .dash-analytics {
   display: flex;
   flex-direction: column;
-  gap: var(--ds-space-5);
+  gap: var(--space-6);
   width: 100%;
+}
+
+/* Vertical rhythm between dashboard blocks (KPI → charts → targets → lists) */
+.dash-sections > * + * {
+  margin-top: var(--space-6);
 }
 
 .dash-topbar {

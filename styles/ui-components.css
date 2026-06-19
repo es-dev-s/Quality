@@ -686,14 +686,19 @@
   min-height: 0;
 }
 
-.settings-tab-layout .platform-report-table__scroll,
-.settings-tab-layout .data-table-panel__scroll--fill,
-.team-management--embedded .platform-report-table__scroll {
+.settings-tab-layout .platform-report-table__scroll:not(.data-table-panel__scroll--fill),
+.settings-tab-layout .data-table-panel__scroll--fill {
   max-height: none;
 }
 
 .team-management .platform-report-table__scroll {
   overflow-x: hidden;
+}
+
+.team-management .platform-report-table__scroll.data-table-panel__scroll--fill {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .settings-tab-layout .section-toolbar {

@@ -1,5 +1,5 @@
 import { calculateResults } from "../lib/audit/calculate-results";
-import { DEFAULT_INTERACTION_CONFIG } from "../lib/audit/seed-data";
+import { DEFAULT_INTERACTION_CONFIG, AGENTS, AUDITORS } from "../lib/audit/seed-data";
 import { getLobSubReasonOptions } from "../lib/audit/lob-flat-lists";
 import {
   CALL_AUDIT_TEMPLATE,
@@ -56,8 +56,16 @@ assert(CHAT_AUDIT_TEMPLATE.name === "Chat Quality Audit", "chat template name");
 verifyTemplate(CALL_AUDIT_TEMPLATE, 23);
 verifyTemplate(CHAT_AUDIT_TEMPLATE, 21);
 
-assert(DEFAULT_INTERACTION_CONFIG.agents.length === 14, "14 agents");
-assert(DEFAULT_INTERACTION_CONFIG.auditors[0] === "Belina", "auditor Belina");
+assert(
+  DEFAULT_INTERACTION_CONFIG.agents.length === 0,
+  "default config agents empty (DB-backed roster)"
+);
+assert(
+  DEFAULT_INTERACTION_CONFIG.auditors.length === 0,
+  "default config auditors empty (role-backed roster)"
+);
+assert(AGENTS.length === 14, "14 legacy seed agent names");
+assert(AUDITORS[0] === "Belina", "seed auditor Belina");
 assert(DEFAULT_INTERACTION_CONFIG.businessTypes.length === 2, "2 business types");
 assert(DEFAULT_INTERACTION_CONFIG.lobs.length === 10, "10 LOBs");
 

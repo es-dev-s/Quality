@@ -1,12 +1,12 @@
 import "dotenv/config";
-import { fetchInteractionConfigRow, rowToInteractionConfig } from "@/lib/audit/interaction-config-db";
+import { fetchInteractionConfigRowDirect, rowToInteractionConfig } from "@/lib/audit/interaction-config-db";
 import { DEFAULT_INTERACTION_CONFIG } from "@/lib/audit/seed-data";
 import { getLobSubReasonOptions } from "@/lib/audit/lob-flat-lists";
 import { toIsoTimestamp } from "@/lib/db/to-iso-timestamp";
 import { prisma } from "@/lib/prisma";
 
 async function main() {
-  const row = await fetchInteractionConfigRow();
+  const row = await fetchInteractionConfigRowDirect();
 
   if (!row) {
     console.log("❌ No interaction_configs row found.");

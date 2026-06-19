@@ -394,7 +394,11 @@ export function DashboardAnalytics({
         </div>
       </div>
 
-      <LoadingZone loading={isRefreshing} label="Refreshing dashboard…">
+      <LoadingZone
+        loading={isRefreshing}
+        label="Refreshing dashboard…"
+        className="dash-sections"
+      >
       <div className="dash-kpi-grid">
         <article className="dash-kpi">
           <p className="dash-kpi__label">Total audits</p>

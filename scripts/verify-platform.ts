@@ -5,7 +5,7 @@
 import "dotenv/config";
 import { AGENTS } from "@/lib/audit/seed-data";
 import { ensureDefaultAgents, fetchAllAgents } from "@/lib/audit/agent-db";
-import { fetchInteractionConfigRow } from "@/lib/audit/interaction-config-db";
+import { fetchInteractionConfigRowDirect } from "@/lib/audit/interaction-config-db";
 import { ensureDefaultTemplate } from "@/lib/audit/template-db";
 import { isAgentsInitialized } from "@/lib/db/system-meta";
 import { prisma } from "@/lib/prisma";
@@ -64,7 +64,7 @@ async function main() {
     fail("Agent nameKey", `${agentsWithoutKey.length} agents missing name_key`);
   }
 
-  const configRow = await fetchInteractionConfigRow();
+  const configRow = await fetchInteractionConfigRowDirect();
   const config = configRow.config as Record<string, unknown>;
   if (config && typeof config === "object") {
     const supervisors = Array.isArray(config.supervisors) ? config.supervisors.length : 0;

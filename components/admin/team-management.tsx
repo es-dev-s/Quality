@@ -248,10 +248,12 @@ function PendingApprovalsTable({
   rows,
   onReview,
   pendingId,
+  fillViewport = false,
 }: {
   rows: ProvisioningRequestRow[];
   onReview: (id: string, action: "approve" | "reject", targetRoleSlug: string) => void;
   pendingId: string | null;
+  fillViewport?: boolean;
 }) {
   const pagination = usePaginatedRows(rows);
 
@@ -266,6 +268,7 @@ function PendingApprovalsTable({
   return (
     <DataTablePanel
       pagination={pagination}
+      fillViewport={fillViewport}
       renderTable={(slice) => (
         <table className="ui-table platform-report-table settings-table team-approvals-table">
           <colgroup>
@@ -369,12 +372,14 @@ function AgentAssignmentPanel({
   agentAssignments,
   onChanged,
   pending,
+  fillViewport = false,
 }: {
   assignableAgents: AssignableAgentRow[];
   assigneeOptions: AssigneeOptionRow[];
   agentAssignments: AgentAssignmentRow[];
   onChanged: () => void;
   pending: boolean;
+  fillViewport?: boolean;
 }) {
   const { toast } = useToast();
   const [agentId, setAgentId] = useState(assignableAgents[0]?.id ?? "");
@@ -472,6 +477,7 @@ function AgentAssignmentPanel({
       ) : (
         <DataTablePanel
           pagination={assignmentPagination}
+          fillViewport={fillViewport}
           renderTable={(slice) => (
             <table className="ui-table platform-report-table settings-table">
               <thead>
@@ -789,6 +795,7 @@ export function TeamManagement({
         <LoadingZone
           loading={pending || pendingId !== null}
           label="Processing request…"
+          className={embedded ? "loading-zone--fill" : undefined}
         >
           {subTab === "agent-requests" && canApproveAgent ? (
             <TeamTabPanel
@@ -800,6 +807,7 @@ export function TeamManagement({
                 rows={pendingAgentApprovals}
                 onReview={handleReview}
                 pendingId={pending || pendingId ? pendingId : null}
+                fillViewport={embedded}
               />
             </TeamTabPanel>
           ) : null}
@@ -814,6 +822,7 @@ export function TeamManagement({
                 rows={pendingAnalystApprovals}
                 onReview={handleReview}
                 pendingId={pending || pendingId ? pendingId : null}
+                fillViewport={embedded}
               />
             </TeamTabPanel>
           ) : null}
@@ -828,6 +837,7 @@ export function TeamManagement({
                 assigneeOptions={assigneeOptions}
                 agentAssignments={agentAssignments}
                 pending={pending}
+                fillViewport={embedded}
                 onChanged={() => router.refresh()}
               />
             </TeamTabPanel>
@@ -850,6 +860,7 @@ export function TeamManagement({
               ) : (
                 <DataTablePanel
                   pagination={managedPagination}
+                  fillViewport={embedded}
                   renderTable={(slice) => (
                     <table className="ui-table platform-report-table settings-table">
                       <thead>
@@ -903,6 +914,7 @@ export function TeamManagement({
               ) : (
                 <DataTablePanel
                   pagination={myRequestsPagination}
+                  fillViewport={embedded}
                   renderTable={(slice) => (
                     <table className="ui-table platform-report-table settings-table">
                       <thead>

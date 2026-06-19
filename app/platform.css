@@ -520,12 +520,35 @@
   min-height: 0;
 }
 
+.team-management--embedded.settings-tab-layout {
+  flex: 1;
+  min-height: 0;
+}
+
 .team-management--embedded .team-management__body {
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding-bottom: var(--space-2);
+  overflow: hidden;
   min-width: 0;
+  padding-bottom: var(--space-2);
+}
+
+.team-management--embedded .loading-zone--fill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.team-management--embedded .team-management__panel {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.team-management--embedded .team-management__panel-body--table {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .team-management__actions {
@@ -641,6 +664,10 @@
   overflow-x: hidden;
   overflow-y: auto;
   max-width: 100%;
+}
+
+.team-management .platform-report-table__scroll.data-table-panel__scroll--fill {
+  max-height: none;
 }
 
 .team-management .platform-report-table,

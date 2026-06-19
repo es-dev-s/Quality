@@ -153,7 +153,7 @@
 }
 
 .recent-submissions {
-  margin-top: var(--space-12);
+  margin-top: 0;
 }
 
 .recent-submissions__head {
