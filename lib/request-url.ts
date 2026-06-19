@@ -24,7 +24,9 @@ export function resolveRedirectUrl(
   }
 
   const base =
-    request instanceof URL ? request.clone() : request.nextUrl.clone();
+    request instanceof URL
+      ? new URL(request.href)
+      : request.nextUrl.clone();
 
   if (!(request instanceof URL)) {
     const forwardedHost = request.headers
