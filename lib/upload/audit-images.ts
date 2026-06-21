@@ -1,9 +1,10 @@
 import path from "path";
 import { createRandomUUID } from "@/lib/random-id";
+import { AUDIT_IMAGE_MAX_BYTES } from "@/lib/upload/limits";
 
 export const AUDIT_IMAGE_UPLOAD_DIR = "storage/uploads/audit-images";
 
-export const AUDIT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+export { AUDIT_IMAGE_MAX_BYTES };
 
 const ALLOWED_MIME_TYPES = new Set([
   "image/jpeg",

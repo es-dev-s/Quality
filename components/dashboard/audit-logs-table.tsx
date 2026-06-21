@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, Download, Eye, Pencil, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { AuditDetailModal } from "@/components/audit-logs/audit-detail-modal";
 import {
+  ReferenceAttachmentView,
+  referenceAttachmentSearchText,
+} from "@/components/audit-logs/reference-attachment-view";
+import {
   applyFeedbackDateTimeChange,
   applyFeedbackStatusChange,
   FeedbackStatusDateTimeCell,
@@ -136,6 +140,7 @@ function matchesSearch(row: AuditLogEntry, query: string) {
     row.feedbackStatus,
     row.feedbackDate ?? "",
     row.agentFeedback,
+    referenceAttachmentSearchText(row.referenceUrl),
   ]
     .filter(Boolean)
     .join(" ")
@@ -166,6 +171,7 @@ function exportCsv(rows: AuditLogEntry[]) {
     "Feedback Date & Time",
     "Acknowledged/Disputed Date & Time",
     "Feedback for the agent",
+    "Reference",
   ];
   const lines = rows.map((r) =>
     [
@@ -184,6 +190,7 @@ function exportCsv(rows: AuditLogEntry[]) {
       r.feedbackDate ? formatFeedbackDateTime(r.feedbackDate) : "",
       r.feedbackStatusAt ? formatFeedbackDateTime(r.feedbackStatusAt) : "",
       r.agentFeedback,
+      r.referenceUrl ?? "",
     ]
       .map((v) => `"${String(v).replace(/"/g, '""')}"`)
       .join(",")
@@ -259,7 +266,7 @@ export function AuditLogsTable({
   const [deletePending, startDelete] = useTransition();
   const tableBusy = deletePending || feedbackPending;
 
-  const columnCount = canDeleteAudits ? 12 : 11;
+  const columnCount = canDeleteAudits ? 13 : 12;
 
   useEffect(() => {
     setLastSyncedAt(Date.now());
@@ -938,6 +945,7 @@ export function AuditLogsTable({
                     <th className="col-feedback-status">Feedback</th>
                     <th className="col-feedback-datetime">Date &amp; time</th>
                     <th className="col-agent-feedback">Feedback for the agent</th>
+                    <th className="col-reference">Reference</th>
                     <th className="col-actions">Actions</th>
                   </tr>
                 </thead>
@@ -1008,6 +1016,7 @@ export function AuditLogsTable({
                     <th className="col-feedback-status">Feedback</th>
                     <th className="col-feedback-datetime">Date &amp; time</th>
                     <th className="col-agent-feedback">Feedback for the agent</th>
+                    <th className="col-reference">Reference</th>
                     <th className="col-actions">Actions</th>
                   </tr>
                 </thead>
@@ -1152,6 +1161,13 @@ export function AuditLogsTable({
                       {row.agentFeedback.trim() || "—"}
                     </span>
                     </td>
+                  <td className="col-reference">
+                    <ReferenceAttachmentView
+                      referenceUrl={row.referenceUrl}
+                      interactionType={row.type}
+                      variant="compact"
+                    />
+                  </td>
                   <td className="col-actions audit-logs__actions-cell">
                     <div
                       className="audit-logs__actions-bar"

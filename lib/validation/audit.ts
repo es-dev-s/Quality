@@ -3,32 +3,43 @@ import {
   FEEDBACK_SECURITY_OPTIONS,
   FEEDBACK_STATUS_OPTIONS,
 } from "@/lib/audit/feedback";
+import { interactionReferenceFieldLabel } from "@/lib/audit/interaction-labels";
 import { cuidSchema, submissionKeySchema } from "@/lib/validation/common";
 
 const scoreValueSchema = z.string().trim().max(32);
 
 export const scoresMapSchema = z.record(z.string(), scoreValueSchema);
 
-export const auditFormDataSchema = z.object({
-  agent: z.string().trim().min(1, "Agent is required"),
-  supervisor: z.string(),
-  auditor: z.string(),
-  type: z.enum(["Call", "Chat"]),
-  businessType: z.string().trim().min(1, "Business type is required"),
-  callDate: z.string().trim().min(1, "Call date is required"),
-  auditDate: z.string().trim().min(1, "Audit date is required"),
-  lob: z.string().trim().min(1, "LOB is required"),
-  sublob: z.string(),
-  mobile: z.string(),
-  referenceUrl: z.string(),
-  reason: z.string(),
-  subReason: z.string(),
-  response: z.string(),
-  feedbackSecurity: z.enum(FEEDBACK_SECURITY_OPTIONS),
-  feedbackStatus: z.enum(FEEDBACK_STATUS_OPTIONS),
-  feedbackDate: z.string(),
-  agentFeedback: z.string(),
-});
+export const auditFormDataSchema = z
+  .object({
+    agent: z.string().trim().min(1, "Agent is required"),
+    supervisor: z.string(),
+    auditor: z.string(),
+    type: z.enum(["Call", "Chat"]),
+    businessType: z.string().trim().min(1, "Business type is required"),
+    callDate: z.string().trim().min(1, "Call date is required"),
+    auditDate: z.string().trim().min(1, "Audit date is required"),
+    lob: z.string().trim().min(1, "LOB is required"),
+    sublob: z.string(),
+    mobile: z.string(),
+    referenceUrl: z.string(),
+    reason: z.string(),
+    subReason: z.string(),
+    response: z.string(),
+    feedbackSecurity: z.enum(FEEDBACK_SECURITY_OPTIONS),
+    feedbackStatus: z.enum(FEEDBACK_STATUS_OPTIONS),
+    feedbackDate: z.string(),
+    agentFeedback: z.string(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.referenceUrl.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${interactionReferenceFieldLabel(data.type)} is required.`,
+        path: ["referenceUrl"],
+      });
+    }
+  });
 
 export const saveAuditSubmissionSchema = z.object({
   formData: auditFormDataSchema,

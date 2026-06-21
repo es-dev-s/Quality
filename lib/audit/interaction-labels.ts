@@ -16,6 +16,12 @@ export function interactionContactInputMode(
   return type === "Call" ? "tel" : "text";
 }
 
+export function interactionReferenceFieldLabel(
+  type: InteractionType | string
+): string {
+  return type === "Chat" ? "Interaction reference" : "Call reference";
+}
+
 export function interactionReferenceSectionLabel(
   type: InteractionType | string,
   referenceKind: "url" | "image" | "audio" | "audit"

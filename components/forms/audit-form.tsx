@@ -775,7 +775,7 @@ export function AuditForm({
                   <ReferenceUrlField
                     value={formData.referenceUrl}
                     interactionType={formData.type}
-                    required={false}
+                    required
                     inline
                     auditReferenceOptions={auditReferenceOptions}
                     onChange={(referenceUrl) => updateForm({ referenceUrl })}

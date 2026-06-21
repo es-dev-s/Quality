@@ -375,11 +375,18 @@ type AuditLogRow = {
   feedbackStatusAt: string | null;
   agentFeedback: string;
   supervisorRemarks: string;
+  referenceUrl: string | null;
+  mobile: string | null;
   submittedBy: { name: string | null; email: string };
   createdAt: Date | string;
 };
 
 function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
+  const legacy = normalizeLegacyReferenceFields(
+    s.mobile ?? "",
+    s.referenceUrl
+  );
+
   return {
     id: s.id,
     auditCode: s.auditCode,
@@ -403,6 +410,7 @@ function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
     feedbackStatusAt: s.feedbackStatusAt,
     agentFeedback: s.agentFeedback ?? "",
     supervisorRemarks: s.supervisorRemarks ?? "",
+    referenceUrl: legacy.referenceUrl || null,
     submittedBy: s.submittedBy.name ?? s.submittedBy.email,
     createdAt: toIsoTimestamp(s.createdAt),
   };

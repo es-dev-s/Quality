@@ -3,14 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, ExternalLink, FileText, MessageSquare, Pencil, Phone, ShieldAlert, X } from "lucide-react";
+import { ChevronDown, FileText, MessageSquare, Pencil, Phone, ShieldAlert, X } from "lucide-react";
 import { getAuditDetail, updateSupervisorRemarks } from "@/lib/actions/audit";
-import { ReferenceImageViewer } from "@/components/forms/reference-image-viewer";
+import { ReferenceAttachmentView } from "@/components/audit-logs/reference-attachment-view";
 import {
-  auditCodeFromReferencePath,
-  isUploadedAudioPath,
-  isUploadedImagePath,
-  isAuditReferencePath,
+  detectReferenceAttachmentKind,
   normalizeUploadedReferencePath,
 } from "@/lib/upload/reference-url-paths";
 import type { AuditDetail } from "@/lib/audit/audit-records";
@@ -281,60 +278,31 @@ export function AuditDetailModal({
                   <Field label="Submitted at">{formatDateTime(detail.createdAt)}</Field>
                 </div>
 
-                {detail.referenceUrl ? (
+                {detail.referenceUrl ? (() => {
+                  const refKind = detectReferenceAttachmentKind(
+                    normalizeUploadedReferencePath(detail.referenceUrl)
+                  );
+                  const sectionKind =
+                    refKind === "audit"
+                      ? "audit"
+                      : refKind === "audio"
+                        ? "audio"
+                        : refKind === "image"
+                          ? "image"
+                          : "url";
+                  return (
                   <div className="adi-reference">
-                    {(() => {
-                      const referenceUrl = normalizeUploadedReferencePath(
-                        detail.referenceUrl
-                      );
-                      return (
-                        <>
                     <span className="adi-field__label">
-                      {isUploadedImagePath(referenceUrl)
-                        ? interactionReferenceSectionLabel(detail.type, "image")
-                        : isUploadedAudioPath(referenceUrl)
-                          ? interactionReferenceSectionLabel(detail.type, "audio")
-                          : isAuditReferencePath(referenceUrl)
-                            ? interactionReferenceSectionLabel(detail.type, "audit")
-                            : interactionReferenceSectionLabel(detail.type, "url")}
+                      {interactionReferenceSectionLabel(detail.type, sectionKind)}
                     </span>
-                    <div className="adi-reference__media">
-                      {isUploadedImagePath(referenceUrl) ? (
-                        <ReferenceImageViewer src={referenceUrl} />
-                      ) : isUploadedAudioPath(referenceUrl) ? (
-                        <audio
-                          controls
-                          preload="none"
-                          src={referenceUrl}
-                          className="adi-audio"
-                        />
-                      ) : isAuditReferencePath(referenceUrl) ? (
-                        <Link
-                          href={`/audit-logs?search=${encodeURIComponent(
-                            auditCodeFromReferencePath(referenceUrl) ?? ""
-                          )}`}
-                          className="adi-url-link"
-                        >
-                          <ExternalLink size={13} aria-hidden />
-                          {auditCodeFromReferencePath(referenceUrl)}
-                        </Link>
-                      ) : (
-                        <a
-                          href={referenceUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="adi-url-link"
-                        >
-                          <ExternalLink size={13} aria-hidden />
-                          {referenceUrl}
-                        </a>
-                      )}
-                    </div>
-                        </>
-                      );
-                    })()}
+                    <ReferenceAttachmentView
+                      referenceUrl={detail.referenceUrl}
+                      interactionType={detail.type}
+                      variant="full"
+                    />
                   </div>
-                ) : null}
+                  );
+                })() : null}
 
                 {detail.response ? (
                   <div className="adi-reference">

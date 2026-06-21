@@ -1,9 +1,10 @@
 import path from "path";
 import { createRandomUUID } from "@/lib/random-id";
+import { AUDIT_MEDIA_MAX_BYTES } from "@/lib/upload/limits";
 
 export const AUDIT_MEDIA_UPLOAD_DIR = "storage/uploads/audit-media";
 
-export const AUDIT_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+export { AUDIT_MEDIA_MAX_BYTES };
 
 const ALLOWED_MIME_TYPES = new Set([
   "audio/mpeg",

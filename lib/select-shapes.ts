@@ -23,6 +23,8 @@ export const AUDIT_LOG_LIST_SELECT = {
   feedbackStatusAt: true,
   agentFeedback: true,
   supervisorRemarks: true,
+  referenceUrl: true,
+  mobile: true,
   createdAt: true,
   submittedBy: { select: { name: true, email: true } },
 } satisfies Prisma.AuditSubmissionSelect;

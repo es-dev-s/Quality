@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronDown,
@@ -19,6 +19,17 @@ import { Modal } from "@/components/primitives/modal";
 import { ReferenceImageViewer } from "@/components/forms/reference-image-viewer";
 import { useToast } from "@/components/primitives/toast";
 import type { AuditReferenceOption } from "@/lib/actions/audit";
+import {
+  validateClientImageFile,
+  validateClientMediaFile,
+} from "@/lib/upload/client-validation";
+import { uploadAuditAttachment } from "@/lib/upload/client-upload";
+import { formatFileSize } from "@/lib/upload/format-file-size";
+import {
+  AUDIT_IMAGE_MAX_MB,
+  AUDIT_MEDIA_MAX_MB,
+} from "@/lib/upload/limits";
+import { interactionReferenceFieldLabel } from "@/lib/audit/interaction-labels";
 import {
   auditCodeFromReferencePath,
   buildAuditReferenceValue,
@@ -58,13 +69,13 @@ const ATTACHMENT_OPTIONS: {
   {
     id: "image",
     label: "Image",
-    hint: "Screenshot or chat capture",
+    hint: `Screenshot or capture (up to ${AUDIT_IMAGE_MAX_MB} MB)`,
     icon: ImageIcon,
   },
   {
     id: "audio",
     label: "Audio",
-    hint: "Call or voice recording",
+    hint: `Recording or voice note (up to ${AUDIT_MEDIA_MAX_MB} MB)`,
     icon: Mic,
   },
   {
@@ -84,6 +95,13 @@ type MenuLayout = {
   left: number;
   width: number;
   openUp: boolean;
+};
+
+type UploadState = {
+  mode: "image" | "audio";
+  fileName: string;
+  fileSize: number;
+  percent: number;
 };
 
 function measureAttachMenu(trigger: HTMLElement): MenuLayout {
@@ -113,7 +131,9 @@ export function ReferenceUrlField({
 }: ReferenceUrlFieldProps) {
   const isChat = interactionType === "Chat";
   const { toast } = useToast();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
+  const uploadAbortRef = useRef<AbortController | null>(null);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuLayout, setMenuLayout] = useState<MenuLayout | null>(null);
@@ -123,6 +143,8 @@ export function ReferenceUrlField({
   const [draftUrl, setDraftUrl] = useState("");
   const [draftAuditCode, setDraftAuditCode] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [uploadState, setUploadState] = useState<UploadState | null>(null);
+  const [dragActive, setDragActive] = useState(false);
   const [uploadLabel, setUploadLabel] = useState<string | null>(() =>
     isUploadedReferencePath(value) && !value.startsWith("audit-ref:")
       ? fileLabelFromUploadPath(value)
@@ -145,9 +167,11 @@ export function ReferenceUrlField({
       .slice(0, 8);
   }, [auditReferenceOptions, draftAuditCode]);
 
-  const label = isChat ? "Interaction reference" : "Call reference";
-  const optionalHint = required
-    ? null
+  const label = interactionReferenceFieldLabel(interactionType);
+  const fieldHint = required
+    ? isChat
+      ? "Required — URL, screenshot, recording, or linked audit"
+      : "Required — URL, recording, image, or linked audit"
     : isChat
       ? "Optional — URL, screenshot, recording, or linked audit"
       : "Optional — URL, recording, image, or linked audit";
@@ -182,17 +206,32 @@ export function ReferenceUrlField({
     if (kind === "audit") {
       setDraftAuditCode(auditCodeFromReferencePath(value) ?? "");
     }
+    if (kind === "image" || kind === "audio") {
+      requestAnimationFrame(() => {
+        (kind === "image" ? imageInputRef : audioInputRef).current?.click();
+      });
+    }
   }
 
   function closeModal() {
     if (uploading) return;
     setModalKind(null);
+    setDragActive(false);
+  }
+
+  function cancelUpload() {
+    uploadAbortRef.current?.abort();
+    uploadAbortRef.current = null;
+    setUploading(false);
+    setUploadState(null);
   }
 
   function applyValue(next: string, labelHint?: string) {
     onChange(next);
     if (labelHint) setUploadLabel(labelHint);
     setModalKind(null);
+    setUploadState(null);
+    setDragActive(false);
   }
 
   function clearValue() {
@@ -200,58 +239,71 @@ export function ReferenceUrlField({
     setUploadLabel(null);
   }
 
-  async function handleFileSelect(
-    file: File | undefined,
-    uploadMode: "image" | "audio"
-  ) {
-    if (!file) return;
+  const handleFileSelect = useCallback(
+    async (file: File | undefined, uploadMode: "image" | "audio") => {
+      if (!file) return;
 
-    setUploading(true);
-    try {
-      const body = new FormData();
-      body.append("file", file);
-
-      const endpoint =
+      const validation =
         uploadMode === "image"
-          ? "/api/uploads/audit-images"
-          : "/api/uploads/audit-media";
+          ? validateClientImageFile(file)
+          : validateClientMediaFile(file);
 
-      const response = await fetch(endpoint, {
-        method: "POST",
-        body,
+      if (!validation.ok) {
+        toast(validation.error, "error");
+        return;
+      }
+
+      setModalKind(uploadMode);
+      setUploading(true);
+      setUploadState({
+        mode: uploadMode,
+        fileName: file.name,
+        fileSize: file.size,
+        percent: 0,
       });
 
-      const payload = (await response.json()) as {
-        path?: string;
-        error?: string;
-      };
+      uploadAbortRef.current?.abort();
+      const controller = new AbortController();
+      uploadAbortRef.current = controller;
 
-      if (!response.ok || !payload.path) {
-        throw new Error(payload.error ?? "Upload failed.");
-      }
+      try {
+        const result = await uploadAuditAttachment(file, uploadMode, {
+          signal: controller.signal,
+          onProgress: ({ percent }) => {
+            setUploadState((prev) =>
+              prev ? { ...prev, percent } : prev
+            );
+          },
+        });
 
-      applyValue(payload.path, file.name);
-      toast(
-        uploadMode === "image"
-          ? `Image saved: ${file.name}`
-          : `Audio saved: ${file.name}`,
-        "success"
-      );
-    } catch (error) {
-      toast(
-        error instanceof Error
-          ? error.message
-          : uploadMode === "image"
-            ? "Could not upload image."
-            : "Could not upload audio.",
-        "error"
-      );
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+        applyValue(result.path, file.name);
+        toast(
+          uploadMode === "image"
+            ? `Image attached (${formatFileSize(file.size)})`
+            : `Audio attached (${formatFileSize(file.size)})`,
+          "success"
+        );
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message !== "Upload cancelled."
+        ) {
+          toast(error.message, "error");
+        }
+      } finally {
+        setUploading(false);
+        setUploadState(null);
+        uploadAbortRef.current = null;
+        if (imageInputRef.current) imageInputRef.current.value = "";
+        if (audioInputRef.current) audioInputRef.current.value = "";
       }
-    }
+    },
+    [toast, onChange]
+  );
+
+  function onDropFile(file: File | undefined, mode: "image" | "audio") {
+    setDragActive(false);
+    void handleFileSelect(file, mode);
   }
 
   function saveUrl() {
@@ -287,12 +339,39 @@ export function ReferenceUrlField({
     modalKind === "url"
       ? "Paste a CRM link, ticket URL, or chat reference."
       : modalKind === "image"
-        ? "Upload a screenshot or chat capture (JPG, PNG, WebP, GIF — up to 10 MB)."
+        ? `Upload a screenshot or chat capture (JPG, PNG, WebP, GIF — up to ${AUDIT_IMAGE_MAX_MB} MB).`
         : modalKind === "audio"
-          ? "Upload a call or voice recording (MP3, WAV, M4A, AAC, WebM, OGG, FLAC — up to 25 MB)."
+          ? `Upload a call or voice recording (MP3, WAV, M4A, AAC, WebM, OGG, FLAC — up to ${AUDIT_MEDIA_MAX_MB} MB).`
           : modalKind === "audit"
             ? "Pick a recent audit from your scope or enter an audit code."
             : undefined;
+
+  const uploadProgressBlock = uploadState ? (
+    <div className="audit-ref-upload-progress" role="status" aria-live="polite">
+      <div className="audit-ref-upload-progress__head">
+        <Loader2 size={16} className="audit-reference-field__spin" aria-hidden />
+        <div className="audit-ref-upload-progress__copy">
+          <strong>Uploading {uploadState.fileName}</strong>
+          <span>
+            {formatFileSize(uploadState.fileSize)} · {uploadState.percent}%
+          </span>
+        </div>
+        <button
+          type="button"
+          className="audit-ref-upload-progress__cancel"
+          onClick={cancelUpload}
+        >
+          Cancel
+        </button>
+      </div>
+      <div className="audit-ref-upload-progress__track">
+        <div
+          className="audit-ref-upload-progress__fill"
+          style={{ width: `${uploadState.percent}%` }}
+        />
+      </div>
+    </div>
+  ) : null;
 
   return (
     <Field
@@ -314,7 +393,9 @@ export function ReferenceUrlField({
       </div>
 
       <div className="audit-ref-attach">
-        {hasValue ? (
+        {uploadProgressBlock}
+
+        {hasValue && !uploadState ? (
           <div className="audit-ref-attach__chip">
             <span className="audit-ref-attach__chip-icon" aria-hidden>
               <ActiveIcon size={15} />
@@ -341,7 +422,7 @@ export function ReferenceUrlField({
             ) : activeKind === "audio" && isUploadedAudioPath(value) ? (
               <audio
                 controls
-                preload="none"
+                preload="metadata"
                 src={value}
                 className="audit-ref-attach__player"
               />
@@ -366,12 +447,12 @@ export function ReferenceUrlField({
               </button>
             </div>
           </div>
-        ) : (
+        ) : !uploadState ? (
           <div className="audit-ref-attach__empty">
             <FileText size={16} aria-hidden />
             <span>No reference attached</span>
           </div>
-        )}
+        ) : null}
 
         <div className="audit-ref-attach__menu-wrap">
           <button
@@ -412,6 +493,7 @@ export function ReferenceUrlField({
                   menuLayout.openUp && "audit-ref-attach__menu--up"
                 )}
                 role="menu"
+                onMouseDown={(e) => e.stopPropagation()}
                 style={{
                   top: menuLayout.top,
                   left: menuLayout.left,
@@ -426,6 +508,11 @@ export function ReferenceUrlField({
                       type="button"
                       role="menuitem"
                       className="audit-ref-attach__menu-item"
+                      disabled={uploading}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
                       onClick={() => openModal(option.id)}
                     >
                       <span className="audit-ref-attach__menu-icon" aria-hidden>
@@ -444,23 +531,30 @@ export function ReferenceUrlField({
           )
         : null}
 
-      {optionalHint ? (
-        <p className="audit-field__hint ui-hint">{optionalHint}</p>
+      {fieldHint ? (
+        <p className="audit-field__hint ui-hint">{fieldHint}</p>
       ) : null}
 
       <input
-        ref={fileInputRef}
+        ref={imageInputRef}
         type="file"
         className="audit-reference-field__file-input"
-        accept={
-          modalKind === "image"
-            ? "image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
-            : "audio/*,.mp3,.wav,.m4a,.aac,.webm,.ogg,.flac"
-        }
+        tabIndex={-1}
+        aria-hidden
+        accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (modalKind === "image") void handleFileSelect(file, "image");
-          if (modalKind === "audio") void handleFileSelect(file, "audio");
+          void handleFileSelect(e.target.files?.[0], "image");
+        }}
+      />
+      <input
+        ref={audioInputRef}
+        type="file"
+        className="audit-reference-field__file-input"
+        tabIndex={-1}
+        aria-hidden
+        accept="audio/*,.mp3,.wav,.m4a,.aac,.webm,.ogg,.flac"
+        onChange={(e) => {
+          void handleFileSelect(e.target.files?.[0], "audio");
         }}
       />
 
@@ -511,38 +605,59 @@ export function ReferenceUrlField({
 
         {modalKind === "image" || modalKind === "audio" ? (
           <div className="audit-ref-modal__body">
-            <button
-              type="button"
-              className="audit-ref-modal__dropzone"
-              disabled={disabled || uploading}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {uploading ? (
-                <Loader2 size={22} className="audit-reference-field__spin" aria-hidden />
-              ) : (
+            {uploadProgressBlock ?? (
+              <button
+                type="button"
+                className={cn(
+                  "audit-ref-modal__dropzone",
+                  dragActive && "audit-ref-modal__dropzone--active"
+                )}
+                disabled={disabled || uploading}
+                onClick={() =>
+                  (modalKind === "image" ? imageInputRef : audioInputRef).current?.click()
+                }
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDragActive(true);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDragActive(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDragActive(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onDropFile(e.dataTransfer.files?.[0], modalKind);
+                }}
+              >
                 <Upload size={22} aria-hidden />
-              )}
-              <strong>
-                {uploading
-                  ? "Uploading…"
-                  : modalKind === "image"
-                    ? "Choose image file"
-                    : "Choose audio file"}
-              </strong>
-              <span>
-                {modalKind === "image"
-                  ? "JPG, PNG, WebP, or GIF"
-                  : "MP3, WAV, M4A, AAC, WebM, OGG, or FLAC"}
-              </span>
-            </button>
+                <strong>
+                  {modalKind === "image"
+                    ? "Choose or drop image"
+                    : "Choose or drop audio"}
+                </strong>
+                <span>
+                  {modalKind === "image"
+                    ? `JPG, PNG, WebP, or GIF · up to ${AUDIT_IMAGE_MAX_MB} MB`
+                    : `MP3, WAV, M4A, AAC, WebM, OGG, or FLAC · up to ${AUDIT_MEDIA_MAX_MB} MB`}
+                </span>
+              </button>
+            )}
             <div className="audit-ref-modal__actions">
               <button
                 type="button"
                 className="ui-btn ui-btn--secondary ui-btn--sm"
                 disabled={uploading}
-                onClick={closeModal}
+                onClick={uploading ? cancelUpload : closeModal}
               >
-                Cancel
+                {uploading ? "Cancel upload" : "Close"}
               </button>
             </div>
           </div>
