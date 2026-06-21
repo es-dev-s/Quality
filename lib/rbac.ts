@@ -203,13 +203,13 @@ export function canEditSupervisorRemarks(role?: SessionRole | null): boolean {
   );
 }
 
-/** CSV export — Quality Manager, legacy Admin, and Super Admin only. */
+/** CSV export — requires audit logs and reports read access. */
 export function canExportAuditData(role?: SessionRole | null): boolean {
   if (!role) return false;
   if (isSuperAdmin(role)) return true;
   return (
-    role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER ||
-    role.slug === SYSTEM_ROLE_SLUGS.ADMIN
+    hasScope(role, PERMISSIONS.AUDIT_LOGS_READ) &&
+    hasScope(role, PERMISSIONS.REPORTS_READ)
   );
 }
 

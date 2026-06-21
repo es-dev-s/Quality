@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition, useEffect, useOptimistic, useCallback } from "react";
+import { useMemo, useState, useEffect, useOptimistic, useCallback, useRef, startTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Download, Eye, Pencil, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { Download, Eye, Pencil, Trash2 } from "lucide-react";
+import {
+  FilterSidebar,
+  FilterSidebarGrid,
+  FilterSidebarSection,
+} from "@/components/filters/filter-sidebar";
+import { FilterSelect } from "@/components/filters/filter-select";
+import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
+import { useBusyAction } from "@/lib/hooks/use-busy-action";
 import { AuditDetailModal } from "@/components/audit-logs/audit-detail-modal";
 import {
   ReferenceAttachmentView,
@@ -15,13 +23,14 @@ import {
   FeedbackStatusDateTimeCell,
 } from "@/components/audit-logs/feedback-status-datetime";
 import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
-import { Input, Select } from "@/components/primitives/field";
+import { Select } from "@/components/primitives/field";
 import {
   DataTablePanel,
   usePaginatedRows,
 } from "@/components/primitives/data-table-panel";
 import { useToast } from "@/components/primitives/toast";
 import { LoadingZone } from "@/components/primitives/loading-zone";
+import { ConfirmModal } from "@/components/primitives/confirm-modal";
 import { cn } from "@/lib/utils";
 import { deleteAuditSubmissions, updateAuditFeedback } from "@/lib/actions/audit";
 import type { AuditLogEntry } from "@/lib/audit/audit-records";
@@ -48,6 +57,22 @@ import type { SessionRole } from "@/lib/rbac";
 import { formatSecondsAgo } from "@/lib/format-relative-time";
 import { useRealtime } from "@/lib/hooks/use-realtime";
 import { isAuditSSEEvent } from "@/lib/sse-events";
+
+function rowIdsKey(rows: AuditLogEntry[]): string {
+  if (rows.length === 0) return "";
+  return rows
+    .map((row) => row.id)
+    .sort()
+    .join("|");
+}
+
+function setsEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const id of a) {
+    if (!b.has(id)) return false;
+  }
+  return true;
+}
 
 type AuditLogsTableProps = {
   submissions: AuditLogEntry[];
@@ -233,7 +258,7 @@ export function AuditLogsTable({
   const [feedbackStatus, setFeedbackStatus] = useState("");
   const [dateRange, setDateRange] = useState<DateRangeFilter>("all");
   const [customRange, setCustomRange] = useState<DateRangeValue>({ from: "", to: "" });
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const filterSidebar = useFilterSidebar();
   const [viewId, setViewId] = useState<string | null>(null);
   const [optimisticRows, applyOptimisticRows] = useOptimistic(
     submissions,
@@ -257,14 +282,41 @@ export function AuditLogsTable({
     }
   );
   const rows = optimisticRows;
+  const visibleRowIdsKey = rowIdsKey(rows);
+  const rowIdsRef = useRef(new Set<string>());
+  const reconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    rowIdsRef.current = new Set(
+      visibleRowIdsKey ? visibleRowIdsKey.split("|") : []
+    );
+  }, [visibleRowIdsKey]);
+
+  const scheduleAuditLogsReconcile = useCallback(() => {
+    if (reconcileTimerRef.current) {
+      clearTimeout(reconcileTimerRef.current);
+    }
+    reconcileTimerRef.current = setTimeout(() => {
+      router.refresh();
+      reconcileTimerRef.current = null;
+    }, 800);
+  }, [router]);
+
+  useEffect(() => {
+    return () => {
+      if (reconcileTimerRef.current) {
+        clearTimeout(reconcileTimerRef.current);
+      }
+    };
+  }, []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<{
     ids: string[];
     label: string;
   } | null>(null);
-  const [feedbackPending, startFeedback] = useTransition();
-  const [deletePending, startDelete] = useTransition();
-  const tableBusy = deletePending || feedbackPending;
+  const { busy: deletePending, run: runDelete } = useBusyAction();
+  const { busy: feedbackPending, run: runFeedback } = useBusyAction();
+  const tableBusy = deletePending;
 
   const columnCount = canDeleteAudits ? 13 : 12;
 
@@ -284,23 +336,31 @@ export function AuditLogsTable({
           break;
         case "audit:updated":
           if (event.changes) {
-            applyOptimisticRows({
-              type: "patch",
-              id: event.auditId,
-              patch: event.changes as Partial<AuditLogEntry>,
+            const rowKnown = rowIdsRef.current.has(event.auditId);
+            startTransition(() => {
+              applyOptimisticRows({
+                type: "patch",
+                id: event.auditId,
+                patch: event.changes as Partial<AuditLogEntry>,
+              });
             });
+            if (!rowKnown) {
+              scheduleAuditLogsReconcile();
+            }
           } else {
             router.refresh();
           }
           setLastSyncedAt(Date.now());
           break;
         case "audit:deleted":
-          applyOptimisticRows({ type: "delete", ids: [event.auditId] });
+          startTransition(() => {
+            applyOptimisticRows({ type: "delete", ids: [event.auditId] });
+          });
           setLastSyncedAt(Date.now());
           break;
       }
     },
-    [router, applyOptimisticRows]
+    [router, applyOptimisticRows, scheduleAuditLogsReconcile]
   );
 
   useRealtime(handleRealtime);
@@ -313,15 +373,18 @@ export function AuditLogsTable({
   }, [lastSyncedAt]);
 
   useEffect(() => {
+    const rowIds = new Set(
+      visibleRowIdsKey ? visibleRowIdsKey.split("|") : []
+    );
     setSelectedIds((current) => {
-      const rowIds = new Set(rows.map((row) => row.id));
+      if (current.size === 0) return current;
       const next = new Set<string>();
       for (const id of current) {
         if (rowIds.has(id)) next.add(id);
       }
-      return next.size === current.size ? current : next;
+      return setsEqual(current, next) ? current : next;
     });
-  }, [rows]);
+  }, [visibleRowIdsKey]);
 
   const lobs = useMemo(
     () => [...new Set(rows.map((s) => s.lob))].sort(),
@@ -334,6 +397,52 @@ export function AuditLogsTable({
         a.localeCompare(b)
       ),
     [rows]
+  );
+
+  const scoreFilterOptions = useMemo(
+    () => SCORE_PRESETS.map((preset) => ({ value: preset.value, label: preset.label })),
+    []
+  );
+
+  const gradeFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All grades" },
+      ...GRADES.map((g) => ({ value: g, label: g })),
+    ],
+    []
+  );
+
+  const typeFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All types" },
+      { value: "Call", label: "Call" },
+      { value: "Chat", label: "Chat" },
+    ],
+    []
+  );
+
+  const businessFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All business" },
+      ...businessTypeOptions.map((value) => ({ value, label: value })),
+    ],
+    [businessTypeOptions]
+  );
+
+  const lobFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All LOBs" },
+      ...lobs.map((name) => ({ value: name, label: name })),
+    ],
+    [lobs]
+  );
+
+  const feedbackFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All feedback" },
+      ...FEEDBACK_STATUSES.map((status) => ({ value: status, label: status })),
+    ],
+    []
   );
 
   const filtered = useMemo(() => {
@@ -356,7 +465,37 @@ export function AuditLogsTable({
     });
   }, [rows, search, scorePreset, dateRange, customRange, grade, type, businessType, lob, feedbackStatus]);
 
-  const pagination = usePaginatedRows(filtered);
+  const paginationResetKey = useMemo(
+    () =>
+      [
+        search,
+        scorePreset,
+        dateRange,
+        customRange.from,
+        customRange.to,
+        grade,
+        type,
+        businessType,
+        lob,
+        feedbackStatus,
+        filtered.length,
+      ].join("|"),
+    [
+      search,
+      scorePreset,
+      dateRange,
+      customRange.from,
+      customRange.to,
+      grade,
+      type,
+      businessType,
+      lob,
+      feedbackStatus,
+      filtered.length,
+    ]
+  );
+
+  const pagination = usePaginatedRows(filtered, 20, paginationResetKey);
   const pageRows = pagination.slice;
   const pageIds = useMemo(() => pageRows.map((row) => row.id), [pageRows]);
 
@@ -400,8 +539,10 @@ export function AuditLogsTable({
     const ids = deleteConfirm.ids;
     setDeleteConfirm(null);
 
-    startDelete(async () => {
-      applyOptimisticRows({ type: "delete", ids });
+    runDelete(async () => {
+      startTransition(() => {
+        applyOptimisticRows({ type: "delete", ids });
+      });
       const result = await deleteAuditSubmissions(ids);
       if ("error" in result && result.error) {
         toast(result.error, "error");
@@ -513,7 +654,7 @@ export function AuditLogsTable({
     }
 
     return chips;
-  }, [dateRange, scorePreset, grade, type, businessType, lob, feedbackStatus]);
+  }, [dateRange, customRange, scorePreset, grade, type, businessType, lob, feedbackStatus]);
 
   const clearFilters = () => {
     setSearch("");
@@ -564,9 +705,11 @@ export function AuditLogsTable({
     }
 
     nextRow = next;
-    applyOptimisticRows({ type: "patch", id, patch: nextRow });
+    startTransition(() => {
+      applyOptimisticRows({ type: "patch", id, patch: nextRow! });
+    });
 
-    startFeedback(async () => {
+    runFeedback(async () => {
       const result = await updateAuditFeedback(id, {
         feedbackSecurity: nextRow!.feedbackSecurity,
         feedbackStatus: nextRow!.feedbackStatus,
@@ -576,20 +719,31 @@ export function AuditLogsTable({
 
       if ("error" in result && result.error) {
         toast(result.error, "error");
-        applyOptimisticRows({ type: "patch", id, patch: previousRow! });
+        startTransition(() => {
+          applyOptimisticRows({ type: "patch", id, patch: previousRow! });
+        });
         return;
       }
 
       if ("success" in result && result.success) {
-        applyOptimisticRows({
-          type: "patch",
-          id,
-          patch: {
-            feedbackStatus: result.feedbackStatus ?? nextRow!.feedbackStatus,
-            feedbackDate: result.feedbackDate ?? null,
-            feedbackStatusAt: result.feedbackStatusAt ?? null,
-          },
-        });
+        const serverPatch = {
+          feedbackStatus: result.feedbackStatus ?? nextRow!.feedbackStatus,
+          feedbackDate: result.feedbackDate ?? null,
+          feedbackStatusAt: result.feedbackStatusAt ?? null,
+        };
+        const needsSync =
+          serverPatch.feedbackStatus !== nextRow!.feedbackStatus ||
+          serverPatch.feedbackDate !== nextRow!.feedbackDate ||
+          serverPatch.feedbackStatusAt !== nextRow!.feedbackStatusAt;
+        if (needsSync) {
+          startTransition(() => {
+            applyOptimisticRows({
+              type: "patch",
+              id,
+              patch: serverPatch,
+            });
+          });
+        }
       }
     });
   }
@@ -660,7 +814,6 @@ export function AuditLogsTable({
 
   const showToolbarActions =
     rows.length > 0 &&
-    filtered.length > 0 &&
     (canExport || canCreateAudit || (canDeleteAudits && selectedCount > 0));
 
   return (
@@ -680,242 +833,130 @@ export function AuditLogsTable({
         </div>
       )}
 
-      {!showSectionHead && showToolbarActions ? (
-        <div className="audit-logs__page-actions">
-          <div className="audit-logs__head-actions">{toolbarActions}</div>
-        </div>
-      ) : null}
 
-      {enableFilters && rows.length > 0 && (
-        <section
-          className={cn(
-            "audit-logs__filters-panel",
-            filtersExpanded && "audit-logs__filters-panel--expanded"
-          )}
-          aria-label="Audit log filters"
+      {enableFilters && rows.length > 0 ? (
+        <FilterSidebar
+          open={filterSidebar.open}
+          onOpenChange={filterSidebar.onOpenChange}
+          title="Audit filters"
+          description="Refine by period, score, grade, type, business, LOB, or feedback status."
+          activeCount={advancedFilterCount}
+          onClearAll={clearFilters}
+          clearDisabled={!hasActiveFilters}
         >
-          <div className="audit-logs__filters-bar">
-            <div className="audit-logs__search">
-              <Search size={16} className="audit-logs__search-icon" aria-hidden />
-              <Input
-                id="audit-logs-search"
-                className="audit-logs__search-input"
-                placeholder="Search agent, audit ID, LOB, reason, auditor…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                aria-label="Search audit logs"
-              />
-            </div>
-            <button
-              type="button"
-              className={cn(
-                "audit-logs__filters-toggle",
-                filtersExpanded && "audit-logs__filters-toggle--open",
-                advancedFilterCount > 0 && "audit-logs__filters-toggle--active"
-              )}
-              onClick={() => setFiltersExpanded((open) => !open)}
-              aria-expanded={filtersExpanded}
-              aria-controls="audit-logs-filters-body"
+          <FilterSidebarSection label="Period">
+            <div
+              className="filter-sidebar-periods audit-logs__periods"
+              role="tablist"
+              aria-label="Audit date period"
             >
-              <SlidersHorizontal size={15} aria-hidden />
-              <span className="audit-logs__filters-toggle-text">
-                {filtersExpanded ? "Hide filters" : "More filters"}
-              </span>
-              {!filtersExpanded && advancedFilterCount > 0 ? (
-                <span className="audit-logs__filters-badge" aria-hidden>
-                  {advancedFilterCount}
-                </span>
-              ) : null}
-              <ChevronDown
-                size={16}
-                className={cn(
-                  "audit-logs__filters-chevron",
-                  filtersExpanded && "audit-logs__filters-chevron--open"
-                )}
-                aria-hidden
-              />
-            </button>
-          </div>
-
-          {activeFilterChips.length > 0 ? (
-            <div className="audit-logs__active-filters">
-              {activeFilterChips.map((chip) => (
+              {DATE_RANGES.map((item) => (
                 <button
-                  key={chip.key}
+                  key={item.value}
                   type="button"
-                  className="audit-logs__filter-chip"
-                  onClick={chip.onRemove}
-                  title={`Remove ${chip.label} filter`}
+                  role="tab"
+                  aria-selected={
+                    dateRange === item.value && !(customRange.from || customRange.to)
+                  }
+                  aria-label={item.ariaLabel}
+                  title={item.ariaLabel}
+                  className={cn(
+                    "audit-logs__periods-btn",
+                    dateRange === item.value &&
+                      !(customRange.from || customRange.to) &&
+                      "audit-logs__periods-btn--active"
+                  )}
+                  onClick={() => {
+                    setCustomRange({ from: "", to: "" });
+                    setDateRange(item.value);
+                  }}
                 >
-                  {chip.label}
-                  <X size={12} aria-hidden />
+                  <span className="audit-logs__periods-label">{item.label}</span>
                 </button>
               ))}
-              {hasActiveFilters ? (
-                <button
-                  type="button"
-                  className="dash-filter-clear audit-logs__filter-clear"
-                  onClick={clearFilters}
-                >
-                  Clear all
-                </button>
-              ) : null}
             </div>
-          ) : null}
+            <DateRangePicker
+              value={customRange}
+              onChange={(v) => {
+                setCustomRange(v);
+                if (v.from || v.to) setDateRange("all");
+              }}
+              label="Custom range"
+              className="audit-logs__drp"
+            />
+          </FilterSidebarSection>
 
-          <div
-            id="audit-logs-filters-body"
-            className="audit-logs__filters-body"
-            aria-hidden={!filtersExpanded}
-          >
-            <div className="audit-logs__filters-body-inner">
-              <div className="audit-logs__filters-section">
-                <span className="audit-logs__filters-section-label">Period</span>
-                <div
-                  className="audit-logs__periods"
-                  role="tablist"
-                  aria-label="Audit date period"
-                >
-                  {DATE_RANGES.map((item) => (
-                    <button
-                      key={item.value}
-                      type="button"
-                      role="tab"
-                      aria-selected={dateRange === item.value && !(customRange.from || customRange.to)}
-                      aria-label={item.ariaLabel}
-                      title={item.ariaLabel}
-                      className={cn(
-                        "audit-logs__periods-btn",
-                        dateRange === item.value && !(customRange.from || customRange.to) &&
-                          "audit-logs__periods-btn--active"
-                      )}
-                      onClick={() => {
-                        setCustomRange({ from: "", to: "" });
-                        setDateRange(item.value);
-                      }}
-                    >
-                      <span className="audit-logs__periods-label">{item.label}</span>
-                    </button>
-                  ))}
-                </div>
-                <DateRangePicker
-                  value={customRange}
-                  onChange={(v) => {
-                    setCustomRange(v);
-                    if (v.from || v.to) setDateRange("all");
-                  }}
-                  label="Custom range"
-                  className="audit-logs__drp"
+          <FilterSidebarSection label="Details">
+            <FilterSidebarGrid>
+              <label className="dash-filter">
+                <span>Score %</span>
+                <FilterSelect
+                  id="audit-logs-score"
+                  value={scorePreset}
+                  onChange={(value) => setScorePreset(value as ScorePreset)}
+                  options={scoreFilterOptions}
+                  ariaLabel="Filter by score"
                 />
-              </div>
+              </label>
 
-              <div className="audit-logs__filters-grid">
-                <label className="dash-filter">
-                  <span>Score %</span>
-                  <Select
-                    id="audit-logs-score"
-                    className="dash-select dash-select--filter"
-                    value={scorePreset}
-                    onChange={(e) => setScorePreset(e.target.value as ScorePreset)}
-                  >
-                    {SCORE_PRESETS.map((preset) => (
-                      <option key={preset.value} value={preset.value}>
-                        {preset.label}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
+              <label className="dash-filter">
+                <span>Grade</span>
+                <FilterSelect
+                  id="audit-logs-grade"
+                  value={grade}
+                  onChange={setGrade}
+                  options={gradeFilterOptions}
+                  ariaLabel="Filter by grade"
+                />
+              </label>
 
-                <label className="dash-filter">
-                  <span>Grade</span>
-                  <Select
-                    id="audit-logs-grade"
-                    className="dash-select dash-select--filter"
-                    value={grade}
-                    onChange={(e) => setGrade(e.target.value)}
-                  >
-                    <option value="">All grades</option>
-                    {GRADES.map((g) => (
-                      <option key={g} value={g}>
-                        {g}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
+              <label className="dash-filter">
+                <span>Type</span>
+                <FilterSelect
+                  id="audit-logs-type"
+                  value={type}
+                  onChange={setType}
+                  options={typeFilterOptions}
+                  ariaLabel="Filter by interaction type"
+                />
+              </label>
 
-                <label className="dash-filter">
-                  <span>Type</span>
-                  <Select
-                    id="audit-logs-type"
-                    className="dash-select dash-select--filter"
-                    value={type}
-                    onChange={(e) => setType(e.target.value)}
-                  >
-                    <option value="">All types</option>
-                    <option value="Call">Call</option>
-                    <option value="Chat">Chat</option>
-                  </Select>
-                </label>
+              <label className="dash-filter">
+                <span>Business</span>
+                <FilterSelect
+                  id="audit-logs-business"
+                  value={businessType}
+                  onChange={setBusinessType}
+                  options={businessFilterOptions}
+                  ariaLabel="Filter by business type"
+                />
+              </label>
 
-                <label className="dash-filter">
-                  <span>Business</span>
-                  <Select
-                    id="audit-logs-business"
-                    className="dash-select dash-select--filter"
-                    value={businessType}
-                    onChange={(e) => setBusinessType(e.target.value)}
-                  >
-                    <option value="">All business</option>
-                    {businessTypeOptions.map((value) => (
-                      <option key={value} value={value}>
-                        {value}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
+              <label className="dash-filter">
+                <span>LOB</span>
+                <FilterSelect
+                  id="audit-logs-lob"
+                  value={lob}
+                  onChange={setLob}
+                  options={lobFilterOptions}
+                  ariaLabel="Filter by LOB"
+                />
+              </label>
 
-                <label className="dash-filter">
-                  <span>LOB</span>
-                  <Select
-                    id="audit-logs-lob"
-                    className="dash-select dash-select--filter"
-                    value={lob}
-                    onChange={(e) => setLob(e.target.value)}
-                  >
-                    <option value="">All LOBs</option>
-                    {lobs.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
-
-                <label className="dash-filter">
-                  <span>Feedback</span>
-                  <Select
-                    id="audit-logs-feedback"
-                    className="dash-select dash-select--filter"
-                    value={feedbackStatus}
-                    onChange={(e) => setFeedbackStatus(e.target.value)}
-                  >
-                    <option value="">All feedback</option>
-                    {FEEDBACK_STATUSES.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {!showSectionHead && enableFilters && rows.length > 0 && (
-        <p className="audit-logs__result-count">{resultLabel}</p>
-      )}
+              <label className="dash-filter">
+                <span>Feedback</span>
+                <FilterSelect
+                  id="audit-logs-feedback"
+                  value={feedbackStatus}
+                  onChange={setFeedbackStatus}
+                  options={feedbackFilterOptions}
+                  ariaLabel="Filter by feedback status"
+                />
+              </label>
+            </FilterSidebarGrid>
+          </FilterSidebarSection>
+        </FilterSidebar>
+      ) : null}
 
       <LoadingZone
         loading={tableBusy}
@@ -928,65 +969,61 @@ export function AuditLogsTable({
         }
         className="audit-logs-page__table-zone loading-zone--fill"
       >
-        {rows.length === 0 || filtered.length === 0 ? (
-          <div className="platform-report-table-panel audit-logs-page__empty-panel">
-            <div className="platform-report-table__scroll audit-logs-page__empty-scroll">
-              <table className="ui-table audit-logs__table platform-report-table">
-                <thead>
-                  <tr>
-                    {canDeleteAudits ? <th className="audit-logs__select-col" /> : null}
-                    <th className="col-agent">Agent</th>
-                    <th className="col-type-lob">Type / LOB</th>
-                    <th>Audit date</th>
-                    <th>Auditor</th>
-                    <th>Score</th>
-                    <th>Grade</th>
-                    <th>{FEEDBACK_SEVERITY_LABEL}</th>
-                    <th className="col-feedback-status">Feedback</th>
-                    <th className="col-feedback-datetime">Date &amp; time</th>
-                    <th className="col-agent-feedback">Feedback for the agent</th>
-                    <th className="col-reference">Reference</th>
-                    <th className="col-actions">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td colSpan={columnCount} className="ui-table__empty">
-                      {rows.length === 0 ? (
-                        <>
-                          No audits yet.
-                          {canCreateAudit ? (
-                            <>
-                              {" "}
-                              <Link href="/forms/audit" className="audit-logs__empty-link">
-                                Start your first audit
-                              </Link>
-                            </>
-                          ) : null}
-                        </>
-                      ) : (
-                        <>
-                          No audits match your filters.{" "}
-                          <button
-                            type="button"
-                            className="audit-logs__empty-link"
-                            onClick={clearFilters}
-                          >
-                            Clear filters
-                          </button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+        {rows.length === 0 ? (
+          <div className="platform-report-table-empty">
+            No audits yet.
+            {canCreateAudit ? (
+              <>
+                {" "}
+                <Link href="/forms/audit" className="audit-logs__empty-link">
+                  Start your first audit
+                </Link>
+              </>
+            ) : null}
           </div>
         ) : (
           <DataTablePanel
             pagination={pagination}
             fillViewport
             scrollClassName="audit-logs-page__table-scroll"
+            summaryLabel={
+              rows.length > 0
+                ? `${filtered.length} audit${filtered.length === 1 ? "" : "s"}`
+                : undefined
+            }
+            search={
+              enableFilters
+                ? {
+                    value: search,
+                    onChange: setSearch,
+                    placeholder: "Search agent, audit ID, LOB, reason, auditor…",
+                    ariaLabel: "Search audit logs",
+                  }
+                : undefined
+            }
+            filterControl={
+              enableFilters
+                ? {
+                    activeCount: advancedFilterCount,
+                    onOpen: filterSidebar.openFilters,
+                  }
+                : undefined
+            }
+            filterChips={enableFilters ? activeFilterChips : undefined}
+            onClearFilters={enableFilters ? clearFilters : undefined}
+            headerActions={showToolbarActions ? toolbarActions : undefined}
+            emptyState={
+              <>
+                No audits match your filters.{" "}
+                <button
+                  type="button"
+                  className="audit-logs__empty-link"
+                  onClick={clearFilters}
+                >
+                  Clear filters
+                </button>
+              </>
+            }
             renderTable={(slice) => (
               <table className="ui-table audit-logs__table platform-report-table">
                 <thead>
@@ -1223,48 +1260,19 @@ export function AuditLogsTable({
         onClose={() => setViewId(null)}
       />
 
-      {deleteConfirm ? (
-        <div className="platform-modal" role="dialog" aria-modal="true">
-          <button
-            type="button"
-            className="platform-modal__backdrop"
-            aria-label="Cancel delete"
-            onClick={() => setDeleteConfirm(null)}
-          />
-          <div className="platform-modal__panel">
-            <header className="platform-modal__head">
-              <div>
-                <h2 className="platform-modal__title">Delete audit record?</h2>
-                <p className="platform-modal__sub">
-                  {deleteConfirm.ids.length === 1
-                    ? `Permanently delete ${deleteConfirm.label}. This cannot be undone.`
-                    : `Permanently delete ${deleteConfirm.label}. This cannot be undone.`}
-                </p>
-              </div>
-            </header>
-            <div className="platform-modal__body">
-              <div className="platform-settings__confirm-actions">
-                <button
-                  type="button"
-                  className="ui-btn ui-btn--secondary"
-                  disabled={deletePending}
-                  onClick={() => setDeleteConfirm(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="ui-btn ui-btn--danger"
-                  disabled={deletePending}
-                  onClick={confirmDelete}
-                >
-                  {deletePending ? "Deleting…" : "Delete"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ConfirmModal
+        open={Boolean(deleteConfirm)}
+        onClose={() => setDeleteConfirm(null)}
+        title="Delete audit record?"
+        description={
+          deleteConfirm
+            ? `Permanently delete ${deleteConfirm.label}. This cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        loading={deletePending}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

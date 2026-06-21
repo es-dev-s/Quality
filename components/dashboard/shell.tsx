@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { RealtimeProvider } from "@/components/dashboard/realtime-provider";
 import type { SessionRole } from "@/lib/rbac";
 
 export type DashboardUser = {
@@ -60,13 +61,15 @@ export function DashboardShell({ user, children }: DashboardShellProps) {
 
   return (
     <ShellContext.Provider value={value}>
-      <div
-        className="dashboard-root"
-        data-collapsed={collapsed ? "true" : "false"}
-        data-mobile-open={mobileOpen ? "true" : "false"}
-      >
-        {children}
-      </div>
+      <RealtimeProvider>
+        <div
+          className="dashboard-root"
+          data-collapsed={collapsed ? "true" : "false"}
+          data-mobile-open={mobileOpen ? "true" : "false"}
+        >
+          {children}
+        </div>
+      </RealtimeProvider>
     </ShellContext.Provider>
   );
 }

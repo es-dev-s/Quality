@@ -1,10 +1,9 @@
 import { unstable_cache } from "next/cache";
 import { CACHE_TAGS, CACHE_TTL, cacheScopeKey, type CacheScopeKey } from "@/lib/cache";
 import { fetchAgentRoleUsers } from "@/lib/audit/role-users";
+import { fetchVisibleAgentUserIds } from "@/lib/audit/agent-assignment-scope";
 import { fetchAuditCountsByAgentName } from "@/lib/audit/agent-db";
 import { canManageSettings, canManageUsers, canReadManagedUsers } from "@/lib/rbac";
-import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
-import { prisma } from "@/lib/prisma";
 import type { SessionRole } from "@/lib/rbac";
 
 export type CachedAgentRow = {
@@ -47,15 +46,12 @@ export function getCachedAgentsForManagement(scope: CacheScopeKey) {
         !canManageSettings(role) &&
         !canManageUsers(role)
       ) {
-        const managed = await prisma.user.findMany({
-          where: {
-            createdById: scope.userId,
-            role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
-          },
-          select: { id: true },
-        });
-        const managedIds = new Set(managed.map((user) => user.id));
-        rows = rows.filter((row) => managedIds.has(row.id));
+        const managedIds = await fetchVisibleAgentUserIds(
+          scope.userId,
+          scope.roleSlug
+        );
+        const managedIdSet = new Set(managedIds);
+        rows = rows.filter((row) => managedIdSet.has(row.id));
       }
 
       const auditCountByAgent = await fetchAuditCountsByAgentName();

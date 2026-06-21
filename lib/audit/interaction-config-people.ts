@@ -45,6 +45,11 @@ async function resolveVisibleAgentNames(ctx: DataScopeContext): Promise<string[]
     return fetchSupervisorTierVisibleAgentNames(ctx.userId);
   }
 
+  if (slug === SYSTEM_ROLE_SLUGS.AGENT) {
+    const self = effectiveScopeName(ctx);
+    return self ? [self] : [];
+  }
+
   return [];
 }
 

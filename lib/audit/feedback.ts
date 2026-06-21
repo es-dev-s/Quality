@@ -59,15 +59,12 @@ export function parseFeedbackSecurity(value: unknown): FeedbackSecurity {
 }
 
 export function parseFeedbackStatus(value: unknown): FeedbackStatus {
-  if (
-    value === "Pending" ||
-    value === "Shared" ||
-    value === "Acknowledged" ||
-    value === "Disputed"
-  ) {
-    return value;
-  }
-  return "Pending";
+  if (typeof value !== "string") return "Pending";
+  const normalized = value.trim();
+  const match = FEEDBACK_STATUS_OPTIONS.find(
+    (status) => status.toLowerCase() === normalized.toLowerCase()
+  );
+  return match ?? "Pending";
 }
 
 /** Normalize feedback before save — auto-set timestamps when status moves off Pending. */

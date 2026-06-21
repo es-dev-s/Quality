@@ -1,4 +1,3 @@
-import { interactionReferenceFieldLabel } from "@/lib/audit/interaction-labels";
 import type { AuditFormData } from "@/lib/audit/types";
 
 const BASE_REQUIRED_FIELDS: {
@@ -24,10 +23,6 @@ export function validateInteractionDetails(
     if (typeof value !== "string" || !value.trim()) {
       return `${label} is required.`;
     }
-  }
-
-  if (!formData.referenceUrl.trim()) {
-    return `${interactionReferenceFieldLabel(formData.type)} is required.`;
   }
 
   return null;

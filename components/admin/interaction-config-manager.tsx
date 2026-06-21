@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { BulkActionBar } from "@/components/admin/bulk-action-bar";
-import { Modal } from "@/components/primitives/modal";
+import { ConfirmModal } from "@/components/primitives/confirm-modal";
 import { LoadingZone } from "@/components/primitives/loading-zone";
 import { useToast } from "@/components/primitives/toast";
 import { saveInteractionConfig } from "@/lib/actions/interaction-config";
@@ -218,11 +218,22 @@ export function InteractionConfigManager({
         setSaveState("error");
         toast(result.error, "error");
       }
+    } catch {
+      setSaveState("error");
+      toast("Could not save interaction settings.", "error");
     } finally {
       isFlushingRef.current = false;
       savesInFlightRef.current = Math.max(0, savesInFlightRef.current - 1);
       setIsSaving(
         savesInFlightRef.current > 0 || saveTimerRef.current !== null
+      );
+
+      setSaveState((current) =>
+        current === "saving" &&
+        savesInFlightRef.current === 0 &&
+        !saveTimerRef.current
+          ? "saved"
+          : current
       );
 
       if (resavePendingRef.current) {
@@ -552,7 +563,8 @@ export function InteractionConfigManager({
   }
 
   return (
-    <div className="platform-settings">
+    <div className="platform-settings settings-tab-layout">
+      <div className="settings-tab-layout__head platform-settings__head">
       {!canManage && (
         <div className="platform-settings__notice">
           <p>
@@ -583,10 +595,6 @@ export function InteractionConfigManager({
         </div>
       )}
 
-      <LoadingZone
-        loading={isSaving || saveState === "saving"}
-        label="Saving settings…"
-      >
       <div className="platform-settings__tabs" role="tablist">
         {TABS.map((item) => {
           const Icon = item.icon;
@@ -614,6 +622,14 @@ export function InteractionConfigManager({
           );
         })}
       </div>
+      </div>
+
+      <div className="settings-tab-layout__body platform-settings__body">
+      <LoadingZone
+        loading={isSaving}
+        label="Saving settings…"
+        className="loading-zone--fill"
+      >
 
       {tab !== "lobs" && (
         <>
@@ -993,62 +1009,31 @@ export function InteractionConfigManager({
       )}
 
       </LoadingZone>
+      </div>
 
-      <Modal
+      <ConfirmModal
         open={deleteTarget !== null}
-        onClose={() => !isSaving && setDeleteTarget(null)}
+        onClose={() => setDeleteTarget(null)}
         title="Confirm delete"
         description={
           deleteTarget
             ? `Remove ${deleteTargetLabel(deleteTarget)} from audit form dropdowns? Existing saved audits are not changed.`
             : undefined
         }
-      >
-        <div className="platform-settings__confirm-actions">
-          <button
-            type="button"
-            className="ui-btn ui-btn--secondary"
-            onClick={() => setDeleteTarget(null)}
-            disabled={isSaving}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="ui-btn ui-btn--danger"
-            onClick={confirmDelete}
-            disabled={isSaving}
-          >
-            {isSaving ? "Deleting…" : "Delete"}
-          </button>
-        </div>
-      </Modal>
+        confirmLabel="Delete"
+        loading={isSaving}
+        onConfirm={confirmDelete}
+      />
 
-      <Modal
+      <ConfirmModal
         open={bulkListDeleteOpen}
-        onClose={() => !isSaving && setBulkListDeleteOpen(false)}
+        onClose={() => setBulkListDeleteOpen(false)}
         title="Delete selected"
         description={`Remove ${listSelection.selectedCount} selected ${tab} from audit form dropdowns? Existing audits are not changed.`}
-      >
-        <div className="platform-settings__confirm-actions">
-          <button
-            type="button"
-            className="ui-btn ui-btn--secondary"
-            disabled={isSaving}
-            onClick={() => setBulkListDeleteOpen(false)}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="ui-btn ui-btn--danger"
-            disabled={isSaving}
-            onClick={confirmBulkListDelete}
-          >
-            Delete selected
-          </button>
-        </div>
-      </Modal>
+        confirmLabel="Delete selected"
+        loading={isSaving}
+        onConfirm={confirmBulkListDelete}
+      />
     </div>
   );
 }

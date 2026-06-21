@@ -26,8 +26,9 @@ export function RoleAccessMatrix() {
       <div className="role-matrix__head">
         <h3 className="role-matrix__title">Roles &amp; module access</h3>
         <p className="role-matrix__desc">
-          Predefined system roles. Row-level data visibility is enforced on audit
-          records in addition to these module permissions.
+          Module permissions from code definitions (system roles). Row-level data
+          visibility is enforced separately on audit records. Settings and Team
+          show Partial when only some tabs or actions are available.
         </p>
       </div>
 
@@ -88,10 +89,16 @@ export function RoleAccessMatrix() {
           Full module control
         </li>
         <li>
+          <span className="role-matrix__cell role-matrix__cell--partial">
+            Partial
+          </span>
+          Limited tabs or actions (e.g. Settings read + Team)
+        </li>
+        <li>
           <span className="role-matrix__cell role-matrix__cell--status">
             Change status
           </span>
-          Feedback status only
+          Feedback status workflow only (Agent / QA)
         </li>
         <li>
           <span className="role-matrix__cell role-matrix__cell--none">—</span>
@@ -102,38 +109,76 @@ export function RoleAccessMatrix() {
   );
 }
 
-export function RoleAccessSummary({ slug }: { slug: SystemRoleSlug | string }) {
-  if (!(slug in SYSTEM_ROLE_DEFINITIONS)) {
+export function RoleAccessSummary({
+  slug,
+  scopeSlugs,
+}: {
+  slug: SystemRoleSlug | string;
+  scopeSlugs?: string[];
+}) {
+  if (slug in SYSTEM_ROLE_DEFINITIONS) {
+    const roleSlug = slug as SystemRoleSlug;
+    const matrix = getModuleAccessMatrix(roleSlug);
+    const modules = ACCESS_MODULES.filter((m) => matrix[m.key] !== "—");
+
     return (
-      <p className="role-matrix__custom-note">
-        Custom role — assign scopes or use a system role template. Users with no
-        scopes cannot access any module after sign-in.
-      </p>
+      <div className="role-matrix__summary">
+        <p className="role-matrix__summary-visibility">
+          {DATA_VISIBILITY[roleSlug]}
+        </p>
+        <div className="role-matrix__summary-tags">
+          {modules.map((module) => (
+            <span
+              key={module.key}
+              className={cn(
+                "role-matrix__cell",
+                accessClass(matrix[module.key])
+              )}
+            >
+              {module.label}: {matrix[module.key]}
+            </span>
+          ))}
+        </div>
+      </div>
     );
   }
 
-  const roleSlug = slug as SystemRoleSlug;
-  const matrix = getModuleAccessMatrix(roleSlug);
-  const modules = ACCESS_MODULES.filter((m) => matrix[m.key] !== "—");
+  if (scopeSlugs && scopeSlugs.length > 0) {
+    const matrix = getModuleAccessMatrix({
+      id: "",
+      name: "",
+      slug,
+      scopes: scopeSlugs,
+    });
+    const modules = ACCESS_MODULES.filter((m) => matrix[m.key] !== "—");
+
+    return (
+      <div className="role-matrix__summary">
+        <p className="role-matrix__summary-visibility">
+          Custom role — row-level data visibility depends on assigned team
+          scopes.
+        </p>
+        <div className="role-matrix__summary-tags">
+          {modules.map((module) => (
+            <span
+              key={module.key}
+              className={cn(
+                "role-matrix__cell",
+                accessClass(matrix[module.key])
+              )}
+            >
+              {module.label}: {matrix[module.key]}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="role-matrix__summary">
-      <p className="role-matrix__summary-visibility">
-        {DATA_VISIBILITY[roleSlug]}
-      </p>
-      <div className="role-matrix__summary-tags">
-        {modules.map((module) => (
-          <span
-            key={module.key}
-            className={cn(
-              "role-matrix__cell",
-              accessClass(matrix[module.key])
-            )}
-          >
-            {module.label}: {matrix[module.key]}
-          </span>
-        ))}
-      </div>
-    </div>
+    <p className="role-matrix__custom-note">
+      Custom role — assign module permissions below. Users with no scopes cannot
+      access any module after sign-in.
+    </p>
   );
 }

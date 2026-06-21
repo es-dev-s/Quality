@@ -425,13 +425,13 @@ export function SettingsManagement({
 
             role="tabpanel"
 
-            className="settings-page__panel settings-page__panel--scroll"
+            className="settings-page__panel"
 
             hidden={tab !== "interaction"}
 
           >
 
-            {interactionMounted && (
+            {interactionMounted && tab === "interaction" && (
 
               <InteractionConfigManager
 

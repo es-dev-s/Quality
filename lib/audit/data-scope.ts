@@ -10,6 +10,11 @@ import {
   fetchQmVisibleAgentNames,
   fetchSupervisorTierVisibleAgentNames,
 } from "@/lib/audit/agent-assignment-scope";
+import { caseInsensitiveIn } from "@/lib/audit/prisma-string-filters";
+import {
+  fetchAgentUserAuditMatchNames,
+  fetchUserAuditMatchNamesById,
+} from "@/lib/audit/user-audit-match";
 
 export type DataScopeContext = {
   userId: string;
@@ -34,6 +39,15 @@ function noAccessFilter(): Prisma.AuditSubmissionWhereInput {
   return { id: "__no_access__" };
 }
 
+function orClauses(
+  clauses: Prisma.AuditSubmissionWhereInput[]
+): Prisma.AuditSubmissionWhereInput {
+  const filtered = clauses.filter(Boolean);
+  if (filtered.length === 0) return noAccessFilter();
+  if (filtered.length === 1) return filtered[0]!;
+  return { OR: filtered };
+}
+
 /**
  * Row-level filter for audit submissions based on role and managed user hierarchy.
  */
@@ -48,38 +62,43 @@ export async function auditSubmissionScopeWhere(
 
   if (roleSlug === SYSTEM_ROLE_SLUGS.SUPERVISOR) {
     const agentNames = await fetchSupervisorTierVisibleAgentNames(ctx.userId);
-    if (agentNames.length === 0) {
+    const agentFilter = caseInsensitiveIn(agentNames);
+    if (!agentFilter) {
       return noAccessFilter();
     }
-    return { agent: { in: agentNames } };
+    return { agent: agentFilter };
   }
 
   if (roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
     const agentNames = await fetchQmVisibleAgentNames(ctx.userId);
-    if (agentNames.length === 0) {
+    const agentFilter = caseInsensitiveIn(agentNames);
+    if (!agentFilter) {
       return noAccessFilter();
     }
-    return { agent: { in: agentNames } };
-  }
-
-  const name = effectiveScopeName(ctx);
-  if (!name) {
-    return noAccessFilter();
+    return { agent: agentFilter };
   }
 
   switch (roleSlug) {
-    case SYSTEM_ROLE_SLUGS.AGENT:
-      return {
-        OR: [{ submittedById: ctx.userId }, { agent: name }],
-      };
+    case SYSTEM_ROLE_SLUGS.AGENT: {
+      const matchNames = await fetchAgentUserAuditMatchNames(ctx.userId);
+      const agentFilter = caseInsensitiveIn(matchNames);
+      return orClauses([
+        { submittedById: ctx.userId },
+        ...(agentFilter ? [{ agent: agentFilter }] : []),
+      ]);
+    }
     case SYSTEM_ROLE_SLUGS.QUALITY_ANALYST: {
-      const agentNames = await fetchSupervisorTierVisibleAgentNames(ctx.userId);
-      if (agentNames.length === 0) {
-        return { auditor: name };
-      }
-      return {
-        OR: [{ auditor: name }, { agent: { in: agentNames } }],
-      };
+      const [agentNames, auditorNames] = await Promise.all([
+        fetchSupervisorTierVisibleAgentNames(ctx.userId),
+        fetchUserAuditMatchNamesById(ctx.userId),
+      ]);
+      const agentFilter = caseInsensitiveIn(agentNames);
+      const auditorFilter = caseInsensitiveIn(auditorNames);
+      return orClauses([
+        { submittedById: ctx.userId },
+        ...(auditorFilter ? [{ auditor: auditorFilter }] : []),
+        ...(agentFilter ? [{ agent: agentFilter }] : []),
+      ]);
     }
     default:
       return noAccessFilter();

@@ -48,10 +48,14 @@ export function LoadingZone({
 }: LoadingZoneProps) {
   return (
     <div
-      className={cn("loading-zone", loading && "loading-zone--active", className)}
+      className={cn(
+        "loading-zone",
+        loading && "loading-zone--active",
+        className
+      )}
       aria-busy={loading || undefined}
     >
-      {children}
+      <div className="loading-zone__content">{children}</div>
       {loading ? (
         <div className="loading-zone__overlay" role="status" aria-live="polite">
           <Spinner size="lg" />

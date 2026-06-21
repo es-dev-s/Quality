@@ -20,18 +20,20 @@ import { createPortal } from "react-dom";
 
 type OptionItem = { value: string; label: string; disabled?: boolean };
 
-type MenuLayout = {
-  top: number;
-  left: number;
-  width: number;
-  maxHeight: number;
+type SelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
+  /** Prefer this in filter panels — avoids fragile option-child parsing. */
+  options?: OptionItem[];
 };
+
+function isOptionElement(child: React.ReactElement): boolean {
+  return typeof child.type === "string" && child.type.toLowerCase() === "option";
+}
 
 function parseOptions(children: React.ReactNode): OptionItem[] {
   const options: OptionItem[] = [];
   Children.forEach(children, (child) => {
     if (!isValidElement(child)) return;
-    if (child.type === "option") {
+    if (isOptionElement(child)) {
       const props = child.props as {
         value?: string;
         disabled?: boolean;
@@ -71,11 +73,19 @@ function measureMenu(trigger: HTMLElement): MenuLayout {
   return { top, left, width, maxHeight };
 }
 
-export const Select = forwardRef<HTMLButtonElement, SelectHTMLAttributes<HTMLSelectElement>>(
+type MenuLayout = {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+};
+
+export const Select = forwardRef<HTMLButtonElement, SelectProps>(
   (
     {
       className,
       children,
+      options: optionsProp,
       value,
       defaultValue,
       onChange,
@@ -101,7 +111,10 @@ export const Select = forwardRef<HTMLButtonElement, SelectHTMLAttributes<HTMLSel
     const controlled = value !== undefined;
     const currentValue = controlled ? String(value) : internalValue;
 
-    const options = useMemo(() => parseOptions(children), [children]);
+    const options = useMemo(() => {
+      if (optionsProp && optionsProp.length > 0) return optionsProp;
+      return parseOptions(children);
+    }, [optionsProp, children]);
     const selected =
       options.find((option) => option.value === currentValue) ?? options[0];
 
@@ -148,6 +161,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectHTMLAttributes<HTMLSel
 
       const onDocumentKeyDown = (event: KeyboardEvent) => {
         if (event.key === "Escape") {
+          event.stopPropagation();
           setOpen(false);
         }
       };

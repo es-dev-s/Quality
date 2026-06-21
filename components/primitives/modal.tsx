@@ -12,6 +12,7 @@ type ModalProps = {
   children: React.ReactNode;
   className?: string;
   rootClassName?: string;
+  size?: "sm" | "md" | "lg";
 };
 
 export function Modal({
@@ -22,6 +23,7 @@ export function Modal({
   children,
   className,
   rootClassName,
+  size = "md",
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -60,7 +62,12 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className={cn("ui-modal-panel", className)}
+        className={cn(
+          "ui-modal-panel",
+          size === "sm" && "ui-modal-panel--sm",
+          size === "lg" && "ui-modal-panel--lg",
+          className
+        )}
       >
         <h2 id="modal-title" className="ui-modal-panel__title">
           {title}

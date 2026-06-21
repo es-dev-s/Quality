@@ -1,12 +1,17 @@
 "use client";
 
-import { useTransition } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/primitives/button";
 import { Field, Input, Label } from "@/components/primitives/field";
 import { FormStack, Modal, ModalActions } from "@/components/primitives/modal";
 import { useToast } from "@/components/primitives/toast";
+import { RoleAccessSummary } from "@/components/admin/role-access-matrix";
+import { ScopePicker } from "@/components/admin/scope-picker";
+import { useBusyAction } from "@/lib/hooks/use-busy-action";
 import { createRole, updateRole } from "@/lib/actions/admin";
+import { isValidPermissionSlug } from "@/lib/permission-catalog";
+import { isDefinedSystemRole, type Permission } from "@/lib/permissions";
 
 type Role = {
   id: string;
@@ -14,6 +19,7 @@ type Role = {
   slug: string;
   description: string | null;
   isSystem: boolean;
+  scopes?: { scope: { slug: string } }[];
 };
 
 type RoleFormDialogProps = {
@@ -22,14 +28,38 @@ type RoleFormDialogProps = {
   role: Role | null;
 };
 
+function initialScopes(role: Role | null): Permission[] {
+  if (!role?.scopes?.length) return [];
+  return role.scopes
+    .map((entry) => entry.scope.slug)
+    .filter((slug): slug is Permission => isValidPermissionSlug(slug));
+}
+
 export function RoleFormDialog({ open, onOpenChange, role }: RoleFormDialogProps) {
   const router = useRouter();
   const { toast } = useToast();
-  const [isPending, startTransition] = useTransition();
+  const { busy: isPending, run: runBusy } = useBusyAction();
   const isEditing = !!role;
+  const isSystemRole = Boolean(role?.isSystem);
+  const [selectedScopes, setSelectedScopes] = useState<Permission[]>(() =>
+    initialScopes(role)
+  );
 
-  function handleSubmit(formData: FormData) {
-    startTransition(async () => {
+  useEffect(() => {
+    if (open) {
+      setSelectedScopes(initialScopes(role));
+    }
+  }, [open, role]);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+
+    if (!isSystemRole) {
+      formData.set("scopeSlugs", JSON.stringify(selectedScopes));
+    }
+
+    void runBusy(async () => {
       const result = isEditing
         ? await updateRole(formData)
         : await createRole(formData);
@@ -39,7 +69,15 @@ export function RoleFormDialog({ open, onOpenChange, role }: RoleFormDialogProps
         return;
       }
 
-      toast(isEditing ? "Role updated" : "Role created");
+      if (!isSystemRole && selectedScopes.length === 0) {
+        toast(
+          "Role saved without permissions. Assign scopes before assigning users.",
+          "error"
+        );
+      } else {
+        toast(isEditing ? "Role updated" : "Role created");
+      }
+
       onOpenChange(false);
       router.refresh();
     });
@@ -50,9 +88,14 @@ export function RoleFormDialog({ open, onOpenChange, role }: RoleFormDialogProps
       open={open}
       onClose={() => onOpenChange(false)}
       title={isEditing ? "Edit Role" : "Create Role"}
-      description="Roles define access levels. Scopes can be attached later."
+      description={
+        isSystemRole
+          ? "System roles use predefined permissions and cannot be edited."
+          : "Define the role and assign module permissions."
+      }
+      size="lg"
     >
-      <form action={handleSubmit}>
+      <form onSubmit={handleSubmit}>
         <FormStack>
           {isEditing && <input type="hidden" name="id" value={role.id} />}
 
@@ -73,7 +116,7 @@ export function RoleFormDialog({ open, onOpenChange, role }: RoleFormDialogProps
               id="slug"
               name="slug"
               defaultValue={role?.slug ?? ""}
-              disabled={role?.isSystem || isPending}
+              disabled={isSystemRole || isPending}
               pattern="[a-z0-9-]+"
             />
             <p className="ui-hint">
@@ -90,6 +133,16 @@ export function RoleFormDialog({ open, onOpenChange, role }: RoleFormDialogProps
               disabled={isPending}
             />
           </Field>
+
+          {isSystemRole && role && isDefinedSystemRole(role.slug) ? (
+            <RoleAccessSummary slug={role.slug} />
+          ) : (
+            <ScopePicker
+              value={selectedScopes}
+              onChange={setSelectedScopes}
+              disabled={isPending}
+            />
+          )}
         </FormStack>
 
         <ModalActions>

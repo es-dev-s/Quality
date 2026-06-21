@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/primitives/button";
 import { Field, Input, Label, Select } from "@/components/primitives/field";
@@ -11,6 +11,7 @@ import {
   PasswordField,
 } from "@/components/primitives/password-field";
 import { useToast } from "@/components/primitives/toast";
+import { useBusyAction } from "@/lib/hooks/use-busy-action";
 import { createUser, updateUser } from "@/lib/actions/admin";
 import { generateClientPassword } from "@/lib/password-client";
 import { isLegacySystemRole, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
@@ -54,7 +55,7 @@ export function UserFormDialog({
 }: UserFormDialogProps) {
   const router = useRouter();
   const { toast, toastPasswordReveal } = useToast();
-  const [isPending, startTransition] = useTransition();
+  const { busy: isPending, run: runBusy } = useBusyAction();
   const [roleId, setRoleId] = useState(user?.roleId ?? roles[0]?.id ?? "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -105,7 +106,7 @@ export function UserFormDialog({
       formData.set("password", password);
     }
 
-    startTransition(async () => {
+    void runBusy(async () => {
       const result = isEditing
         ? await updateUser(formData)
         : await createUser(formData);
@@ -135,6 +136,7 @@ export function UserFormDialog({
       open={open}
       onClose={() => onOpenChange(false)}
       title={isEditing ? "Edit user" : "Create user"}
+      size="lg"
       description={
         isEditing
           ? "Update profile details and role. Leave password blank to keep the current one."

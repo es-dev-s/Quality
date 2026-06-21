@@ -130,6 +130,7 @@ function RequestFormModal({
       open={open}
       onClose={() => !pending && onOpenChange(false)}
       title={isAgent ? "Request new agent" : "Request quality analyst"}
+      size="lg"
       description={
         isAgent
           ? "Submitted to Quality Manager for approval. The account is created only after approval."

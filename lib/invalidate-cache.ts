@@ -1,6 +1,6 @@
 import { revalidateTag } from "next/cache";
 import { CACHE_TAGS } from "@/lib/cache";
-import { broadcastToTags } from "@/lib/sse-broadcast";
+import { broadcastToTag, broadcastToTags } from "@/lib/sse-broadcast";
 import type { SSEEvent } from "@/lib/sse-events";
 
 export function invalidateCacheTags(tags: string[], event?: SSEEvent) {
@@ -13,18 +13,24 @@ export function invalidateCacheTags(tags: string[], event?: SSEEvent) {
   }
 }
 
-export function invalidateAuditCaches(
-  userId: string,
-  event?: SSEEvent
-) {
-  invalidateCacheTags(
-    [
-      CACHE_TAGS.AUDIT_SUBMISSIONS,
-      CACHE_TAGS.userAudits(userId),
-      CACHE_TAGS.userDashboard(userId),
-    ],
-    event
-  );
+/**
+ * Revalidates actor + global audit caches. Live updates broadcast on the shared
+ * audit-submissions channel so every role with audit-logs:read receives one event.
+ */
+export function invalidateAuditCaches(userId: string, event?: SSEEvent) {
+  const cacheTags = [
+    CACHE_TAGS.AUDIT_SUBMISSIONS,
+    CACHE_TAGS.userAudits(userId),
+    CACHE_TAGS.userDashboard(userId),
+  ];
+
+  for (const tag of cacheTags) {
+    revalidateTag(tag, "max");
+  }
+
+  if (event) {
+    broadcastToTag(CACHE_TAGS.AUDIT_SUBMISSIONS, event);
+  }
 }
 
 export function invalidateUserCaches(userId: string, event?: SSEEvent) {

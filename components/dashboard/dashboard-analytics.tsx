@@ -3,8 +3,18 @@
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Award, ChevronDown, RefreshCw, SlidersHorizontal, X } from "lucide-react";
+import { AlertTriangle, Award, RefreshCw } from "lucide-react";
+import { FilterChipBar } from "@/components/filters/filter-chip-bar";
+import { FilterClearButton } from "@/components/filters/filter-clear-button";
+import { FilterTriggerButton } from "@/components/filters/filter-trigger-button";
+import {
+  FilterSidebar,
+  FilterSidebarGrid,
+  FilterSidebarSection,
+} from "@/components/filters/filter-sidebar";
+import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
 import { Badge } from "@/components/primitives/badge";
+import { FilterSelect } from "@/components/filters/filter-select";
 import { Select } from "@/components/primitives/field";
 import { LoadingZone } from "@/components/primitives/loading-zone";
 import { cn } from "@/lib/utils";
@@ -93,7 +103,7 @@ export function DashboardAnalytics({
     null
   );
   const [selectedFatal, setSelectedFatal] = useState<string | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filterSidebar = useFilterSidebar();
 
   const records = data.records ?? [];
   const referenceNow = useMemo(
@@ -191,7 +201,90 @@ export function DashboardAnalytics({
 
   function clearFilters() {
     setIncludeFilters(EMPTY_INCLUDE_FILTERS);
+    setCustomRange({ from: "", to: "" });
+    setPeriod("overall");
   }
+
+  const dashboardFilterChips = useMemo(() => {
+    const chips: { key: string; label: string; onRemove: () => void }[] = [];
+    if (customRange.from || customRange.to) {
+      chips.push({
+        key: "range",
+        label: [customRange.from, customRange.to].filter(Boolean).join(" — "),
+        onRemove: () => setCustomRange({ from: "", to: "" }),
+      });
+    } else if (period !== "overall") {
+      const item = PERIODS.find((entry) => entry.id === period);
+      chips.push({
+        key: "period",
+        label: item?.ariaLabel ?? "Period",
+        onRemove: () => setPeriod("overall"),
+      });
+    }
+    if (includeFilters.teamName) {
+      chips.push({
+        key: "team",
+        label: `Team: ${includeFilters.teamName}`,
+        onRemove: () => updateFilter("teamName", ""),
+      });
+    }
+    if (includeFilters.lob) {
+      chips.push({
+        key: "lob",
+        label: `LOB: ${includeFilters.lob}`,
+        onRemove: () => updateFilter("lob", ""),
+      });
+    }
+    if (includeFilters.auditor) {
+      chips.push({
+        key: "auditor",
+        label: `Auditor: ${includeFilters.auditor}`,
+        onRemove: () => updateFilter("auditor", ""),
+      });
+    }
+    if (includeFilters.auditType) {
+      chips.push({
+        key: "type",
+        label: `Type: ${includeFilters.auditType}`,
+        onRemove: () => updateFilter("auditType", ""),
+      });
+    }
+    return chips;
+  }, [customRange, period, includeFilters]);
+
+  const sidebarFilterCount = dashboardFilterChips.length;
+
+  const teamFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All teams" },
+      ...filterOptions.teamNames.map((name) => ({ value: name, label: name })),
+    ],
+    [filterOptions.teamNames]
+  );
+
+  const lobFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All LOBs" },
+      ...filterOptions.lobs.map((lob) => ({ value: lob, label: lob })),
+    ],
+    [filterOptions.lobs]
+  );
+
+  const auditorFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All auditors" },
+      ...filterOptions.auditors.map((auditor) => ({ value: auditor, label: auditor })),
+    ],
+    [filterOptions.auditors]
+  );
+
+  const auditTypeFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All types" },
+      ...filterOptions.auditTypes.map((type) => ({ value: type, label: type })),
+    ],
+    [filterOptions.auditTypes]
+  );
 
   return (
     <div className="dash-analytics">
@@ -201,60 +294,30 @@ export function DashboardAnalytics({
         </div>
       ) : null}
 
-      {/* ── Unified filter panel ─────────────────────────────── */}
-      <div className={cn("pf-panel", filtersOpen && "pf-panel--open")}>
-        {/* Bar row */}
+      <div className="pf-panel">
         <div className="pf-bar">
-          {/* Period pills — always visible */}
           <div className="pf-bar__left">
-            <div className="pf-periods" role="tablist" aria-label="Time period">
-              {PERIODS.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={period === p.id && !(customRange.from || customRange.to)}
-                  aria-label={p.ariaLabel}
-                  title={p.ariaLabel}
-                  className={cn(
-                    "pf-period-btn",
-                    period === p.id && !(customRange.from || customRange.to) && "pf-period-btn--active"
-                  )}
-                  onClick={() => {
-                    setCustomRange({ from: "", to: "" });
-                    setPeriod(p.id);
-                  }}
-                >
-                  {p.label}
-                </button>
-              ))}
+            <span className="table-filter-bar__meta">
+              {stats.total} audit{stats.total === 1 ? "" : "s"} in view
+            </span>
+            <div className="pf-bar__chips">
+              <FilterChipBar
+                inline
+                showClearButton={false}
+                chips={dashboardFilterChips}
+              />
             </div>
           </div>
-
-          {/* Right actions */}
           <div className="pf-bar__right">
-            <button
-              type="button"
-              className={cn(
-                "pf-toggle",
-                filtersOpen && "pf-toggle--open",
-                (filtersActive || customRange.from || customRange.to) && "pf-toggle--active"
-              )}
-              onClick={() => setFiltersOpen((o) => !o)}
-              aria-expanded={filtersOpen}
-            >
-              <SlidersHorizontal size={14} aria-hidden />
-              <span>Filters</span>
-              {!filtersOpen && (filtersActive || customRange.from || customRange.to) ? (
-                <span className="pf-toggle__badge">
-                  {[
-                    filtersActive ? 1 : 0,
-                    customRange.from || customRange.to ? 1 : 0,
-                  ].reduce((a, b) => a + b, 0)}
-                </span>
+            <div className="pf-bar__filter-actions">
+              {sidebarFilterCount > 0 ? (
+                <FilterClearButton onClick={clearFilters} />
               ) : null}
-              <ChevronDown size={14} className="pf-toggle__chevron" aria-hidden />
-            </button>
+              <FilterTriggerButton
+                activeCount={sidebarFilterCount}
+                onClick={filterSidebar.openFilters}
+              />
+            </div>
             <button
               type="button"
               className="pf-refresh"
@@ -270,134 +333,96 @@ export function DashboardAnalytics({
             </button>
           </div>
         </div>
-
-        {/* Active chips */}
-        {(filtersActive || customRange.from || customRange.to) && (
-          <div className="pf-chips">
-            {(customRange.from || customRange.to) && (
-              <button
-                type="button"
-                className="pf-chip"
-                onClick={() => setCustomRange({ from: "", to: "" })}
-              >
-                {[customRange.from, customRange.to].filter(Boolean).join(" — ")}
-                <X size={11} aria-hidden />
-              </button>
-            )}
-            {includeFilters.teamName && (
-              <button type="button" className="pf-chip" onClick={() => updateFilter("teamName", "")}>
-                Team: {includeFilters.teamName}<X size={11} aria-hidden />
-              </button>
-            )}
-            {includeFilters.lob && (
-              <button type="button" className="pf-chip" onClick={() => updateFilter("lob", "")}>
-                LOB: {includeFilters.lob}<X size={11} aria-hidden />
-              </button>
-            )}
-            {includeFilters.auditor && (
-              <button type="button" className="pf-chip" onClick={() => updateFilter("auditor", "")}>
-                Auditor: {includeFilters.auditor}<X size={11} aria-hidden />
-              </button>
-            )}
-            {includeFilters.auditType && (
-              <button type="button" className="pf-chip" onClick={() => updateFilter("auditType", "")}>
-                Type: {includeFilters.auditType}<X size={11} aria-hidden />
-              </button>
-            )}
-            <button
-              type="button"
-              className="pf-chip-clear"
-              onClick={() => {
-                clearFilters();
-                setCustomRange({ from: "", to: "" });
-              }}
-            >
-              Clear all
-            </button>
-          </div>
-        )}
-
-        {/* Expandable filter body */}
-        <div className="pf-body" aria-hidden={!filtersOpen}>
-          <div className="pf-body-inner">
-            {/* Date range */}
-            <div className="pf-section">
-              <span className="pf-section__label">Custom date range</span>
-              <DateRangePicker
-                value={customRange}
-                onChange={(v) => {
-                  setCustomRange(v);
-                  if (v.from || v.to) setPeriod("custom");
-                }}
-                label=""
-              />
-            </div>
-            {/* Include filters */}
-            <div className="pf-section">
-              <span className="pf-section__label">Segment filter</span>
-              <div className="pf-grid">
-                <label className="dash-filter">
-                  <span>Team name</span>
-                  <Select
-                    className="dash-select dash-select--filter"
-                    value={includeFilters.teamName}
-                    onChange={(e) => updateFilter("teamName", e.target.value)}
-                  >
-                    <option value="">All teams</option>
-                    {filterOptions.teamNames.map((name) => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                  </Select>
-                </label>
-                <label className="dash-filter">
-                  <span>LOB</span>
-                  <Select
-                    className="dash-select dash-select--filter"
-                    value={includeFilters.lob}
-                    onChange={(e) => updateFilter("lob", e.target.value)}
-                  >
-                    <option value="">All LOBs</option>
-                    {filterOptions.lobs.map((lob) => (
-                      <option key={lob} value={lob}>{lob}</option>
-                    ))}
-                  </Select>
-                </label>
-                <label className="dash-filter">
-                  <span>Quality auditor</span>
-                  <Select
-                    className="dash-select dash-select--filter"
-                    value={includeFilters.auditor}
-                    onChange={(e) => updateFilter("auditor", e.target.value)}
-                  >
-                    <option value="">All auditors</option>
-                    {filterOptions.auditors.map((auditor) => (
-                      <option key={auditor} value={auditor}>{auditor}</option>
-                    ))}
-                  </Select>
-                </label>
-                <label className="dash-filter">
-                  <span>Audit type</span>
-                  <Select
-                    className="dash-select dash-select--filter"
-                    value={includeFilters.auditType}
-                    onChange={(e) => updateFilter("auditType", e.target.value)}
-                  >
-                    <option value="">All types</option>
-                    {filterOptions.auditTypes.map((type) => (
-                      <option key={type} value={type}>{type}</option>
-                    ))}
-                  </Select>
-                </label>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
+
+      <FilterSidebar
+        open={filterSidebar.open}
+        onOpenChange={filterSidebar.onOpenChange}
+        title="Dashboard filters"
+        description="Set the time period and segment filters for KPIs and charts."
+        activeCount={sidebarFilterCount}
+        onClearAll={clearFilters}
+        clearDisabled={sidebarFilterCount === 0}
+      >
+        <FilterSidebarSection label="Period">
+          <div className="filter-sidebar-periods pf-periods" role="tablist" aria-label="Time period">
+            {PERIODS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                role="tab"
+                aria-selected={period === p.id && !(customRange.from || customRange.to)}
+                aria-label={p.ariaLabel}
+                title={p.ariaLabel}
+                className={cn(
+                  "pf-period-btn",
+                  period === p.id && !(customRange.from || customRange.to) && "pf-period-btn--active"
+                )}
+                onClick={() => {
+                  setCustomRange({ from: "", to: "" });
+                  setPeriod(p.id);
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <DateRangePicker
+            value={customRange}
+            onChange={(v) => {
+              setCustomRange(v);
+              if (v.from || v.to) setPeriod("custom");
+            }}
+            label="Custom date range"
+          />
+        </FilterSidebarSection>
+
+        <FilterSidebarSection label="Segment">
+          <FilterSidebarGrid>
+            <label className="dash-filter">
+              <span>Team name</span>
+              <FilterSelect
+                value={includeFilters.teamName}
+                onChange={(value) => updateFilter("teamName", value)}
+                options={teamFilterOptions}
+                ariaLabel="Filter by team"
+              />
+            </label>
+            <label className="dash-filter">
+              <span>LOB</span>
+              <FilterSelect
+                value={includeFilters.lob}
+                onChange={(value) => updateFilter("lob", value)}
+                options={lobFilterOptions}
+                ariaLabel="Filter by LOB"
+              />
+            </label>
+            <label className="dash-filter">
+              <span>Quality auditor</span>
+              <FilterSelect
+                value={includeFilters.auditor}
+                onChange={(value) => updateFilter("auditor", value)}
+                options={auditorFilterOptions}
+                ariaLabel="Filter by auditor"
+              />
+            </label>
+            <label className="dash-filter">
+              <span>Audit type</span>
+              <FilterSelect
+                value={includeFilters.auditType}
+                onChange={(value) => updateFilter("auditType", value)}
+                options={auditTypeFilterOptions}
+                ariaLabel="Filter by audit type"
+              />
+            </label>
+          </FilterSidebarGrid>
+        </FilterSidebarSection>
+      </FilterSidebar>
 
       <LoadingZone
         loading={isRefreshing}
         label="Refreshing dashboard…"
-        className="dash-sections"
+        className="dash-sections loading-zone--stack"
       >
       <div className="dash-kpi-grid">
         <article className="dash-kpi">

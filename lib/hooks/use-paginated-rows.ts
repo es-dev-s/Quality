@@ -6,12 +6,20 @@ import {
   type TablePageSize,
 } from "@/lib/ui/paginate-rows";
 
+/**
+ * @param resetKey When this changes (filters, dataset identity), page resets to 1.
+ *   Pass a stable key — not the rows array reference — so in-place row patches
+ *   (e.g. feedback status) do not reset pagination.
+ */
 export function usePaginatedRows<T>(
   rows: T[],
-  initialPageSize: TablePageSize = 20
+  initialPageSize: TablePageSize = 20,
+  resetKey?: string
 ) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<TablePageSize>(initialPageSize);
+
+  const paginationIdentity = resetKey ?? `count:${rows.length}`;
 
   const pagination = useMemo(
     () => paginateRows(rows, page, pageSize),
@@ -19,14 +27,15 @@ export function usePaginatedRows<T>(
   );
 
   useEffect(() => {
-    setPage(1);
-  }, [rows, pageSize]);
+    setPage((current) => (current === 1 ? current : 1));
+  }, [paginationIdentity, pageSize]);
 
   useEffect(() => {
-    if (page > pagination.totalPages) {
-      setPage(Math.max(1, pagination.totalPages));
-    }
-  }, [page, pagination.totalPages]);
+    setPage((current) => {
+      const maxPage = Math.max(1, pagination.totalPages);
+      return current > maxPage ? maxPage : current;
+    });
+  }, [pagination.totalPages]);
 
   function handlePageSizeChange(next: TablePageSize) {
     setPageSize(next);

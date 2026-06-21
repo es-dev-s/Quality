@@ -2,6 +2,7 @@ import {
   PERMISSIONS,
   SYSTEM_ROLE_DEFINITIONS,
   SYSTEM_ROLE_SLUGS,
+  type Permission,
   type SystemRoleSlug,
 } from "@/lib/permissions";
 import { isSuperAdmin, type SessionRole } from "@/lib/rbac";
@@ -14,6 +15,7 @@ export type ModuleKey =
   | "auditForm"
   | "auditTemplates"
   | "settings"
+  | "team"
   | "feedback";
 
 export type ModuleAccessCell =
@@ -35,18 +37,21 @@ export const ACCESS_MODULES: {
   { key: "auditForm", label: "Audit Form", shortLabel: "Audit Form" },
   { key: "auditTemplates", label: "Audit Templates", shortLabel: "Templates" },
   { key: "settings", label: "Settings", shortLabel: "Settings" },
+  { key: "team", label: "Team management", shortLabel: "Team" },
   { key: "feedback", label: "Feedback", shortLabel: "Feedback" },
 ];
 
+/** Row-level audit data visibility (enforced in addition to module scopes). */
 export const DATA_VISIBILITY: Record<SystemRoleSlug, string> = {
-  [SYSTEM_ROLE_SLUGS.AGENT]: "Only particular agent details",
+  [SYSTEM_ROLE_SLUGS.AGENT]: "Own audit records only",
   [SYSTEM_ROLE_SLUGS.SUPERVISOR]:
-    "Agents onboarded by this supervisor (after QM approval)",
-  [SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]: "Aligned agent details only",
+    "Agents created or assigned to this supervisor (after QM approval)",
+  [SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]:
+    "Audits for aligned agents and records where this user is the analyst",
   [SYSTEM_ROLE_SLUGS.QUALITY_MANAGER]:
-    "Quality analysts onboarded by this manager (after admin approval)",
-  [SYSTEM_ROLE_SLUGS.ADMIN]: "Full view with selective modification",
-  [SYSTEM_ROLE_SLUGS.SUPERADMIN]: "Full access to all records",
+    "Agents approved or assigned by this manager",
+  [SYSTEM_ROLE_SLUGS.ADMIN]: "All audit records",
+  [SYSTEM_ROLE_SLUGS.SUPERADMIN]: "All audit records",
 };
 
 export const ACCESS_SCOPE_LABEL: Record<SystemRoleSlug, string> = {
@@ -58,19 +63,38 @@ export const ACCESS_SCOPE_LABEL: Record<SystemRoleSlug, string> = {
   [SYSTEM_ROLE_SLUGS.SUPERADMIN]: "Full access",
 };
 
-function has(role: SessionRole | SystemRoleSlug, permission: string): boolean {
+const TEAM_WRITE_SCOPES: Permission[] = [
+  PERMISSIONS.USERS_MANAGE_MANAGED,
+  PERMISSIONS.USERS_APPROVE_AGENT,
+  PERMISSIONS.USERS_APPROVE_ANALYST,
+  PERMISSIONS.AGENT_ASSIGN,
+  PERMISSIONS.ADMIN_USERS,
+  PERMISSIONS.ADMIN_ROLES,
+];
+
+const TEAM_READ_SCOPES: Permission[] = [
+  PERMISSIONS.USERS_PROVISION_AGENT,
+  PERMISSIONS.USERS_PROVISION_ANALYST,
+  PERMISSIONS.USERS_READ_MANAGED,
+];
+
+function has(role: SessionRole | SystemRoleSlug, permission: Permission): boolean {
   if (typeof role === "string") {
     const def = SYSTEM_ROLE_DEFINITIONS[role as SystemRoleSlug];
-    return def?.permissions.includes(permission as never) ?? false;
+    return def?.permissions.includes(permission) ?? false;
   }
   if (isSuperAdmin(role)) return true;
   return role.scopes.includes(permission);
 }
 
+function hasAny(role: SessionRole | SystemRoleSlug, permissions: Permission[]): boolean {
+  return permissions.some((permission) => has(role, permission));
+}
+
 function moduleAccess(
   role: SessionRole | SystemRoleSlug,
-  readPerm: string,
-  writePerm: string
+  readPerm: Permission,
+  writePerm: Permission
 ): ModuleAccessCell {
   const canWrite = has(role, writePerm);
   const canRead = has(role, readPerm);
@@ -79,12 +103,35 @@ function moduleAccess(
   return "—";
 }
 
-/** Modules with read-only scopes (no separate :write permission). */
 function readOnlyModuleAccess(
   role: SessionRole | SystemRoleSlug,
-  readPerm: string
+  readPerm: Permission
 ): ModuleAccessCell {
   return has(role, readPerm) ? "Read" : "—";
+}
+
+function settingsAccess(role: SessionRole | SystemRoleSlug): ModuleAccessCell {
+  if (has(role, PERMISSIONS.SETTINGS_WRITE)) return "Read/Write";
+  if (!has(role, PERMISSIONS.SETTINGS_READ)) return "—";
+  if (hasAny(role, TEAM_READ_SCOPES) || hasAny(role, TEAM_WRITE_SCOPES)) {
+    return "Partial";
+  }
+  return "Read";
+}
+
+function teamAccess(role: SessionRole | SystemRoleSlug): ModuleAccessCell {
+  if (
+    (typeof role === "string" && role === SYSTEM_ROLE_SLUGS.SUPERADMIN) ||
+    (typeof role !== "string" && isSuperAdmin(role))
+  ) {
+    return "Read/Write";
+  }
+  if (has(role, PERMISSIONS.ADMIN_USERS) || has(role, PERMISSIONS.ADMIN_ROLES)) {
+    return "Read/Write";
+  }
+  if (hasAny(role, TEAM_WRITE_SCOPES)) return "Read/Write";
+  if (hasAny(role, TEAM_READ_SCOPES)) return "Partial";
+  return "—";
 }
 
 function feedbackAccess(role: SessionRole | SystemRoleSlug): ModuleAccessCell {
@@ -116,11 +163,8 @@ export function getModuleAccessMatrix(
       PERMISSIONS.AUDIT_TEMPLATES_READ,
       PERMISSIONS.AUDIT_TEMPLATES_WRITE
     ),
-    settings: moduleAccess(
-      role,
-      PERMISSIONS.SETTINGS_READ,
-      PERMISSIONS.SETTINGS_WRITE
-    ),
+    settings: settingsAccess(role),
+    team: teamAccess(role),
     feedback: feedbackAccess(role),
   };
 }
@@ -133,3 +177,85 @@ export const SYSTEM_ROLE_ORDER: SystemRoleSlug[] = [
   SYSTEM_ROLE_SLUGS.ADMIN,
   SYSTEM_ROLE_SLUGS.SUPERADMIN,
 ];
+
+/** Expected matrix rows — used for regression checks. */
+export const EXPECTED_SYSTEM_ROLE_MATRIX: Record<
+  SystemRoleSlug,
+  Partial<Record<ModuleKey, ModuleAccessCell>>
+> = {
+  [SYSTEM_ROLE_SLUGS.AGENT]: {
+    overview: "Read",
+    auditLogs: "Read",
+    feedback: "Change status",
+  },
+  [SYSTEM_ROLE_SLUGS.SUPERVISOR]: {
+    overview: "Read",
+    auditLogs: "Read",
+    settings: "Partial",
+    team: "Read/Write",
+    feedback: "Read",
+  },
+  [SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]: {
+    overview: "Read",
+    auditLogs: "Read",
+    auditForm: "Read/Write",
+    settings: "Partial",
+    team: "Read/Write",
+    feedback: "Change status",
+  },
+  [SYSTEM_ROLE_SLUGS.QUALITY_MANAGER]: {
+    overview: "Read",
+    auditLogs: "Read/Write",
+    analytics: "Read",
+    reports: "Read",
+    auditForm: "Read/Write",
+    auditTemplates: "Read",
+    settings: "Partial",
+    team: "Read/Write",
+    feedback: "Read",
+  },
+  [SYSTEM_ROLE_SLUGS.ADMIN]: {
+    overview: "Read",
+    auditLogs: "Read",
+    analytics: "Read",
+    reports: "Read",
+    auditForm: "Read/Write",
+    auditTemplates: "Read/Write",
+    settings: "Read/Write",
+    team: "Read/Write",
+    feedback: "Read",
+  },
+  [SYSTEM_ROLE_SLUGS.SUPERADMIN]: {
+    overview: "Read",
+    auditLogs: "Read/Write",
+    analytics: "Read",
+    reports: "Read",
+    auditForm: "Read/Write",
+    auditTemplates: "Read/Write",
+    settings: "Read/Write",
+    team: "Read/Write",
+    feedback: "Read/Write",
+  },
+};
+
+export function verifySystemRoleMatrix(): string[] {
+  const errors: string[] = [];
+  for (const slug of SYSTEM_ROLE_ORDER) {
+    const matrix = getModuleAccessMatrix(slug);
+    const expected = EXPECTED_SYSTEM_ROLE_MATRIX[slug];
+    for (const [key, value] of Object.entries(expected) as [
+      ModuleKey,
+      ModuleAccessCell,
+    ][]) {
+      if (matrix[key] !== value) {
+        errors.push(`${slug}.${key}: expected ${value}, got ${matrix[key]}`);
+      }
+    }
+    for (const module of ACCESS_MODULES) {
+      if (expected[module.key] === undefined && matrix[module.key] !== "—") {
+        errors.push(`${slug}.${module.key}: expected —, got ${matrix[module.key]}`);
+      }
+    }
+  }
+  return errors;
+}

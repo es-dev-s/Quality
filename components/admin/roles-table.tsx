@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/primitives/button";
 import { Badge } from "@/components/primitives/badge";
-import { Modal } from "@/components/primitives/modal";
+import { ConfirmModal } from "@/components/primitives/confirm-modal";
 import {
   TableRowAction,
   TableRowActionsCell,
@@ -13,13 +13,13 @@ import {
 import { useToast } from "@/components/primitives/toast";
 import { RoleAccessMatrix } from "@/components/admin/role-access-matrix";
 import { RoleFormDialog } from "@/components/admin/role-form-dialog";
-import { LoadingZone } from "@/components/primitives/loading-zone";
 import { BulkActionBar } from "@/components/admin/bulk-action-bar";
 import {
   DataTablePanel,
   usePaginatedRows,
 } from "@/components/primitives/data-table-panel";
 import { useBulkSelection } from "@/lib/hooks/use-bulk-selection";
+import { useBusyAction } from "@/lib/hooks/use-busy-action";
 import { bulkDeleteRoles, deleteRole } from "@/lib/actions/admin";
 
 type Role = {
@@ -29,6 +29,7 @@ type Role = {
   description: string | null;
   isSystem: boolean;
   _count: { users: number; scopes: number };
+  scopes?: { scope: { slug: string } }[];
 };
 
 type RolesTableProps = {
@@ -39,7 +40,7 @@ type RolesTableProps = {
 export function RolesTable({ roles, embedded = false }: RolesTableProps) {
   const router = useRouter();
   const { toast } = useToast();
-  const [pending, startTransition] = useTransition();
+  const { busy: pending, run: runBusy } = useBusyAction();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
@@ -76,7 +77,7 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
       return;
     }
 
-    startTransition(async () => {
+    runBusy(async () => {
       const result = await bulkDeleteRoles(selectedIdList);
       if (result.error && !result.deleted) {
         toast(result.error, "error");
@@ -100,7 +101,7 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
   function handleSingleDelete() {
     if (!deleteTarget) return;
 
-    startTransition(async () => {
+    runBusy(async () => {
       const result = await deleteRole(deleteTarget.id);
       if (result.error) {
         toast(result.error, "error");
@@ -115,26 +116,11 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
   return (
     <div className={embedded ? "settings-tab-layout" : undefined}>
       <div className={embedded ? "settings-tab-layout__head" : undefined}>
-      <RoleAccessMatrix />
-
-      {embedded ? (
-        <div className="section-toolbar">
-          <span className="section-toolbar__meta">
-            {roles.length} role{roles.length === 1 ? "" : "s"}
-          </span>
-          <div className="section-toolbar__actions">
-            <Button
-              onClick={() => {
-                setEditingRole(null);
-                setDialogOpen(true);
-              }}
-            >
-              <Plus size={16} />
-              Add Role
-            </Button>
-          </div>
+        <div className={embedded ? "role-matrix-wrap" : undefined}>
+          <RoleAccessMatrix />
         </div>
-      ) : (
+
+      {!embedded && (
         <div className="admin-section-head">
           <div>
             <h2 className="admin-section-head__title">All Roles</h2>
@@ -165,11 +151,7 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
         isPending={pending}
       />
 
-      <LoadingZone
-        loading={pending}
-        label="Updating roles…"
-        className={embedded ? "loading-zone--fill" : undefined}
-      >
+      <div className={embedded ? "loading-zone--fill" : undefined}>
       {roles.length === 0 ? (
         <div className="ui-table-wrap">
           <table className="ui-table ui-table--selectable platform-report-table">
@@ -196,6 +178,22 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
         <DataTablePanel
           pagination={pagination}
           fillViewport={embedded}
+          summaryLabel={`${roles.length} role${roles.length === 1 ? "" : "s"}`}
+          headerActions={
+            embedded ? (
+              <Button
+                size="sm"
+                onClick={() => {
+                  setEditingRole(null);
+                  setDialogOpen(true);
+                }}
+              >
+                <Plus size={16} />
+                Add Role
+              </Button>
+            ) : undefined
+          }
+          emptyState={<p>No roles match your search.</p>}
           renderTable={(slice) => (
             <table className="ui-table ui-table--selectable platform-report-table settings-table">
               <thead>
@@ -254,7 +252,17 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
                       <code className="ui-code">{role.slug}</code>
                     </td>
                     <td>{role._count.users}</td>
-                    <td>{role._count.scopes}</td>
+                    <td>
+                      {role.isSystem ? (
+                        role._count.scopes
+                      ) : role._count.scopes === 0 ? (
+                        <span style={{ color: "var(--color-warning, #b45309)" }}>
+                          None assigned
+                        </span>
+                      ) : (
+                        role._count.scopes
+                      )}
+                    </td>
                     <TableRowActionsCell ariaLabel={`Actions for ${role.name}`}>
                       <TableRowAction
                         onClick={() => {
@@ -281,66 +289,35 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
           )}
         />
       )}
-      </LoadingZone>
+      </div>
       </div>
 
-      <Modal
+      <ConfirmModal
         open={bulkDeleteOpen}
-        onClose={() => !pending && setBulkDeleteOpen(false)}
+        onClose={() => setBulkDeleteOpen(false)}
         title="Delete selected roles"
         description={`Delete ${selectedCount} selected role${
           selectedCount === 1 ? "" : "s"
         }? System roles and roles assigned to users are skipped automatically.`}
-      >
-        <div className="platform-settings__confirm-actions">
-          <button
-            type="button"
-            className="ui-btn ui-btn--secondary"
-            disabled={pending}
-            onClick={() => setBulkDeleteOpen(false)}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="ui-btn ui-btn--danger"
-            disabled={pending || selectedCount === 0}
-            onClick={handleBulkDelete}
-          >
-            {pending ? "Deleting…" : `Delete ${selectedCount}`}
-          </button>
-        </div>
-      </Modal>
+        confirmLabel={`Delete ${selectedCount}`}
+        loading={pending}
+        confirmDisabled={selectedCount === 0}
+        onConfirm={handleBulkDelete}
+      />
 
-      <Modal
+      <ConfirmModal
         open={Boolean(deleteTarget)}
-        onClose={() => !pending && setDeleteTarget(null)}
+        onClose={() => setDeleteTarget(null)}
         title="Delete role"
         description={
           deleteTarget
             ? `Delete ${deleteTarget.name}? Roles assigned to users cannot be removed.`
             : undefined
         }
-      >
-        <div className="platform-settings__confirm-actions">
-          <button
-            type="button"
-            className="ui-btn ui-btn--secondary"
-            disabled={pending}
-            onClick={() => setDeleteTarget(null)}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="ui-btn ui-btn--danger"
-            disabled={pending}
-            onClick={handleSingleDelete}
-          >
-            {pending ? "Deleting…" : "Delete role"}
-          </button>
-        </div>
-      </Modal>
+        confirmLabel="Delete role"
+        loading={pending}
+        onConfirm={handleSingleDelete}
+      />
 
       <RoleFormDialog
         open={dialogOpen}

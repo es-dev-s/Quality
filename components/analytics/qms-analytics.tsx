@@ -1,10 +1,18 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { ChevronDown, RefreshCw, SlidersHorizontal, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { RefreshCw } from "lucide-react";
+import { FilterChipBar } from "@/components/filters/filter-chip-bar";
+import { FilterClearButton } from "@/components/filters/filter-clear-button";
+import { FilterTriggerButton } from "@/components/filters/filter-trigger-button";
+import {
+  FilterSidebar,
+  FilterSidebarSection,
+} from "@/components/filters/filter-sidebar";
+import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
+import { useBusyAction } from "@/lib/hooks/use-busy-action";
 import { getAnalyticsData, type AnalyticsPageData } from "@/lib/actions/analytics";
 import { summaryChipClass } from "@/lib/audit/analytics-metrics";
-import { cn } from "@/lib/utils";
 import { LoadingZone } from "@/components/primitives/loading-zone";
 import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
 import { AgentsTab } from "@/components/analytics/tabs/agents-tab";
@@ -35,8 +43,8 @@ export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
   const [tab, setTab] = useState<TabId>("overview");
   const [liveData, setLiveData] = useState<AnalyticsPageData | null>(null);
   const [dateRange, setDateRange] = useState<DateRangeValue>({ from: "", to: "" });
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [isLoading, startTransition] = useTransition();
+  const filterSidebar = useFilterSidebar();
+  const { busy: isLoading, run: runBusy } = useBusyAction();
   const [error, setError] = useState<string | null>(null);
 
   const data = liveData ?? initialData;
@@ -50,7 +58,7 @@ export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
       return;
     }
     setError(null);
-    startTransition(async () => {
+    runBusy(async () => {
       try {
         const result = await getAnalyticsData(range.from || undefined, range.to || undefined);
         setLiveData(result);
@@ -65,7 +73,7 @@ export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
   }
 
   function handleRefresh() {
-    startTransition(async () => {
+    runBusy(async () => {
       try {
         const result = await getAnalyticsData(
           dateRange.from || undefined,
@@ -96,12 +104,8 @@ export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
   return (
     <div className="qms-analytics">
 
-      {/* ── Filter panel ───────────────────────────────────── */}
-      <div className={cn("pf-panel", filtersOpen && "pf-panel--open")}>
-
-        {/* Bar row */}
+      <div className="pf-panel">
         <div className="pf-bar">
-          {/* Summary chips — always visible */}
           <div className="pf-bar__left">
             <span className={`qms-summary-chip ${summaryChipClass(data.kpis.overall_avg)}`}>
               {data.kpis.overall_avg}% overall
@@ -113,27 +117,33 @@ export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
               {data.kpis.total_audits.toLocaleString()} audits
               {hasDateFilter && <span style={{ fontWeight: 500, opacity: 0.75 }}> (filtered)</span>}
             </span>
+            <div className="pf-bar__chips">
+              <FilterChipBar
+                inline
+                showClearButton={false}
+                chips={
+                  hasDateFilter
+                    ? [
+                        {
+                          key: "date",
+                          label: [dateRange.from, dateRange.to].filter(Boolean).join(" — "),
+                          onRemove: clearDateRange,
+                        },
+                      ]
+                    : []
+                }
+              />
+            </div>
           </div>
 
-          {/* Right actions */}
           <div className="pf-bar__right">
-            <button
-              type="button"
-              className={cn(
-                "pf-toggle",
-                filtersOpen && "pf-toggle--open",
-                hasDateFilter && "pf-toggle--active"
-              )}
-              onClick={() => setFiltersOpen((o) => !o)}
-              aria-expanded={filtersOpen}
-            >
-              <SlidersHorizontal size={14} aria-hidden />
-              <span>Filters</span>
-              {!filtersOpen && hasDateFilter && (
-                <span className="pf-toggle__badge">1</span>
-              )}
-              <ChevronDown size={14} className="pf-toggle__chevron" aria-hidden />
-            </button>
+            <div className="pf-bar__filter-actions">
+              {hasDateFilter ? <FilterClearButton onClick={clearDateRange} /> : null}
+              <FilterTriggerButton
+                activeCount={hasDateFilter ? 1 : 0}
+                onClick={filterSidebar.openFilters}
+              />
+            </div>
             <button
               type="button"
               className="pf-refresh"
@@ -150,36 +160,31 @@ export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
           </div>
         </div>
 
-        {/* Active chip for date range */}
-        {hasDateFilter && (
-          <div className="pf-chips">
-            <button type="button" className="pf-chip" onClick={clearDateRange}>
-              {[dateRange.from, dateRange.to].filter(Boolean).join(" — ")}
-              <X size={11} aria-hidden />
-            </button>
-            <button type="button" className="pf-chip-clear" onClick={clearDateRange}>
-              Clear
-            </button>
-          </div>
-        )}
-
-        {/* Error */}
-        {error && <p className="pf-error" role="alert">{error}</p>}
-
-        {/* Expandable body — date range picker */}
-        <div className="pf-body" aria-hidden={!filtersOpen}>
-          <div className="pf-body-inner">
-            <div className="pf-section">
-              <span className="pf-section__label">Date range</span>
-              <DateRangePicker
-                value={dateRange}
-                onChange={applyDateRange}
-                label=""
-              />
-            </div>
-          </div>
-        </div>
+        {error ? <p className="pf-error" role="alert">{error}</p> : null}
       </div>
+
+      <FilterSidebar
+        open={filterSidebar.open}
+        onOpenChange={filterSidebar.onOpenChange}
+        title="Analytics filters"
+        description="Choose a date range for all analytics tabs."
+        activeCount={hasDateFilter ? 1 : 0}
+        onClearAll={clearDateRange}
+        clearDisabled={!hasDateFilter}
+        footer={
+          <button
+            type="button"
+            className="ui-btn ui-btn--primary ui-btn--sm"
+            onClick={() => filterSidebar.closeFilters()}
+          >
+            Done
+          </button>
+        }
+      >
+        <FilterSidebarSection label="Date range">
+          <DateRangePicker value={dateRange} onChange={applyDateRange} label="" />
+        </FilterSidebarSection>
+      </FilterSidebar>
 
       {/* ── Tabs ────────────────────────────────────────────── */}
       <div className="qms-toolbar">

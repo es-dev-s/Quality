@@ -3,7 +3,6 @@ import {
   FEEDBACK_SECURITY_OPTIONS,
   FEEDBACK_STATUS_OPTIONS,
 } from "@/lib/audit/feedback";
-import { interactionReferenceFieldLabel } from "@/lib/audit/interaction-labels";
 import { cuidSchema, submissionKeySchema } from "@/lib/validation/common";
 
 const scoreValueSchema = z.string().trim().max(32);
@@ -30,15 +29,6 @@ export const auditFormDataSchema = z
     feedbackStatus: z.enum(FEEDBACK_STATUS_OPTIONS),
     feedbackDate: z.string(),
     agentFeedback: z.string(),
-  })
-  .superRefine((data, ctx) => {
-    if (!data.referenceUrl.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `${interactionReferenceFieldLabel(data.type)} is required.`,
-        path: ["referenceUrl"],
-      });
-    }
   });
 
 export const saveAuditSubmissionSchema = z.object({

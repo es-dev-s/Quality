@@ -1552,6 +1552,26 @@
   cursor: pointer;
 }
 
+.audit-logs__feedback--readonly {
+  cursor: default;
+  display: inline-block;
+}
+
+.audit-logs__feedback-select {
+  width: 100%;
+  min-width: 118px;
+  appearance: auto;
+  cursor: pointer;
+}
+
+.audit-logs__feedback-select--locked {
+  cursor: help;
+}
+
+.audit-logs__feedback-select option:disabled {
+  color: var(--color-muted-fg);
+}
+
 .audit-logs__table .ui-custom-select {
   min-width: 118px;
 }

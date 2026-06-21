@@ -6,11 +6,15 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { ForbiddenError, permissionError, requirePermission } from "@/lib/auth-guards";
 import { PERMISSIONS, isLegacySystemRole } from "@/lib/permissions";
+import { isValidPermissionSlug } from "@/lib/permission-catalog";
+import { resolveRoleUserName } from "@/lib/audit/role-users";
+import { fetchUserAuditMatchNames } from "@/lib/audit/user-audit-match";
 import { canManageRoles, canManageUsers, hasScope, isSuperAdmin } from "@/lib/rbac";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { SUPERADMIN_ROLE_SLUG } from "@/lib/constants";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import {
+  invalidateAuditCaches,
   invalidateRoleCaches,
   invalidateUserCaches,
 } from "@/lib/invalidate-cache";
@@ -79,6 +83,44 @@ function slugify(value: string) {
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+function parseScopeSlugsFromForm(formData: FormData): string[] {
+  const raw = formData.get("scopeSlugs");
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === "string");
+  } catch {
+    return [];
+  }
+}
+
+async function syncCustomRoleScopes(roleId: string, scopeSlugs: string[]) {
+  const unique = [
+    ...new Set(scopeSlugs.filter((slug) => isValidPermissionSlug(slug))),
+  ];
+
+  const scopes = await prisma.scope.findMany({
+    where: { slug: { in: unique } },
+  });
+
+  if (scopes.length !== unique.length) {
+    return { error: "One or more permissions are invalid." as const };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.roleScope.deleteMany({ where: { roleId } });
+    if (scopes.length > 0) {
+      await tx.roleScope.createMany({
+        data: scopes.map((scope) => ({ roleId, scopeId: scope.id })),
+        skipDuplicates: true,
+      });
+    }
+  });
+
+  return { success: true as const };
 }
 
 async function validateRoleAssignment(roleId: string) {
@@ -276,8 +318,17 @@ export async function updateUser(formData: FormData) {
 
   const existingUser = await prisma.user.findUnique({
     where: { id: parsed.data.id },
-    select: { roleId: true },
+    select: {
+      name: true,
+      email: true,
+      roleId: true,
+      role: { select: { slug: true } },
+    },
   });
+
+  if (!existingUser) {
+    return { error: "User not found" };
+  }
 
   const data: {
     name: string;
@@ -306,8 +357,30 @@ export async function updateUser(formData: FormData) {
     data,
   });
 
+  const targetRoleSlug = roleCheck.role.slug;
+  if (targetRoleSlug === SYSTEM_ROLE_SLUGS.AGENT) {
+    const priorNames = await fetchUserAuditMatchNames({
+      name: existingUser.name,
+      email: existingUser.email,
+    });
+    const nextDisplay = resolveRoleUserName({
+      name: parsed.data.name,
+      email,
+    });
+
+    for (const priorName of priorNames) {
+      if (priorName === nextDisplay) continue;
+      await prisma.auditSubmission.updateMany({
+        where: { agent: priorName },
+        data: { agent: nextDisplay },
+      });
+    }
+    invalidateAuditCaches(parsed.data.id);
+  }
+
   revalidateUserRosterPaths();
   invalidateUserCaches(session.user.id);
+  invalidateUserCaches(parsed.data.id);
   return {
     success: true,
     email,
@@ -499,6 +572,21 @@ export async function createRole(formData: FormData) {
     },
   });
 
+  const created = await prisma.role.findUnique({
+    where: { slug: parsed.data.slug },
+    select: { id: true },
+  });
+
+  if (created) {
+    const scopeSlugs = parseScopeSlugsFromForm(formData);
+    if (scopeSlugs.length > 0) {
+      const scopeResult = await syncCustomRoleScopes(created.id, scopeSlugs);
+      if ("error" in scopeResult && scopeResult.error) {
+        return { error: scopeResult.error };
+      }
+    }
+  }
+
   revalidatePath("/settings");
   revalidatePath("/admin/roles");
   invalidateRoleCaches();
@@ -550,6 +638,40 @@ export async function updateRole(formData: FormData) {
       description: parsed.data.description,
     },
   });
+
+  if (!role.isSystem && formData.has("scopeSlugs")) {
+    const scopeResult = await syncCustomRoleScopes(
+      parsed.data.id,
+      parseScopeSlugsFromForm(formData)
+    );
+    if ("error" in scopeResult && scopeResult.error) {
+      return { error: scopeResult.error };
+    }
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/admin/roles");
+  invalidateRoleCaches();
+  return { success: true };
+}
+
+export async function updateRoleScopes(roleId: string, scopeSlugs: string[]) {
+  await requirePermission(PERMISSIONS.ADMIN_ROLES);
+
+  const role = await prisma.role.findUnique({ where: { id: roleId } });
+  if (!role) {
+    return { error: "Role not found" };
+  }
+  if (role.isSystem) {
+    return {
+      error: "System role permissions are fixed and cannot be edited.",
+    };
+  }
+
+  const scopeResult = await syncCustomRoleScopes(roleId, scopeSlugs);
+  if ("error" in scopeResult && scopeResult.error) {
+    return { error: scopeResult.error };
+  }
 
   revalidatePath("/settings");
   revalidatePath("/admin/roles");

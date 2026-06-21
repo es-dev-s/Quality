@@ -2,9 +2,7 @@
 
 import { Select } from "@/components/primitives/field";
 import type { FeedbackStatus } from "@/lib/audit/feedback";
-import {
-  getFeedbackStatusSelectConfig,
-} from "@/lib/audit/feedback-status-access";
+import { getFeedbackStatusSelectConfig } from "@/lib/audit/feedback-status-access";
 import type { SessionRole } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 
@@ -32,9 +30,16 @@ export function FeedbackStatusSelect({
 }: FeedbackStatusSelectProps) {
   const config = getFeedbackStatusSelectConfig(role, value);
 
-  if (!config.editable) {
+  if (!config.showSelect) {
     return (
-      <span className={cn("audit-logs__feedback", feedbackStatusClass(value), className)}>
+      <span
+        className={cn(
+          "audit-logs__feedback audit-logs__feedback--readonly",
+          feedbackStatusClass(value),
+          className
+        )}
+        title={config.hint}
+      >
         {value}
       </span>
     );
@@ -44,21 +49,20 @@ export function FeedbackStatusSelect({
     <Select
       className={cn("audit-logs__feedback", feedbackStatusClass(value), className)}
       value={config.selectValue}
-      onChange={(e) => {
-        const next = e.target.value as FeedbackStatus | "";
-        if (!next) return;
+      disabled={!config.editable}
+      title={config.hint}
+      aria-label={ariaLabel}
+      options={config.options.map((option) => ({
+        value: option.value,
+        label: option.label,
+        disabled: option.disabled,
+      }))}
+      onChange={(event) => {
+        if (!config.editable) return;
+        const next = event.target.value as FeedbackStatus;
+        if (!next || next === value) return;
         onChange(next);
       }}
-      aria-label={ariaLabel}
-    >
-      {config.placeholder ? (
-        <option value="">{config.placeholder}</option>
-      ) : null}
-      {config.options.map((status) => (
-        <option key={status} value={status}>
-          {status}
-        </option>
-      ))}
-    </Select>
+    />
   );
 }

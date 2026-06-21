@@ -990,6 +990,14 @@ textarea {
   background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface));
 }
 
+.bulk-action-bar-slot {
+  flex-shrink: 0;
+}
+
+.bulk-action-bar-slot .bulk-action-bar {
+  margin: 0;
+}
+
 .bulk-action-bar__count {
   font-size: 0.8125rem;
   font-weight: 600;
@@ -1041,60 +1049,6 @@ textarea {
   padding: 2px 6px;
   font-size: 0.75rem;
   font-family: var(--font-mono);
-}
-
-.ui-modal-root {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-}
-
-.ui-modal-backdrop {
-  position: absolute;
-  inset: 0;
-  border: none;
-  background: rgba(29, 29, 31, 0.32);
-  backdrop-filter: blur(6px);
-  cursor: pointer;
-}
-
-.ui-modal-panel {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  max-width: 420px;
-  border-radius: calc(var(--radius) + 4px);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  padding: 24px;
-  box-shadow: var(--shadow);
-}
-
-.ui-modal-panel__title {
-  margin: 0;
-  font-size: 1.125rem;
-  font-weight: 600;
-}
-
-.ui-modal-panel__desc {
-  margin: 6px 0 0;
-  font-size: 0.875rem;
-  color: var(--color-muted-fg);
-}
-
-.ui-modal-panel__body {
-  margin-top: 20px;
-}
-
-.ui-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 24px;
 }
 
 .ui-form-stack {
@@ -1620,9 +1574,9 @@ textarea {
   width: 100%;
 }
 
-/* Vertical rhythm between dashboard blocks (KPI → charts → targets → lists) */
-.dash-sections > * + * {
-  margin-top: var(--space-6);
+.dash-analytics > .pf-panel,
+.qms-analytics > .pf-panel {
+  margin-bottom: 0;
 }
 
 .dash-topbar {
@@ -2349,7 +2303,7 @@ textarea {
 .import-page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-5);
   width: 100%;
 }
 
@@ -2735,7 +2689,7 @@ textarea {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  gap: 12px;
+  gap: var(--space-5);
 }
 
 .audit-logs-page__table-zone {
@@ -2856,7 +2810,7 @@ textarea {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .pf-bar__left {
@@ -2865,7 +2819,7 @@ textarea {
   gap: 8px;
   flex: 1;
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .pf-bar__right {
@@ -3445,12 +3399,19 @@ textarea {
 }
 
 /* —— Template manager —— */
+.tpl-manager {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  width: 100%;
+}
+
 .tpl-manager__head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 20px;
+  margin-bottom: 0;
 }
 
 .tpl-manager__title {
@@ -4163,6 +4124,139 @@ textarea {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
+}
+
+/* ── Scope picker (custom role permissions) ───────────────── */
+.scope-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: min(52vh, 420px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.scope-picker__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-bg);
+  padding-bottom: 4px;
+}
+
+.scope-picker__title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.scope-picker__desc {
+  margin: 4px 0 0;
+  font-size: 0.8125rem;
+  color: var(--color-muted-fg);
+}
+
+.scope-picker__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.scope-picker__group {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.scope-picker__group-head {
+  padding: 8px 10px;
+  background: var(--color-muted);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.scope-picker__group-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.scope-picker__group-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.scope-picker__group-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.scope-picker__group-count {
+  font-size: 0.75rem;
+  color: var(--color-muted-fg);
+}
+
+.scope-picker__group-desc {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  color: var(--color-muted-fg);
+}
+
+.scope-picker__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.scope-picker__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--color-border);
+  cursor: pointer;
+}
+
+.scope-picker__item:first-child {
+  border-top: 0;
+}
+
+.scope-picker__item--checked {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.scope-picker__item input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.scope-picker__item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.scope-picker__item-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.scope-picker__item-hint {
+  font-size: 0.75rem;
+  color: var(--color-muted-fg);
+}
+
+.scope-picker__item-slug {
+  font-size: 0.6875rem;
+  color: var(--color-muted-fg);
 }
 
 /* ── DateRangePicker primitive ────────────────────────────── */

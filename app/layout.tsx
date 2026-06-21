@@ -7,6 +7,7 @@ import "./globals.css";
 import "../styles/shell.css";
 import "../styles/ui-components.css";
 import "../styles/tables.css";
+import "../styles/filter-sidebar.css";
 import "./audit-form.css";
 import "./analytics.css";
 import "./platform.css";

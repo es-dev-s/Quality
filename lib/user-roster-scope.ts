@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import {
   fetchQmApprovedAgentUserIds,
   fetchQmAssignedAgentUserIds,
+  fetchVisibleAgentUserIds,
 } from "@/lib/audit/agent-assignment-scope";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import type { SessionRole } from "@/lib/rbac";
@@ -28,6 +29,26 @@ export async function buildManagedUsersWhere(
 
   if (role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
     const scopedAgentIds = await fetchQmScopedAgentUserIds(userId);
+    return {
+      OR: [
+        { createdById: userId },
+        ...(scopedAgentIds.length > 0
+          ? [
+              {
+                id: { in: scopedAgentIds },
+                role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
+              },
+            ]
+          : []),
+      ],
+    };
+  }
+
+  if (
+    role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR ||
+    role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
+  ) {
+    const scopedAgentIds = await fetchVisibleAgentUserIds(userId, role.slug);
     return {
       OR: [
         { createdById: userId },

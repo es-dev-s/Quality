@@ -2,6 +2,12 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { Calendar, Download, Printer } from "lucide-react";
+import { FilterTriggerButton } from "@/components/filters/filter-trigger-button";
+import {
+  FilterSidebar,
+  FilterSidebarSection,
+} from "@/components/filters/filter-sidebar";
+import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
 import {
   DataTablePanel,
   usePaginatedRows,
@@ -35,6 +41,7 @@ export function ExecutiveReport({ canExport = false }: { canExport?: boolean }) 
   const [appliedRange, setAppliedRange] = useState(initial);
   const [data, setData] = useState<ReportPageData | null>(null);
   const [isPending, startTransition] = useTransition();
+  const filterSidebar = useFilterSidebar();
   const { beginRequest } = useStaleRequestGuard();
 
   const pagination = usePaginatedRows(data?.rows ?? []);
@@ -63,8 +70,73 @@ export function ExecutiveReport({ canExport = false }: { canExport?: boolean }) 
 
   return (
     <div className="platform-report" id="executive-report">
-      <div className="platform-report__toolbar">
-        <div className="platform-report__dates">
+      <div className="platform-report__toolbar platform-report__toolbar--compact">
+        <div className="platform-report__toolbar-summary">
+          <span className="table-filter-bar__meta">
+            {data
+              ? `${data.stats.total} audit${data.stats.total === 1 ? "" : "s"} · ${appliedRange.start} to ${appliedRange.end}`
+              : "Executive report"}
+          </span>
+          <FilterTriggerButton
+            activeCount={1}
+            onClick={filterSidebar.openFilters}
+            label="Date range"
+          />
+        </div>
+        <div className="platform-report__actions">
+          <button
+            type="button"
+            className="ui-btn ui-btn--secondary ui-btn--sm"
+            onClick={() => window.print()}
+            disabled={!data?.rows.length}
+          >
+            <Printer size={15} aria-hidden />
+            Print
+          </button>
+          {canExport ? (
+            <button
+              type="button"
+              className="ui-btn ui-btn--primary ui-btn--sm"
+              onClick={handleExport}
+              disabled={!data?.rows.length}
+            >
+              <Download size={15} aria-hidden />
+              Export CSV ({data?.rows.length ?? 0})
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <FilterSidebar
+        open={filterSidebar.open}
+        onOpenChange={filterSidebar.onOpenChange}
+        title="Report date range"
+        description="Filter audits by audit date. Changes apply when you click Apply range."
+        activeCount={1}
+        footer={
+          <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
+            <button
+              type="button"
+              className="ui-btn ui-btn--secondary ui-btn--sm"
+              onClick={() => filterSidebar.closeFilters()}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="ui-btn ui-btn--primary ui-btn--sm"
+              disabled={isPending}
+              onClick={() => {
+                handleApply();
+                filterSidebar.closeFilters();
+              }}
+            >
+              Apply range
+            </button>
+          </div>
+        }
+      >
+        <FilterSidebarSection label="Audit date range">
           <label className="platform-report__date-field">
             <span>Start date (audit)</span>
             <div className="platform-report__date-input">
@@ -91,43 +163,13 @@ export function ExecutiveReport({ canExport = false }: { canExport?: boolean }) 
               />
             </div>
           </label>
-          <button
-            type="button"
-            className="ui-btn ui-btn--primary ui-btn--sm"
-            onClick={handleApply}
-            disabled={isPending}
-          >
-            Apply range
-          </button>
-        </div>
-        <div className="platform-report__actions">
-          <button
-            type="button"
-            className="ui-btn ui-btn--secondary ui-btn--sm"
-            onClick={() => window.print()}
-            disabled={!data?.rows.length}
-          >
-            <Printer size={15} aria-hidden />
-            Print
-          </button>
-          {canExport ? (
-            <button
-              type="button"
-              className="ui-btn ui-btn--primary ui-btn--sm"
-              onClick={handleExport}
-              disabled={!data?.rows.length}
-            >
-              <Download size={15} aria-hidden />
-              Export CSV ({data?.rows.length ?? 0})
-            </button>
-          ) : null}
-        </div>
-      </div>
+        </FilterSidebarSection>
+      </FilterSidebar>
 
       <LoadingZone
         loading={isPending}
         label={data ? "Refreshing report…" : "Loading report…"}
-        className="loading-zone--min"
+        className="loading-zone--min loading-zone--stack"
       >
       {data && data.stats.total === 0 && (
         <p className="platform-empty">
