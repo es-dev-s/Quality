@@ -6,6 +6,7 @@ import { Search, UserPlus } from "lucide-react";
 import { Badge } from "@/components/primitives/badge";
 import { Button } from "@/components/primitives/button";
 import { Input } from "@/components/primitives/field";
+import { LoadingZone } from "@/components/primitives/loading-zone";
 import {
   DataTablePanel,
   usePaginatedRows,
@@ -100,6 +101,7 @@ export function AgentsTable({
       </div>
 
       <div className={embedded ? "settings-tab-layout__body" : undefined}>
+        <LoadingZone className={embedded ? "loading-zone--fill" : undefined}>
         <DataTablePanel
           pagination={pagination}
           fillViewport={embedded}
@@ -153,6 +155,7 @@ export function AgentsTable({
             role. Pre-named agent lists are no longer used.
           </p>
         )}
+        </LoadingZone>
       </div>
     </div>
   );

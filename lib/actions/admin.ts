@@ -450,6 +450,7 @@ export async function bulkDeleteUsers(userIds: string[]) {
 
   if (deleted > 0) {
     revalidatePath("/settings");
+    invalidateUserCaches(session.user.id);
   }
 
   return {
