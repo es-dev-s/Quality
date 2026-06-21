@@ -8,6 +8,7 @@ import { AgentsTable } from "@/components/admin/agents-table";
 
 import { InteractionConfigManager } from "@/components/admin/interaction-config-manager";
 
+import { ConnectedUsersPanel } from "@/components/admin/connected-users-panel";
 import { TeamManagement } from "@/components/admin/team-management";
 
 import { UsersTable } from "@/components/admin/users-table";
@@ -18,6 +19,7 @@ import { useToast } from "@/components/primitives/toast";
 
 import type { AgentListItem } from "@/lib/actions/agents";
 
+import type { ConnectedUserRow } from "@/lib/actions/user-connections";
 import type { getTeamManagementData } from "@/lib/actions/user-provisioning";
 
 import type { InteractionConfig } from "@/lib/audit/types";
@@ -78,7 +80,7 @@ type Role = {
 
 
 
-type TabId = "agents" | "interaction" | "users" | "roles" | "team";
+type TabId = "agents" | "interaction" | "users" | "roles" | "team" | "connected";
 
 
 
@@ -114,6 +116,10 @@ type SettingsManagementProps = {
 
   canManageInteraction: boolean;
 
+  canViewConnections: boolean;
+
+  connectedUsers: ConnectedUserRow[];
+
 };
 
 
@@ -145,6 +151,10 @@ export function SettingsManagement({
   interactionConfigVersion,
 
   canManageInteraction,
+
+  canViewConnections,
+
+  connectedUsers,
 
 }: SettingsManagementProps) {
 
@@ -315,6 +325,38 @@ export function SettingsManagement({
 
         )}
 
+        {canViewConnections && (
+
+          <button
+
+            type="button"
+
+            role="tab"
+
+            aria-selected={tab === "connected"}
+
+            className={
+
+              tab === "connected"
+
+                ? "segmented-tabs__btn segmented-tabs__btn--active"
+
+                : "segmented-tabs__btn"
+
+            }
+
+            onClick={() => setTab("connected")}
+
+          >
+
+            Connected
+
+            <span className="segmented-tabs__count">{connectedUsers.length}</span>
+
+          </button>
+
+        )}
+
         {canManageUsers && (
 
           <button
@@ -466,6 +508,30 @@ export function SettingsManagement({
           >
 
             {tab === "team" && <TeamManagement {...teamData} embedded />}
+
+          </div>
+
+        )}
+
+
+
+        {canViewConnections && (
+
+          <div
+
+            role="tabpanel"
+
+            className="settings-page__panel"
+
+            hidden={tab !== "connected"}
+
+          >
+
+            {tab === "connected" && (
+
+              <ConnectedUsersPanel rows={connectedUsers} embedded />
+
+            )}
 
           </div>
 

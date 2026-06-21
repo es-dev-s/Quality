@@ -3,6 +3,7 @@ import { PageFrame } from "@/components/dashboard/page-frame";
 import { SettingsPageSkeleton } from "@/components/dashboard/page-skeletons";
 import { SettingsManagement } from "@/components/settings/settings-management";
 import { getAgentsForManagement } from "@/lib/actions/agents";
+import { getConnectedUsersOverview } from "@/lib/actions/user-connections";
 import { getRoles, getUsers } from "@/lib/actions/admin";
 import { getTeamManagementData } from "@/lib/actions/user-provisioning";
 import { getInteractionConfigManagerData } from "@/lib/actions/interaction-config";
@@ -12,17 +13,28 @@ import {
   canManageRoles,
   canManageSettings,
   canManageUsers,
+  canViewUserConnections,
 } from "@/lib/rbac";
 
-type SettingsTab = "agents" | "interaction" | "users" | "roles" | "team";
+type SettingsTab =
+  | "agents"
+  | "interaction"
+  | "users"
+  | "roles"
+  | "team"
+  | "connected";
 
 function resolveInitialTab(
   value: string | undefined,
   canManageInteraction: boolean,
-  canAccessTeam: boolean
+  canAccessTeam: boolean,
+  canViewConnections: boolean
 ): SettingsTab {
   if (value === "interaction") {
     return canManageInteraction ? "interaction" : canAccessTeam ? "team" : "agents";
+  }
+  if (value === "connected") {
+    return canViewConnections ? "connected" : "agents";
   }
   if (value === "users" || value === "roles" || value === "team") {
     return value;
@@ -45,13 +57,16 @@ async function SettingsContent({
   const manageRoles = canManageRoles(session.user.role);
   const showTeam = canAccessTeamManagement(session.user.role);
   const canManageInteraction = canManageSettings(session.user.role);
+  const showConnections = canViewUserConnections(session.user.role);
   const initialTab = resolveInitialTab(
     params.tab,
     canManageInteraction,
-    showTeam
+    showTeam,
+    showConnections
   );
 
-  const [interaction, agentsData, users, roles, teamData] = await Promise.all([
+  const [interaction, agentsData, users, roles, teamData, connectedUsers] =
+    await Promise.all([
     canManageInteraction
       ? getInteractionConfigManagerData()
       : Promise.resolve(null),
@@ -59,6 +74,7 @@ async function SettingsContent({
     manageUsers ? getUsers() : Promise.resolve([]),
     manageRoles ? getRoles() : Promise.resolve([]),
     showTeam ? getTeamManagementData() : Promise.resolve(null),
+    showConnections ? getConnectedUsersOverview() : Promise.resolve([]),
   ]);
 
   return (
@@ -76,6 +92,8 @@ async function SettingsContent({
       interactionUpdatedAt={interaction?.updatedAt ?? ""}
       interactionConfigVersion={interaction?.configVersion ?? 0}
       canManageInteraction={canManageInteraction}
+      canViewConnections={showConnections}
+      connectedUsers={connectedUsers}
     />
   );
 }

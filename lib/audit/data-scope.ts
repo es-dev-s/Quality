@@ -6,10 +6,7 @@ import {
 } from "@/lib/permissions";
 import { isSuperAdmin } from "@/lib/rbac";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
-import {
-  fetchQmVisibleAgentNames,
-  fetchSupervisorTierVisibleAgentNames,
-} from "@/lib/audit/agent-assignment-scope";
+import { fetchAgentRosterNames } from "@/lib/audit/agent-roster";
 import { caseInsensitiveIn } from "@/lib/audit/prisma-string-filters";
 import {
   fetchAgentUserAuditMatchNames,
@@ -61,7 +58,10 @@ export async function auditSubmissionScopeWhere(
   const roleSlug = ctx.role.slug as SystemRoleSlug;
 
   if (roleSlug === SYSTEM_ROLE_SLUGS.SUPERVISOR) {
-    const agentNames = await fetchSupervisorTierVisibleAgentNames(ctx.userId);
+    const agentNames = await fetchAgentRosterNames(
+      ctx.userId,
+      SYSTEM_ROLE_SLUGS.SUPERVISOR
+    );
     const agentFilter = caseInsensitiveIn(agentNames);
     if (!agentFilter) {
       return noAccessFilter();
@@ -70,7 +70,10 @@ export async function auditSubmissionScopeWhere(
   }
 
   if (roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
-    const agentNames = await fetchQmVisibleAgentNames(ctx.userId);
+    const agentNames = await fetchAgentRosterNames(
+      ctx.userId,
+      SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
+    );
     const agentFilter = caseInsensitiveIn(agentNames);
     if (!agentFilter) {
       return noAccessFilter();
@@ -89,7 +92,7 @@ export async function auditSubmissionScopeWhere(
     }
     case SYSTEM_ROLE_SLUGS.QUALITY_ANALYST: {
       const [agentNames, auditorNames] = await Promise.all([
-        fetchSupervisorTierVisibleAgentNames(ctx.userId),
+        fetchAgentRosterNames(ctx.userId, SYSTEM_ROLE_SLUGS.QUALITY_ANALYST),
         fetchUserAuditMatchNamesById(ctx.userId),
       ]);
       const agentFilter = caseInsensitiveIn(agentNames);

@@ -6,10 +6,10 @@ import { requireAuth } from "@/lib/auth";
 import { requirePermission } from "@/lib/auth-guards";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
 import {
+  fetchAgentRosterEntries,
   fetchQmApprovedAgentUserIds,
   fetchQmAssignedAgentUserIds,
-  fetchSupervisorTierVisibleAgentNames,
-} from "@/lib/audit/agent-assignment-scope";
+} from "@/lib/audit/agent-roster";
 import { prisma } from "@/lib/prisma";
 import { PERMISSIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { isSuperAdmin, type SessionRole } from "@/lib/rbac";
@@ -275,75 +275,20 @@ export async function getMyVisibleAgents(): Promise<MyAgentRow[]> {
 
   if (
     slug === SYSTEM_ROLE_SLUGS.SUPERVISOR ||
-    slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
+    slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST ||
+    slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
   ) {
-    const [createdUsers, assignedRows, names] = await Promise.all([
-      prisma.user.findMany({
-        where: {
-          createdById: session.user.id,
-          role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
-          approvalStatus: "ACTIVE",
-          isActive: true,
-        },
-        select: { id: true, name: true, email: true },
-      }),
-      prisma.agentAssignment.findMany({
-        where: { assignedToId: session.user.id },
-        include: {
-          agent: { select: { id: true, name: true, email: true, isActive: true, approvalStatus: true } },
-        },
-      }),
-      fetchSupervisorTierVisibleAgentNames(session.user.id),
-    ]);
+    const entries = await fetchAgentRosterEntries(
+      session.user.id,
+      slug
+    );
 
-    const byId = new Map<string, MyAgentRow>();
-    for (const user of createdUsers) {
-      byId.set(user.id, {
-        id: user.id,
-        name: resolveRoleUserName(user),
-        email: user.email,
-        source: "created",
-      });
-    }
-    for (const row of assignedRows) {
-      if (!isLoginEligibleUser(row.agent)) continue;
-      if (!byId.has(row.agent.id)) {
-        byId.set(row.agent.id, {
-          id: row.agent.id,
-          name: resolveRoleUserName(row.agent),
-          email: row.agent.email,
-          source: "assigned",
-        });
-      }
-    }
-
-    // Ensure stable ordering aligned with visible names filter
-    void names;
-    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  if (slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
-    const approvedIds = await fetchQmApprovedAgentUserIds(session.user.id);
-    const assignedIds = await fetchQmAssignedAgentUserIds(session.user.id);
-    const userIds = [...new Set([...approvedIds, ...assignedIds])];
-    if (userIds.length === 0) return [];
-
-    const users = await prisma.user.findMany({
-      where: {
-        id: { in: userIds },
-        ...ACTIVE_USER_WHERE,
-      },
-      select: { id: true, name: true, email: true },
-    });
-
-    return users
-      .map((user) => ({
-        id: user.id,
-        name: resolveRoleUserName(user),
-        email: user.email,
-        source: "created" as const,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return entries.map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      email: entry.email,
+      source: entry.source === "provisioned" ? "created" : "assigned",
+    }));
   }
 
   return [];

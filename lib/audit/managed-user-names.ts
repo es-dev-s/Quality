@@ -1,12 +1,13 @@
 import { cache } from "react";
-import { fetchSupervisorTierVisibleAgentNames } from "@/lib/audit/agent-assignment-scope";
+import { fetchProvisionedAgentEntries } from "@/lib/audit/agent-roster";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
 import { withActiveUserFilter } from "@/lib/user-active-filter";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 
 export const fetchManagedAgentNames = cache(async (creatorId: string) => {
-  return fetchSupervisorTierVisibleAgentNames(creatorId);
+  const entries = await fetchProvisionedAgentEntries(creatorId);
+  return entries.map((entry) => entry.name);
 });
 
 export const fetchManagedAnalystNames = cache(async (creatorId: string) => {

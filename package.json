@@ -10,7 +10,7 @@
     "start:prod": "npm run clean && npm run build && npm run start",
     "lint": "eslint",
     "verify:resilience": "tsx scripts/verify-production-resilience.ts",
-    "verify:lan": "tsx scripts/verify-lan-config.ts",
+    "verify:form-supervisors": "tsx scripts/verify-form-supervisor-access.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",

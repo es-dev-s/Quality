@@ -1138,6 +1138,185 @@
   }
 }
 
+/* ── Settings → Connected tab ───────────────────────────── */
+
+.connected-users.settings-tab-layout {
+  min-height: 0;
+}
+
+.connected-users__footnote {
+  margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+}
+
+.connected-users__summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.connected-users__stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+}
+
+.connected-users__stat-value {
+  font-size: 1.25rem;
+  font-weight: var(--weight-semibold, 600);
+  color: var(--color-text-primary);
+  line-height: 1.2;
+}
+
+.connected-users__stat-label {
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--color-text-secondary);
+}
+
+.connected-users__col-expand {
+  width: 2.5rem;
+}
+
+.connected-users__expand-cell {
+  width: 2.5rem;
+  padding-left: var(--space-2);
+  padding-right: 0;
+}
+
+.connected-users__expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.connected-users__expand-btn:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+.connected-users__cell-primary {
+  display: block;
+  font-weight: var(--weight-semibold, 600);
+  color: var(--color-text-primary);
+}
+
+.connected-users__cell-secondary {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--color-text-secondary);
+}
+
+.connected-users__cell-hint {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--color-text-tertiary);
+}
+
+.connected-users__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-full, 999px);
+  background: var(--color-bg-secondary);
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: var(--weight-semibold, 600);
+  color: var(--color-text-primary);
+}
+
+.connected-users__expand-row td {
+  padding: 0;
+  background: var(--color-bg-secondary);
+  border-top: none;
+}
+
+.connected-users__expand-panel {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.connected-users__expand-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.connected-users__detail-block {
+  min-width: 0;
+}
+
+.connected-users__detail-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: var(--weight-semibold, 600);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.connected-users__detail-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.connected-users__detail-list--inline {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.connected-users__detail-name {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium, 500);
+  color: var(--color-text-primary);
+}
+
+.connected-users__detail-meta {
+  display: block;
+  margin-top: 1px;
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--color-text-secondary);
+}
+
+.connected-users__detail-single {
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .connected-users__summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .connected-users__expand-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .connected-users__summary {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ══════════════════════════════════════════════════════════
    ADI — Audit Detail modal  (spacing v2)
    Rhythm: 20px horizontal rail · 16px vertical gap · 8px inner

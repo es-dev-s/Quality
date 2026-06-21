@@ -9,10 +9,9 @@ import {
   type DataScopeContext,
   effectiveScopeName,
 } from "@/lib/audit/data-scope";
+import { fetchAgentRosterNames } from "@/lib/audit/agent-roster";
 import {
-  fetchQmVisibleAgentNames,
   fetchSupervisorNamesForAgentUserIds,
-  fetchSupervisorTierVisibleAgentNames,
   fetchVisibleAgentUserIds,
 } from "@/lib/audit/agent-assignment-scope";
 import { isSuperAdmin } from "@/lib/rbac";
@@ -34,15 +33,15 @@ async function resolveVisibleAgentNames(ctx: DataScopeContext): Promise<string[]
   const slug = ctx.role.slug as SystemRoleSlug;
 
   if (slug === SYSTEM_ROLE_SLUGS.SUPERVISOR) {
-    return fetchSupervisorTierVisibleAgentNames(ctx.userId);
+    return fetchAgentRosterNames(ctx.userId, SYSTEM_ROLE_SLUGS.SUPERVISOR);
   }
 
   if (slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
-    return fetchQmVisibleAgentNames(ctx.userId);
+    return fetchAgentRosterNames(ctx.userId, SYSTEM_ROLE_SLUGS.QUALITY_MANAGER);
   }
 
   if (slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
-    return fetchSupervisorTierVisibleAgentNames(ctx.userId);
+    return fetchAgentRosterNames(ctx.userId, SYSTEM_ROLE_SLUGS.QUALITY_ANALYST);
   }
 
   if (slug === SYSTEM_ROLE_SLUGS.AGENT) {
@@ -73,11 +72,18 @@ async function resolveVisibleSupervisorNames(
     return linked;
   }
 
-  if (slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER || slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
+  if (
+    slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER ||
+    slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
+  ) {
+    // Agents provisioned by a QA (not a supervisor) still need a supervisor field.
+    if (agentUserIds.length > 0) {
+      return fetchActiveSupervisorUserNames();
+    }
     return [];
   }
 
-  return fetchActiveSupervisorUserNames();
+  return [];
 }
 
 async function resolveVisibleAuditorNames(ctx: DataScopeContext): Promise<string[]> {

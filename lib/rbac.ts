@@ -130,6 +130,15 @@ export function canAccessTeamManagement(role?: SessionRole | null): boolean {
   );
 }
 
+/** Settings → Connected tab: user ↔ agent assignment graph. */
+export function canViewUserConnections(role?: SessionRole | null): boolean {
+  return (
+    canManageUsers(role) ||
+    canAssignAgents(role) ||
+    canReadManagedUsers(role)
+  );
+}
+
 export function canManageRoles(role?: SessionRole | null): boolean {
   return hasScope(role, PERMISSIONS.ADMIN_ROLES);
 }
