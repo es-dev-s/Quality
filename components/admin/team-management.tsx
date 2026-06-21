@@ -396,20 +396,39 @@ function TeamTabPanel({
   description,
   children,
   table = false,
+  bare = false,
 }: {
-  title: string;
+  title?: string;
   description?: string;
   children: ReactNode;
   table?: boolean;
+  /** Skip outer card chrome — content provides its own layout. */
+  bare?: boolean;
 }) {
+  if (bare) {
+    return (
+      <div
+        className={
+          table
+            ? "team-management__panel-body team-management__panel-body--table team-management__panel-body--bare"
+            : "team-management__panel-body team-management__panel-body--bare"
+        }
+      >
+        {children}
+      </div>
+    );
+  }
+
   return (
     <section className="team-management__panel">
-      <header className="team-management__panel-head">
-        <h3 className="team-management__panel-title">{title}</h3>
-        {description ? (
-          <p className="team-management__panel-desc">{description}</p>
-        ) : null}
-      </header>
+      {title ? (
+        <header className="team-management__panel-head">
+          <h3 className="team-management__panel-title">{title}</h3>
+          {description ? (
+            <p className="team-management__panel-desc">{description}</p>
+          ) : null}
+        </header>
+      ) : null}
       <div
         className={
           table
@@ -422,6 +441,8 @@ function TeamTabPanel({
     </section>
   );
 }
+
+type AssignmentView = "single" | "multiple" | "active";
 
 function AgentAssignmentPanel({
   assignableAgents,
@@ -439,7 +460,7 @@ function AgentAssignmentPanel({
   fillViewport?: boolean;
 }) {
   const { toast } = useToast();
-  const [mode, setMode] = useState<"single" | "multiple">("single");
+  const [view, setView] = useState<AssignmentView>("single");
   const [agentId, setAgentId] = useState(assignableAgents[0]?.id ?? "");
   const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
   const [assignToId, setAssignToId] = useState(assigneeOptions[0]?.id ?? "");
@@ -460,11 +481,30 @@ function AgentAssignmentPanel({
     [assignableAgents, alreadyAssignedToTarget]
   );
 
+  const hiddenAssignedCount =
+    assignableAgents.length - selectableAgents.length;
+
   useEffect(() => {
-    if (!agentId && assignableAgents[0]?.id) {
-      setAgentId(assignableAgents[0].id);
+    if (assignableAgents.length === 0 && agentAssignments.length > 0) {
+      setView("active");
     }
-  }, [agentId, assignableAgents]);
+  }, [assignableAgents.length, agentAssignments.length]);
+
+  useEffect(() => {
+    if (!assignToId && assigneeOptions[0]?.id) {
+      setAssignToId(assigneeOptions[0].id);
+    }
+  }, [assignToId, assigneeOptions]);
+
+  useEffect(() => {
+    if (agentId && alreadyAssignedToTarget.has(agentId)) {
+      setAgentId(selectableAgents[0]?.id ?? "");
+      return;
+    }
+    if (!agentId && selectableAgents[0]?.id) {
+      setAgentId(selectableAgents[0].id);
+    }
+  }, [agentId, selectableAgents, alreadyAssignedToTarget]);
 
   useEffect(() => {
     setSelectedAgentIds((current) =>
@@ -478,6 +518,24 @@ function AgentAssignmentPanel({
   const someSelectableSelected =
     selectableAgents.some((agent) => selectedAgentIds.includes(agent.id)) &&
     !allSelectableSelected;
+
+  const assigneeSelectOptions = useMemo(
+    () =>
+      assigneeOptions.map((user) => ({
+        value: user.id,
+        label: `${user.name} · ${user.roleName}`,
+      })),
+    [assigneeOptions]
+  );
+
+  const agentSelectOptions = useMemo(
+    () =>
+      selectableAgents.map((agent) => ({
+        value: agent.id,
+        label: agent.name,
+      })),
+    [selectableAgents]
+  );
 
   function toggleAgentSelection(id: string) {
     setSelectedAgentIds((current) =>
@@ -501,7 +559,7 @@ function AgentAssignmentPanel({
       return;
     }
 
-    if (mode === "single") {
+    if (view === "single") {
       if (!agentId) {
         toast("Select an agent.", "error");
         return;
@@ -514,9 +572,12 @@ function AgentAssignmentPanel({
         }
         toast("Agent assigned.", "success");
         onChanged();
+        setView("active");
       });
       return;
     }
+
+    if (view !== "multiple") return;
 
     if (selectedAgentIds.length === 0) {
       toast("Select at least one agent.", "error");
@@ -540,6 +601,7 @@ function AgentAssignmentPanel({
       toast(message, "success");
       setSelectedAgentIds([]);
       onChanged();
+      setView("active");
     });
   }
 
@@ -558,214 +620,287 @@ function AgentAssignmentPanel({
     });
   }
 
-  if (assignableAgents.length === 0) {
+  if (assignableAgents.length === 0 && agentAssignments.length === 0) {
     return (
-      <p className="platform-empty platform-empty--inline">
-        Approve agent requests first — then assign them to quality analysts.
-      </p>
+      <div className="team-assignments team-assignments--empty">
+        <p className="platform-empty platform-empty--inline">
+          Approve agent requests first — then assign them to quality analysts here.
+        </p>
+      </div>
     );
   }
 
+  const assignDisabled =
+    pending ||
+    !assignToId ||
+    assigneeOptions.length === 0 ||
+    assignableAgents.length === 0 ||
+    (view === "single"
+      ? !agentId || selectableAgents.length === 0
+      : selectedAgentIds.length === 0);
+
+  const showAssignForm = view === "single" || view === "multiple";
+
   return (
-    <>
-      <div
-        className={
-          mode === "multiple"
-            ? "team-management__assign-form team-management__assign-form--multiple"
-            : "team-management__assign-form"
-        }
-      >
-        <Field className="team-management__assign-mode">
-          <Label>Assignment mode</Label>
-          <div
-            className="segmented-tabs team-management__assign-mode-tabs"
-            role="tablist"
-            aria-label="Assignment mode"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === "single"}
-              className={
-                mode === "single"
-                  ? "segmented-tabs__btn segmented-tabs__btn--active"
-                  : "segmented-tabs__btn"
-              }
-              disabled={pending}
-              onClick={() => setMode("single")}
-            >
-              Single agent
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === "multiple"}
-              className={
-                mode === "multiple"
-                  ? "segmented-tabs__btn segmented-tabs__btn--active"
-                  : "segmented-tabs__btn"
-              }
-              disabled={pending}
-              onClick={() => setMode("multiple")}
-            >
-              Multiple agents
-            </button>
-          </div>
-        </Field>
-
-        <Field>
-          <Label htmlFor="assign-to">Quality analyst</Label>
-          <Select
-            id="assign-to"
-            className="ui-select"
-            value={assignToId}
-            disabled={pending || assigneeOptions.length === 0}
-            onChange={(e) => setAssignToId(e.target.value)}
-          >
-            {assigneeOptions.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.name} — {user.roleName}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        {mode === "single" ? (
-          <Field>
-            <Label htmlFor="assign-agent">Agent</Label>
-            <Select
-              id="assign-agent"
-              className="ui-select"
-              value={agentId}
-              disabled={pending}
-              onChange={(e) => setAgentId(e.target.value)}
-            >
-              {assignableAgents.map((agent) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name} ({agent.email})
-                  {alreadyAssignedToTarget.has(agent.id)
-                    ? " — already assigned"
-                    : ""}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        ) : (
-          <Field className="team-management__agent-picker-field">
-            <div className="team-management__agent-picker-head">
-              <Label htmlFor="assign-agent-all">Agents</Label>
-              <span className="team-management__agent-picker-count">
-                {selectedAgentIds.length} selected
-              </span>
-            </div>
-            <div className="team-management__agent-picker">
-              <label className="team-management__agent-picker-row team-management__agent-picker-row--all">
-                <input
-                  id="assign-agent-all"
-                  type="checkbox"
-                  checked={allSelectableSelected}
-                  ref={(el) => {
-                    if (el) el.indeterminate = someSelectableSelected;
-                  }}
-                  disabled={pending || selectableAgents.length === 0}
-                  onChange={toggleAllSelectable}
-                />
-                <span>Select all available</span>
-              </label>
-              {assignableAgents.map((agent) => {
-                const alreadyAssigned = alreadyAssignedToTarget.has(agent.id);
-                return (
-                  <label
-                    key={agent.id}
-                    className={
-                      alreadyAssigned
-                        ? "team-management__agent-picker-row team-management__agent-picker-row--disabled"
-                        : "team-management__agent-picker-row"
-                    }
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedAgentIds.includes(agent.id)}
-                      disabled={pending || alreadyAssigned}
-                      onChange={() => toggleAgentSelection(agent.id)}
-                    />
-                    <span>
-                      {agent.name}
-                      <span className="team-management__agent-picker-email">
-                        {agent.email}
-                      </span>
-                      {alreadyAssigned ? (
-                        <span className="team-management__agent-picker-note">
-                          Already assigned
-                        </span>
-                      ) : null}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </Field>
-        )}
-
-        <Button
-          type="button"
-          disabled={
-            pending ||
-            !assignToId ||
-            (mode === "single"
-              ? !agentId
-              : selectedAgentIds.length === 0)
-          }
-          onClick={handleAssign}
-        >
-          {mode === "single"
-            ? "Assign agent"
-            : `Assign ${selectedAgentIds.length || ""} agent${
-                selectedAgentIds.length === 1 ? "" : "s"
-              }`.trim()}
-        </Button>
+    <div className="team-assignments">
+      <div className="team-assignments__summary" aria-label="Assignment overview">
+        <div className="team-assignments__stat">
+          <span className="team-assignments__stat-value">
+            {assignableAgents.length}
+          </span>
+          <span className="team-assignments__stat-label">Approved agents</span>
+        </div>
+        <div className="team-assignments__stat">
+          <span className="team-assignments__stat-value">
+            {assigneeOptions.length}
+          </span>
+          <span className="team-assignments__stat-label">Quality analysts</span>
+        </div>
+        <div className="team-assignments__stat">
+          <span className="team-assignments__stat-value">
+            {agentAssignments.length}
+          </span>
+          <span className="team-assignments__stat-label">Active links</span>
+        </div>
       </div>
 
-      {agentAssignments.length === 0 ? (
-        <p className="platform-empty platform-empty--inline">
-          No active assignments yet.
-        </p>
-      ) : (
-        <DataTablePanel
-          pagination={assignmentPagination}
-          fillViewport={fillViewport}
-          renderTable={(slice) => (
-            <table className="ui-table platform-report-table settings-table">
-              <thead>
-                <tr>
-                  <th>Agent</th>
-                  <th>Quality analyst</th>
-                  <th className="col-actions" aria-label="Actions" />
-                </tr>
-              </thead>
-              <tbody>
-                {slice.map((row) => (
-                  <tr key={row.id} className="settings-table__row">
-                    <td style={{ fontWeight: 600 }}>{row.agentName}</td>
-                    <td>{row.assignToName}</td>
-                    <TableRowActionsCell ariaLabel={`Assignment for ${row.agentName}`}>
-                      <TableRowAction
-                        variant="danger"
+      <div className="team-assignments__shell">
+        <div
+          className="team-assignments__view-tabs segmented-tabs"
+          role="tablist"
+          aria-label="Agent assignment views"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "single"}
+            className={
+              view === "single"
+                ? "segmented-tabs__btn segmented-tabs__btn--active"
+                : "segmented-tabs__btn"
+            }
+            disabled={pending || assignableAgents.length === 0}
+            onClick={() => setView("single")}
+          >
+            One agent
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "multiple"}
+            className={
+              view === "multiple"
+                ? "segmented-tabs__btn segmented-tabs__btn--active"
+                : "segmented-tabs__btn"
+            }
+            disabled={pending || assignableAgents.length === 0}
+            onClick={() => setView("multiple")}
+          >
+            Multiple
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "active"}
+            className={
+              view === "active"
+                ? "segmented-tabs__btn segmented-tabs__btn--active"
+                : "segmented-tabs__btn"
+            }
+            disabled={pending}
+            onClick={() => setView("active")}
+          >
+            Active assignments
+            <span className="segmented-tabs__count">{agentAssignments.length}</span>
+          </button>
+        </div>
+
+        {showAssignForm ? (
+          <section
+            className="team-assignments__compose"
+            aria-labelledby="team-assign-compose-title"
+          >
+            <p id="team-assign-compose-title" className="team-assignments__compose-lead">
+              {view === "single"
+                ? "Link one approved agent to a quality analyst."
+                : "Select several agents and assign them to one quality analyst."}
+            </p>
+
+            <div className="team-assignments__fields">
+              <Field>
+                <Label htmlFor="assign-to">Quality analyst</Label>
+                <Select
+                  id="assign-to"
+                  className="ui-select"
+                  value={assignToId}
+                  disabled={pending || assigneeOptions.length === 0}
+                  options={assigneeSelectOptions}
+                  onChange={(e) => setAssignToId(e.target.value)}
+                />
+              </Field>
+
+              {view === "single" ? (
+                <Field>
+                  <Label htmlFor="assign-agent">Agent</Label>
+                  <Select
+                    id="assign-agent"
+                    className="ui-select"
+                    value={agentId}
+                    disabled={pending || selectableAgents.length === 0}
+                    options={agentSelectOptions}
+                    onChange={(e) => setAgentId(e.target.value)}
+                  />
+                  {selectableAgents.length === 0 ? (
+                    <p className="ui-hint team-assignments__field-hint">
+                      All approved agents are already assigned to this analyst.
+                    </p>
+                  ) : hiddenAssignedCount > 0 ? (
+                    <p className="ui-hint team-assignments__field-hint">
+                      {hiddenAssignedCount} already linked to this analyst (hidden).
+                    </p>
+                  ) : null}
+                </Field>
+              ) : null}
+            </div>
+
+            {view === "multiple" ? (
+              <Field className="team-assignments__picker">
+                <div className="team-assignments__picker-head">
+                  <Label htmlFor="assign-agent-all">Select agents</Label>
+                  <span className="team-assignments__picker-meta">
+                    {selectedAgentIds.length} of {selectableAgents.length} selected
+                  </span>
+                </div>
+                {selectableAgents.length === 0 ? (
+                  <p className="ui-hint team-assignments__field-hint">
+                    All approved agents are already assigned to this analyst.
+                  </p>
+                ) : (
+                  <div className="team-assignments__picker-list">
+                    <label className="team-assignments__picker-row team-assignments__picker-row--all">
+                      <input
+                        id="assign-agent-all"
+                        type="checkbox"
+                        checked={allSelectableSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = someSelectableSelected;
+                        }}
                         disabled={pending}
-                        onClick={() => handleRemove(row)}
+                        onChange={toggleAllSelectable}
+                      />
+                      <span>Select all available</span>
+                    </label>
+                    {selectableAgents.map((agent) => (
+                      <label
+                        key={agent.id}
+                        className="team-assignments__picker-row"
                       >
-                        <X size={14} aria-hidden />
-                        Remove
-                      </TableRowAction>
-                    </TableRowActionsCell>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        />
-      )}
-    </>
+                        <input
+                          type="checkbox"
+                          checked={selectedAgentIds.includes(agent.id)}
+                          disabled={pending}
+                          onChange={() => toggleAgentSelection(agent.id)}
+                        />
+                        <span className="team-assignments__picker-label">
+                          <span className="team-assignments__picker-name">
+                            {agent.name}
+                          </span>
+                          <span className="team-assignments__picker-email">
+                            {agent.email}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {hiddenAssignedCount > 0 ? (
+                  <p className="ui-hint team-assignments__field-hint">
+                    {hiddenAssignedCount} already linked to this analyst (hidden).
+                  </p>
+                ) : null}
+              </Field>
+            ) : null}
+
+            <div className="team-assignments__compose-actions">
+              <Button type="button" disabled={assignDisabled} onClick={handleAssign}>
+                {view === "single"
+                  ? "Assign agent"
+                  : selectedAgentIds.length > 0
+                    ? `Assign ${selectedAgentIds.length} agent${
+                        selectedAgentIds.length === 1 ? "" : "s"
+                      }`
+                    : "Assign agents"}
+              </Button>
+            </div>
+          </section>
+        ) : (
+          <section
+            className="team-assignments__list team-assignments__list--solo"
+            aria-labelledby="team-assign-list-title"
+          >
+            <p id="team-assign-list-title" className="team-assignments__list-lead">
+              {agentAssignments.length === 0
+                ? "No active agent–analyst links yet."
+                : `${agentAssignments.length} active link${
+                    agentAssignments.length === 1 ? "" : "s"
+                  } in your scope.`}
+            </p>
+
+            {agentAssignments.length === 0 ? (
+              <p className="platform-empty platform-empty--inline team-assignments__empty">
+                Use One agent or Multiple to create your first assignment.
+              </p>
+            ) : (
+              <DataTablePanel
+                pagination={assignmentPagination}
+                fillViewport={fillViewport}
+                className="team-assignments__table-panel"
+                renderTable={(slice) => (
+                  <table className="ui-table platform-report-table settings-table team-assignments__table">
+                    <colgroup>
+                      <col style={{ width: "42%" }} />
+                      <col style={{ width: "42%" }} />
+                      <col className="col-actions" />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th>Agent</th>
+                        <th>Quality analyst</th>
+                        <th className="col-actions" aria-label="Actions" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {slice.map((row) => (
+                        <tr key={row.id} className="settings-table__row">
+                          <td>
+                            <span className="team-assignments__cell-primary">
+                              {row.agentName}
+                            </span>
+                          </td>
+                          <td>{row.assignToName}</td>
+                          <TableRowActionsCell
+                            ariaLabel={`Assignment for ${row.agentName}`}
+                          >
+                            <TableRowAction
+                              variant="danger"
+                              disabled={pending}
+                              onClick={() => handleRemove(row)}
+                            >
+                              <X size={14} aria-hidden />
+                              Remove
+                            </TableRowAction>
+                          </TableRowActionsCell>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              />
+            )}
+          </section>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -864,7 +999,7 @@ export function TeamManagement({
     if (canAssignAgents) {
       tabs.push({
         id: "assignments",
-        label: "Assignments",
+        label: "Agent assignments",
         count: agentAssignments.length,
       });
     }
@@ -1087,10 +1222,7 @@ export function TeamManagement({
           ) : null}
 
           {subTab === "assignments" && canAssignAgents ? (
-            <TeamTabPanel
-              title="Agent assignments"
-              description="Assign one or many approved agents to a quality analyst. Assignments refresh automatically every 10 seconds for assignees."
-            >
+            <TeamTabPanel bare>
               <AgentAssignmentPanel
                 assignableAgents={assignableAgents}
                 assigneeOptions={assigneeOptions}

@@ -226,9 +226,7 @@
   width: 100%;
 }
 
-body[data-filter-sidebar-open] .ui-custom-select__menu--portal {
-  z-index: 250;
-}
+/* Portaled menus use --z-dropdown-portal globally (above modals & sidebar). */
 
 /* ── Data table panel header (unified toolbar) ─────────────── */
 .platform-report-table-header {

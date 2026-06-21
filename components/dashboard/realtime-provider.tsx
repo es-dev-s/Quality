@@ -29,6 +29,10 @@ function isDataPage(pathname: string): boolean {
   );
 }
 
+function isRosterPage(pathname: string): boolean {
+  return pathname.startsWith("/settings") || pathname.startsWith("/forms");
+}
+
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const listenersRef = useRef(new Set<RealtimeListener>());
   const router = useRouter();
@@ -92,6 +96,14 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             ) {
               scheduleDataRefresh();
             }
+          }
+
+          if (
+            (event.type === "user:activated" ||
+              event.type === "user:deactivated") &&
+            isRosterPage(pathnameRef.current)
+          ) {
+            scheduleDataRefresh();
           }
         } catch {
           // ignore malformed payloads

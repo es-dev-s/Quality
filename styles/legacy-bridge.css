@@ -53,6 +53,7 @@
   --ds-ease-out: var(--ease-out);
 
   --ds-z-dropdown: var(--z-dropdown);
+  --ds-z-dropdown-portal: var(--z-dropdown-portal);
   --ds-z-modal: var(--z-modal);
   --ds-z-modal-stack: var(--z-modal-stack);
   --ds-z-toast: var(--z-toast);

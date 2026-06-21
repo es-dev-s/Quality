@@ -3,6 +3,7 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { CACHE_TAGS } from "@/lib/cache";
 import { requireAuth } from "@/lib/auth";
 import { ForbiddenError, permissionError, requirePermission } from "@/lib/auth-guards";
 import { PERMISSIONS, isLegacySystemRole } from "@/lib/permissions";
@@ -15,6 +16,7 @@ import { SUPERADMIN_ROLE_SLUG } from "@/lib/constants";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import {
   invalidateAuditCaches,
+  invalidateCacheTags,
   invalidateRoleCaches,
   invalidateUserCaches,
 } from "@/lib/invalidate-cache";
@@ -57,6 +59,8 @@ function normalizeJoiningDate(value: string | null | undefined) {
 
 function revalidateUserRosterPaths() {
   revalidateTag("interaction-config", "max");
+  revalidateTag(CACHE_TAGS.AGENTS, "max");
+  revalidateTag(CACHE_TAGS.AUDIT_SUBMISSIONS, "max");
   revalidatePath("/settings");
   revalidatePath("/forms/audit");
   revalidatePath("/forms");
@@ -826,10 +830,18 @@ export async function setUserActive(userId: string, isActive: boolean) {
 
   revalidateUserRosterPaths();
   revalidatePath("/settings");
-  invalidateUserCaches(session.user.id, {
-    type: isActive ? "user:activated" : "user:deactivated",
-    userId,
-  });
+  invalidateCacheTags(
+    [
+      CACHE_TAGS.USERS,
+      CACHE_TAGS.AGENTS,
+      CACHE_TAGS.AUDIT_SUBMISSIONS,
+      CACHE_TAGS.userAgents(session.user.id),
+    ],
+    {
+      type: isActive ? "user:activated" : "user:deactivated",
+      userId,
+    }
+  );
 
   return { success: true as const };
 }

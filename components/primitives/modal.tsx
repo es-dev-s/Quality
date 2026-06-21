@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { shouldDeferOverlayClose } from "@/lib/ui/open-overlays";
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
@@ -34,7 +35,10 @@ export function Modal({
     document.body.style.overflow = "hidden";
 
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        if (shouldDeferOverlayClose()) return;
+        onClose();
+      }
     }
 
     document.addEventListener("keydown", onKey);

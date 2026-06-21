@@ -70,6 +70,7 @@
   /* Z-index scale */
   --ds-z-sticky: 10;
   --ds-z-dropdown: 200;
+  --ds-z-dropdown-portal: 360;
   --ds-z-modal: 300;
   --ds-z-toast: 400;
 

@@ -1778,7 +1778,7 @@
 
 .audit-ref-attach__menu.audit-ref-attach__menu--portal {
   position: fixed;
-  z-index: calc(var(--z-modal-stack, 350) + 1);
+  z-index: var(--z-dropdown-portal);
   margin: 0;
 }
 

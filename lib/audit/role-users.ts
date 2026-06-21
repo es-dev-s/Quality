@@ -4,6 +4,7 @@ import {
   SYSTEM_ROLE_SLUGS,
   type SystemRoleSlug,
 } from "@/lib/permissions";
+import { withActiveUserFilter } from "@/lib/user-active-filter";
 
 export function resolveRoleUserName(user: {
   name: string | null;
@@ -53,12 +54,25 @@ function mapRoleUser(user: {
   };
 }
 
+export type FetchRoleUsersOptions = {
+  /** Include deactivated / non-approved users (admin management tables only). */
+  includeInactive?: boolean;
+};
+
 export const fetchUsersByRoleSlugs = cache(
-  async (slugs: SystemRoleSlug[]): Promise<RoleUserRecord[]> => {
+  async (
+    slugs: SystemRoleSlug[],
+    options: FetchRoleUsersOptions = {}
+  ): Promise<RoleUserRecord[]> => {
     if (slugs.length === 0) return [];
 
+    const roleFilter = { role: { slug: { in: slugs } } };
+    const where = options.includeInactive
+      ? roleFilter
+      : withActiveUserFilter(roleFilter);
+
     const users = await prisma.user.findMany({
-      where: { role: { slug: { in: slugs } } },
+      where,
       select: userSelect,
       orderBy: [{ name: "asc" }, { email: "asc" }],
     });
@@ -67,21 +81,29 @@ export const fetchUsersByRoleSlugs = cache(
   }
 );
 
-export async function fetchAgentRoleUsers(): Promise<RoleUserRecord[]> {
-  return fetchUsersByRoleSlugs([SYSTEM_ROLE_SLUGS.AGENT]);
+export async function fetchAgentRoleUsers(
+  options: FetchRoleUsersOptions = {}
+): Promise<RoleUserRecord[]> {
+  return fetchUsersByRoleSlugs([SYSTEM_ROLE_SLUGS.AGENT], options);
 }
 
-export async function fetchSupervisorRoleUsers(): Promise<RoleUserRecord[]> {
-  return fetchUsersByRoleSlugs([SYSTEM_ROLE_SLUGS.SUPERVISOR]);
+export async function fetchSupervisorRoleUsers(
+  options: FetchRoleUsersOptions = {}
+): Promise<RoleUserRecord[]> {
+  return fetchUsersByRoleSlugs([SYSTEM_ROLE_SLUGS.SUPERVISOR], options);
 }
 
-export async function fetchQualityAnalystRoleUsers(): Promise<RoleUserRecord[]> {
-  return fetchUsersByRoleSlugs([SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]);
+export async function fetchQualityAnalystRoleUsers(
+  options: FetchRoleUsersOptions = {}
+): Promise<RoleUserRecord[]> {
+  return fetchUsersByRoleSlugs([SYSTEM_ROLE_SLUGS.QUALITY_ANALYST], options);
 }
 
 /** @deprecated Use fetchQualityAnalystRoleUsers */
-export async function fetchAuditorRoleUsers(): Promise<RoleUserRecord[]> {
-  return fetchQualityAnalystRoleUsers();
+export async function fetchAuditorRoleUsers(
+  options: FetchRoleUsersOptions = {}
+): Promise<RoleUserRecord[]> {
+  return fetchQualityAnalystRoleUsers(options);
 }
 
 export async function fetchRoleUserNames(

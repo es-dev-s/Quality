@@ -39,7 +39,7 @@ export function getCachedAgentsForManagement(scope: CacheScopeKey) {
         return { agents: [], canManage: false };
       }
 
-      let rows = await fetchAgentRoleUsers();
+      let rows = await fetchAgentRoleUsers({ includeInactive: true });
 
       if (
         canReadManagedUsers(role) &&

@@ -105,6 +105,7 @@
 
   /* Z-index */
   --z-dropdown: 50;
+  --z-dropdown-portal: 360;
   --z-modal: 300;
   --z-modal-stack: 350;
   --z-toast: 400;

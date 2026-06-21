@@ -42,6 +42,7 @@ import {
   parseAuditPageLimit,
 } from "@/lib/cached-queries/audit-submissions";
 import { invalidateAuditCaches } from "@/lib/invalidate-cache";
+import { ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
 import {
   defaultAuditFeedback,
@@ -198,6 +199,7 @@ export async function saveAuditSubmission(
   const [interactionConfig, users] = await Promise.all([
     getInteractionConfig(),
     prisma.user.findMany({
+      where: ACTIVE_USER_WHERE,
       select: { name: true, email: true },
     }),
   ]);
@@ -680,6 +682,7 @@ export async function updateAuditSubmission(
   const [interactionConfig, users] = await Promise.all([
     getInteractionConfig(),
     prisma.user.findMany({
+      where: ACTIVE_USER_WHERE,
       select: { name: true, email: true },
     }),
   ]);

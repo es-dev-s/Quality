@@ -15,6 +15,7 @@ import { PERMISSIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { isSuperAdmin, type SessionRole } from "@/lib/rbac";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { invalidateAgentAssignmentCaches } from "@/lib/invalidate-cache";
+import { ACTIVE_USER_WHERE, isLoginEligibleUser, withActiveUserFilter } from "@/lib/user-active-filter";
 
 const assignSchema = z.object({
   agentId: z.string().min(1),
@@ -38,12 +39,10 @@ async function assertQmCanManageAgent(
   actorRole: SessionRole
 ) {
   const agent = await prisma.user.findFirst({
-    where: {
+    where: withActiveUserFilter({
       id: agentId,
       role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
-      approvalStatus: "ACTIVE",
-      isActive: true,
-    },
+    }),
     select: { id: true },
   });
   if (!agent) {
@@ -79,11 +78,18 @@ async function assertQmCanManageAgent(
 async function assertAssigneeIsQualityAnalyst(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: { role: { select: { slug: true } } },
+    select: {
+      isActive: true,
+      approvalStatus: true,
+      role: { select: { slug: true } },
+    },
   });
   if (!user) return "Assignee not found.";
   if (user.role.slug !== SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
     return "Agents can only be assigned to Quality Analyst users.";
+  }
+  if (!isLoginEligibleUser(user)) {
+    return "Assignee is not an active Quality Analyst.";
   }
   return null;
 }
@@ -300,7 +306,7 @@ export async function getMyVisibleAgents(): Promise<MyAgentRow[]> {
       });
     }
     for (const row of assignedRows) {
-      if (!row.agent.isActive || row.agent.approvalStatus !== "ACTIVE") continue;
+      if (!isLoginEligibleUser(row.agent)) continue;
       if (!byId.has(row.agent.id)) {
         byId.set(row.agent.id, {
           id: row.agent.id,
@@ -323,7 +329,10 @@ export async function getMyVisibleAgents(): Promise<MyAgentRow[]> {
     if (userIds.length === 0) return [];
 
     const users = await prisma.user.findMany({
-      where: { id: { in: userIds } },
+      where: {
+        id: { in: userIds },
+        ...ACTIVE_USER_WHERE,
+      },
       select: { id: true, name: true, email: true },
     });
 

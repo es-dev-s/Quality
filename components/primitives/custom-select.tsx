@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { resolveSelectPortalTarget } from "@/lib/ui/select-portal";
 import { Check, ChevronDown } from "lucide-react";
 import {
   Children,
@@ -102,6 +103,10 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
     const triggerRef = useRef<HTMLButtonElement>(null);
     const [open, setOpen] = useState(false);
     const [menuLayout, setMenuLayout] = useState<MenuLayout | null>(null);
+    const [portalTarget, setPortalTarget] = useState<{
+      container: HTMLElement;
+      zIndex: number;
+    } | null>(null);
     const [internalValue, setInternalValue] = useState(() =>
       String(value ?? defaultValue ?? "")
     );
@@ -127,11 +132,13 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
     useLayoutEffect(() => {
       if (!open || !triggerRef.current) {
         setMenuLayout(null);
+        setPortalTarget(null);
         return;
       }
 
       const updateLayout = () => {
         if (!triggerRef.current) return;
+        setPortalTarget(resolveSelectPortalTarget(triggerRef.current));
         setMenuLayout(measureMenu(triggerRef.current));
       };
 
@@ -187,17 +194,20 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
       triggerRef.current?.focus();
     }
 
-    const menuStyle: CSSProperties | undefined = menuLayout
-      ? {
-          top: menuLayout.top,
-          left: menuLayout.left,
-          width: menuLayout.width,
-          maxHeight: menuLayout.maxHeight,
-        }
-      : undefined;
+    const menuStyle: CSSProperties | undefined =
+      menuLayout && portalTarget
+        ? {
+            position: "fixed",
+            top: menuLayout.top,
+            left: menuLayout.left,
+            width: menuLayout.width,
+            maxHeight: menuLayout.maxHeight,
+            zIndex: portalTarget.zIndex,
+          }
+        : undefined;
 
     const menu =
-      open && menuLayout ? (
+      open && menuLayout && portalTarget ? (
         <ul
           id={listboxId}
           data-select-menu={listboxId}
@@ -271,8 +281,8 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
             aria-hidden
           />
         </button>
-        {typeof document !== "undefined" && menu
-          ? createPortal(menu, document.body)
+        {typeof document !== "undefined" && menu && portalTarget
+          ? createPortal(menu, portalTarget.container)
           : null}
       </div>
     );

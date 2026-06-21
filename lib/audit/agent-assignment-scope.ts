@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { ACTIVE_USER_WHERE, isLoginEligibleUser, withActiveUserFilter } from "@/lib/user-active-filter";
 
 export async function fetchAssignedAgentUserIds(assignedToId: string) {
   const rows = await prisma.agentAssignment.findMany({
@@ -14,10 +15,19 @@ export async function fetchAssignedAgentNames(assignedToId: string) {
   const rows = await prisma.agentAssignment.findMany({
     where: { assignedToId },
     include: {
-      agent: { select: { name: true, email: true } },
+      agent: {
+        select: {
+          name: true,
+          email: true,
+          isActive: true,
+          approvalStatus: true,
+        },
+      },
     },
   });
-  return rows.map((row) => resolveRoleUserName(row.agent));
+  return rows
+    .filter((row) => isLoginEligibleUser(row.agent))
+    .map((row) => resolveRoleUserName(row.agent));
 }
 
 export async function fetchQmApprovedAgentUserIds(qualityManagerId: string) {
@@ -57,8 +67,7 @@ export async function fetchQmVisibleAgentNames(qualityManagerId: string) {
     where: {
       id: { in: userIds },
       role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
-      isActive: true,
-      approvalStatus: "ACTIVE",
+      ...ACTIVE_USER_WHERE,
     },
     select: { name: true, email: true },
   });
@@ -69,12 +78,10 @@ export async function fetchQmVisibleAgentNames(qualityManagerId: string) {
 export async function fetchSupervisorTierVisibleAgentNames(userId: string) {
   const [created, assigned] = await Promise.all([
     prisma.user.findMany({
-      where: {
+      where: withActiveUserFilter({
         createdById: userId,
         role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
-        approvalStatus: "ACTIVE",
-        isActive: true,
-      },
+      }),
       select: { name: true, email: true },
     }),
     prisma.agentAssignment.findMany({
@@ -97,7 +104,7 @@ export async function fetchSupervisorTierVisibleAgentNames(userId: string) {
     names.add(resolveRoleUserName(user));
   }
   for (const row of assigned) {
-    if (row.agent.isActive && row.agent.approvalStatus === "ACTIVE") {
+    if (isLoginEligibleUser(row.agent)) {
       names.add(resolveRoleUserName(row.agent));
     }
   }
@@ -117,6 +124,8 @@ export async function fetchSupervisorNamesForAgentUserIds(
           select: {
             name: true,
             email: true,
+            isActive: true,
+            approvalStatus: true,
             role: { select: { slug: true } },
           },
         },
@@ -129,6 +138,8 @@ export async function fetchSupervisorNamesForAgentUserIds(
           select: {
             name: true,
             email: true,
+            isActive: true,
+            approvalStatus: true,
             role: { select: { slug: true } },
           },
         },
@@ -138,13 +149,21 @@ export async function fetchSupervisorNamesForAgentUserIds(
 
   const names = new Set<string>();
   for (const agent of agents) {
-    if (agent.createdBy?.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR) {
-      names.add(resolveRoleUserName(agent.createdBy));
+    const supervisor = agent.createdBy;
+    if (
+      supervisor?.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR &&
+      isLoginEligibleUser(supervisor)
+    ) {
+      names.add(resolveRoleUserName(supervisor));
     }
   }
   for (const row of assignments) {
-    if (row.assignedTo.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR) {
-      names.add(resolveRoleUserName(row.assignedTo));
+    const supervisor = row.assignedTo;
+    if (
+      supervisor.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR &&
+      isLoginEligibleUser(supervisor)
+    ) {
+      names.add(resolveRoleUserName(supervisor));
     }
   }
   return [...names].sort((a, b) => a.localeCompare(b));
@@ -159,26 +178,48 @@ export async function fetchVisibleAgentUserIds(
       fetchQmApprovedAgentUserIds(userId),
       fetchQmAssignedAgentUserIds(userId),
     ]);
-    return [...new Set([...approvedIds, ...assignedIds])];
+    const userIds = [...new Set([...approvedIds, ...assignedIds])];
+    if (userIds.length === 0) return [];
+
+    const activeAgents = await prisma.user.findMany({
+      where: {
+        id: { in: userIds },
+        role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
+        ...ACTIVE_USER_WHERE,
+      },
+      select: { id: true },
+    });
+    return activeAgents.map((user) => user.id);
   }
 
   if (
     roleSlug === SYSTEM_ROLE_SLUGS.SUPERVISOR ||
     roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
   ) {
-    const [created, assigned] = await Promise.all([
+    const [created, assignedRows] = await Promise.all([
       prisma.user.findMany({
-        where: {
+        where: withActiveUserFilter({
           createdById: userId,
           role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
-          approvalStatus: "ACTIVE",
-          isActive: true,
-        },
+        }),
         select: { id: true },
       }),
-      fetchAssignedAgentUserIds(userId),
+      prisma.agentAssignment.findMany({
+        where: { assignedToId: userId },
+        include: {
+          agent: {
+            select: { id: true, isActive: true, approvalStatus: true },
+          },
+        },
+      }),
     ]);
-    return [...new Set([...created.map((u) => u.id), ...assigned])];
+    const ids = new Set(created.map((user) => user.id));
+    for (const row of assignedRows) {
+      if (isLoginEligibleUser(row.agent)) {
+        ids.add(row.agent.id);
+      }
+    }
+    return [...ids];
   }
 
   return [];

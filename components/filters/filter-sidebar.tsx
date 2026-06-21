@@ -4,6 +4,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { hasOpenCustomSelect } from "@/lib/ui/open-overlays";
 
 type FilterSidebarProps = {
   open: boolean;
@@ -34,12 +35,6 @@ function useClientReady() {
     subscribeToClientReady,
     getClientReadySnapshot,
     getServerReadySnapshot
-  );
-}
-
-function hasOpenSelectMenu() {
-  return Boolean(
-    document.querySelector('.ui-custom-select[data-open="true"]')
   );
 }
 
@@ -82,7 +77,7 @@ export function FilterSidebar({
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
-      if (hasOpenSelectMenu()) return;
+      if (hasOpenCustomSelect()) return;
       event.preventDefault();
       onOpenChange(false);
     }

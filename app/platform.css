@@ -814,6 +814,330 @@
   }
 }
 
+/* ── Agent assignments (refined layout) ─────────────────── */
+.team-management__panel-body--bare {
+  padding: 0;
+  gap: 0;
+  background: transparent;
+  border: none;
+}
+
+.team-assignments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-height: 0;
+  flex: 1;
+}
+
+.team-assignments--empty {
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+}
+
+.team-assignments__summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.team-assignments__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+}
+
+.team-assignments__stat-value {
+  font-size: 1.25rem;
+  font-weight: var(--weight-semibold, 600);
+  line-height: 1.2;
+  color: var(--color-text-primary);
+  font-feature-settings: "tnum";
+}
+
+.team-assignments__stat-label {
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--color-text-secondary);
+}
+
+.team-assignments__compose,
+.team-assignments__list,
+.team-assignments__shell {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  overflow: hidden;
+}
+
+.team-assignments__shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  align-items: stretch;
+}
+
+.team-assignments__view-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--color-divider);
+  background: var(--color-bg-secondary);
+  border-radius: 0;
+}
+
+.team-assignments__compose,
+.team-assignments__list {
+  border: none;
+  border-radius: 0;
+}
+
+.team-assignments__compose {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  flex: 0 0 auto;
+}
+
+.team-assignments__compose-lead,
+.team-assignments__list-lead {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+
+.team-assignments__compose-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.team-assignments__section-title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--color-fg);
+}
+
+.team-assignments__section-desc {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+  max-width: 52ch;
+}
+
+.team-assignments__mode-tabs {
+  flex-shrink: 0;
+}
+
+.team-assignments__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.team-assignments__field-hint {
+  margin-top: var(--space-2);
+}
+
+.team-assignments__picker {
+  margin: 0;
+}
+
+.team-assignments__picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.team-assignments__picker-meta {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.team-assignments__picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+}
+
+.team-assignments__picker-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+.team-assignments__picker-row:hover {
+  background: var(--color-bg);
+}
+
+.team-assignments__picker-row--all {
+  font-weight: var(--weight-semibold, 600);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-1);
+  padding-bottom: var(--space-3);
+  border-radius: 0;
+}
+
+.team-assignments__picker-row input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.team-assignments__picker-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.team-assignments__picker-name {
+  font-weight: var(--weight-medium, 500);
+  color: var(--color-text-primary);
+}
+
+.team-assignments__picker-email {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-assignments__compose-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--color-divider);
+}
+
+.team-assignments__list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.team-assignments__list--solo {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  gap: var(--space-3);
+  flex: 1;
+  min-height: 0;
+}
+
+.team-assignments__list-head {
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-divider);
+  flex-shrink: 0;
+}
+
+.team-assignments__empty {
+  padding: var(--space-4) 0 0;
+}
+
+.team-assignments__list--solo .team-assignments__empty {
+  padding: var(--space-2) 0 0;
+}
+
+.team-assignments__table-panel {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  flex: 1;
+  min-height: 0;
+}
+
+.team-assignments__table-panel.platform-report-table-panel {
+  border: none;
+  box-shadow: none;
+}
+
+.team-assignments__cell-primary {
+  font-weight: var(--weight-semibold, 600);
+  color: var(--color-text-primary);
+}
+
+.team-management--embedded .team-assignments {
+  min-height: 0;
+}
+
+.team-management--embedded .team-assignments__shell {
+  flex: 1;
+  min-height: 0;
+}
+
+.team-management--embedded .team-assignments__list--solo {
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 768px) {
+  .team-assignments__summary {
+    grid-template-columns: 1fr;
+  }
+
+  .team-assignments__fields {
+    grid-template-columns: 1fr;
+  }
+
+  .team-assignments__compose-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .team-assignments__view-tabs {
+    padding: var(--space-2);
+  }
+
+  .team-assignments__view-tabs .segmented-tabs__btn {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .team-assignments__compose-actions .ui-btn,
+  .team-assignments__compose-actions button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 900px) {
+  .team-management__tabs.segmented-tabs {
+    flex-basis: 100%;
+  }
+
+  .team-management__toolbar-actions {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
 /* ══════════════════════════════════════════════════════════
    ADI — Audit Detail modal  (spacing v2)
    Rhythm: 20px horizontal rail · 16px vertical gap · 8px inner

@@ -3,6 +3,7 @@ import { fetchSupervisorTierVisibleAgentNames } from "@/lib/audit/agent-assignme
 import { resolveRoleUserName } from "@/lib/audit/role-users";
 import { scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { ACTIVE_USER_WHERE, withActiveUserFilter } from "@/lib/user-active-filter";
 import { prisma } from "@/lib/prisma";
 
 type SessionLike = Parameters<typeof scopedAuditWhere>[0];
@@ -26,11 +27,9 @@ export async function buildSupervisorAgentMap(
   }
 
   const supervisorUsers = await prisma.user.findMany({
-    where: {
+    where: withActiveUserFilter({
       role: { slug: SYSTEM_ROLE_SLUGS.SUPERVISOR },
-      isActive: true,
-      approvalStatus: "ACTIVE",
-    },
+    }),
     select: { id: true, name: true, email: true },
   });
 
