@@ -5,16 +5,28 @@ import { RefreshCw } from "lucide-react";
 import { FilterChipBar } from "@/components/filters/filter-chip-bar";
 import { FilterClearButton } from "@/components/filters/filter-clear-button";
 import { FilterTriggerButton } from "@/components/filters/filter-trigger-button";
+import { FilterSelect } from "@/components/filters/filter-select";
 import {
   FilterSidebar,
+  FilterSidebarGrid,
   FilterSidebarSection,
 } from "@/components/filters/filter-sidebar";
 import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
 import { useBusyAction } from "@/lib/hooks/use-busy-action";
 import { getAnalyticsData, type AnalyticsPageData } from "@/lib/actions/analytics";
+import {
+  ANALYTICS_PERIOD_PRESETS,
+  applyAnalyticsFilters,
+  EMPTY_ANALYTICS_INCLUDE_FILTERS,
+  extractAnalyticsFilterOptions,
+  hasActiveAnalyticsIncludeFilters,
+  type AnalyticsIncludeFilters,
+} from "@/lib/audit/analytics-filters";
 import { summaryChipClass } from "@/lib/audit/analytics-metrics";
+import type { DashboardPeriod } from "@/lib/audit/dashboard-metrics";
 import { LoadingZone } from "@/components/primitives/loading-zone";
 import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
+import { cn } from "@/lib/utils";
 import { AgentsTab } from "@/components/analytics/tabs/agents-tab";
 import { AuditorsTab } from "@/components/analytics/tabs/auditors-tab";
 import { ComplianceTab } from "@/components/analytics/tabs/compliance-tab";
@@ -41,106 +53,182 @@ type QmsAnalyticsProps = {
 
 export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
   const [tab, setTab] = useState<TabId>("overview");
-  const [liveData, setLiveData] = useState<AnalyticsPageData | null>(null);
-  const [dateRange, setDateRange] = useState<DateRangeValue>({ from: "", to: "" });
+  const [liveBase, setLiveBase] = useState<AnalyticsPageData | null>(null);
+  const [period, setPeriod] = useState<DashboardPeriod>("overall");
+  const [customRange, setCustomRange] = useState<DateRangeValue>({ from: "", to: "" });
+  const [includeFilters, setIncludeFilters] = useState<AnalyticsIncludeFilters>(
+    EMPTY_ANALYTICS_INCLUDE_FILTERS
+  );
   const filterSidebar = useFilterSidebar();
   const { busy: isLoading, run: runBusy } = useBusyAction();
   const [error, setError] = useState<string | null>(null);
 
-  const data = liveData ?? initialData;
-  const hasDateFilter = !!(dateRange.from || dateRange.to);
+  const baseData = liveBase ?? initialData;
+  const records = baseData.records;
+  const referenceNow = useMemo(
+    () => new Date(baseData.fetchedAt),
+    [baseData.fetchedAt]
+  );
 
-  function applyDateRange(range: DateRangeValue) {
-    setDateRange(range);
-    if (!range.from && !range.to) {
-      setLiveData(null);
-      setError(null);
-      return;
+  const filterOptions = useMemo(
+    () => extractAnalyticsFilterOptions(records),
+    [records]
+  );
+
+  const analyticsView = useMemo(
+    () =>
+      applyAnalyticsFilters(records, {
+        period,
+        customRange,
+        includeFilters,
+        referenceNow,
+      }),
+    [records, period, customRange, includeFilters, referenceNow]
+  );
+
+  const analytics = useMemo(
+    () => ({
+      kpis: analyticsView.kpis,
+      params: analyticsView.params,
+      teams: analyticsView.teams,
+      bottom_agents: analyticsView.bottom_agents,
+      top_agents: analyticsView.top_agents,
+      auditors: analyticsView.auditors,
+      fatal_by_team: analyticsView.fatal_by_team,
+      leaderboards: analyticsView.leaderboards,
+    }),
+    [analyticsView]
+  );
+
+  const hasCustomRange = !!(customRange.from || customRange.to);
+  const hasActiveFilters =
+    hasCustomRange ||
+    period !== "overall" ||
+    hasActiveAnalyticsIncludeFilters(includeFilters);
+
+  function updateFilter<K extends keyof AnalyticsIncludeFilters>(
+    key: K,
+    value: AnalyticsIncludeFilters[K]
+  ) {
+    setIncludeFilters((current) => ({ ...current, [key]: value }));
+  }
+
+  function clearFilters() {
+    setIncludeFilters(EMPTY_ANALYTICS_INCLUDE_FILTERS);
+    setCustomRange({ from: "", to: "" });
+    setPeriod("overall");
+  }
+
+  const filterChips = useMemo(() => {
+    const chips: { key: string; label: string; onRemove: () => void }[] = [];
+
+    if (hasCustomRange) {
+      chips.push({
+        key: "range",
+        label: [customRange.from, customRange.to].filter(Boolean).join(" — "),
+        onRemove: () => setCustomRange({ from: "", to: "" }),
+      });
+    } else if (period !== "overall") {
+      const item = ANALYTICS_PERIOD_PRESETS.find((entry) => entry.id === period);
+      chips.push({
+        key: "period",
+        label: item?.ariaLabel ?? "Period",
+        onRemove: () => setPeriod("overall"),
+      });
     }
+
+    if (includeFilters.agent) {
+      chips.push({
+        key: "agent",
+        label: `Agent: ${includeFilters.agent}`,
+        onRemove: () => updateFilter("agent", ""),
+      });
+    }
+    if (includeFilters.teamName) {
+      chips.push({
+        key: "team",
+        label: `Team: ${includeFilters.teamName}`,
+        onRemove: () => updateFilter("teamName", ""),
+      });
+    }
+    if (includeFilters.auditor) {
+      chips.push({
+        key: "auditor",
+        label: `QA: ${includeFilters.auditor}`,
+        onRemove: () => updateFilter("auditor", ""),
+      });
+    }
+
+    return chips;
+  }, [customRange, period, includeFilters, hasCustomRange]);
+
+  const sidebarFilterCount = filterChips.length;
+
+  const agentFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All agents" },
+      ...filterOptions.agents.map((name) => ({ value: name, label: name })),
+    ],
+    [filterOptions.agents]
+  );
+
+  const teamFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All teams" },
+      ...filterOptions.teamNames.map((name) => ({ value: name, label: name })),
+    ],
+    [filterOptions.teamNames]
+  );
+
+  const auditorFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All quality analysts" },
+      ...filterOptions.auditors.map((name) => ({ value: name, label: name })),
+    ],
+    [filterOptions.auditors]
+  );
+
+  function handleRefresh() {
     setError(null);
     runBusy(async () => {
       try {
-        const result = await getAnalyticsData(range.from || undefined, range.to || undefined);
-        setLiveData(result);
-      } catch {
-        setError("Failed to load analytics for this date range.");
-      }
-    });
-  }
-
-  function clearDateRange() {
-    applyDateRange({ from: "", to: "" });
-  }
-
-  function handleRefresh() {
-    runBusy(async () => {
-      try {
-        const result = await getAnalyticsData(
-          dateRange.from || undefined,
-          dateRange.to || undefined
-        );
-        setLiveData(result);
-        setError(null);
+        const result = await getAnalyticsData();
+        setLiveBase(result);
       } catch {
         setError("Refresh failed.");
       }
     });
   }
 
-  const analytics = useMemo(
-    () => ({
-      kpis: data.kpis,
-      params: data.params,
-      teams: data.teams,
-      bottom_agents: data.bottom_agents,
-      top_agents: data.top_agents,
-      auditors: data.auditors,
-      fatal_by_team: data.fatal_by_team,
-      leaderboards: data.leaderboards,
-    }),
-    [data]
-  );
-
   return (
     <div className="qms-analytics">
-
       <div className="pf-panel">
         <div className="pf-bar">
           <div className="pf-bar__left">
-            <span className={`qms-summary-chip ${summaryChipClass(data.kpis.overall_avg)}`}>
-              {data.kpis.overall_avg}% overall
+            <span className={`qms-summary-chip ${summaryChipClass(analytics.kpis.overall_avg)}`}>
+              {analytics.kpis.overall_avg}% overall
             </span>
             <span className="qms-summary-chip qms-summary-chip--danger">
-              {data.kpis.fatal_count} fatals
+              {analytics.kpis.fatal_count} fatals
             </span>
             <span className="qms-summary-chip qms-summary-chip--muted">
-              {data.kpis.total_audits.toLocaleString()} audits
-              {hasDateFilter && <span style={{ fontWeight: 500, opacity: 0.75 }}> (filtered)</span>}
+              {analytics.kpis.total_audits.toLocaleString()} audits
+              {hasActiveFilters ? (
+                <span style={{ fontWeight: 500, opacity: 0.75 }}> (filtered)</span>
+              ) : null}
             </span>
             <div className="pf-bar__chips">
-              <FilterChipBar
-                inline
-                showClearButton={false}
-                chips={
-                  hasDateFilter
-                    ? [
-                        {
-                          key: "date",
-                          label: [dateRange.from, dateRange.to].filter(Boolean).join(" — "),
-                          onRemove: clearDateRange,
-                        },
-                      ]
-                    : []
-                }
-              />
+              <FilterChipBar inline showClearButton={false} chips={filterChips} />
             </div>
           </div>
 
           <div className="pf-bar__right">
             <div className="pf-bar__filter-actions">
-              {hasDateFilter ? <FilterClearButton onClick={clearDateRange} /> : null}
+              {sidebarFilterCount > 0 ? (
+                <FilterClearButton onClick={clearFilters} />
+              ) : null}
               <FilterTriggerButton
-                activeCount={hasDateFilter ? 1 : 0}
+                activeCount={sidebarFilterCount}
                 onClick={filterSidebar.openFilters}
               />
             </div>
@@ -160,17 +248,21 @@ export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
           </div>
         </div>
 
-        {error ? <p className="pf-error" role="alert">{error}</p> : null}
+        {error ? (
+          <p className="pf-error" role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
 
       <FilterSidebar
         open={filterSidebar.open}
         onOpenChange={filterSidebar.onOpenChange}
         title="Analytics filters"
-        description="Choose a date range for all analytics tabs."
-        activeCount={hasDateFilter ? 1 : 0}
-        onClearAll={clearDateRange}
-        clearDisabled={!hasDateFilter}
+        description="Set the timeline and segment filters for all analytics tabs."
+        activeCount={sidebarFilterCount}
+        onClearAll={clearFilters}
+        clearDisabled={sidebarFilterCount === 0}
         footer={
           <button
             type="button"
@@ -181,12 +273,78 @@ export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
           </button>
         }
       >
-        <FilterSidebarSection label="Date range">
-          <DateRangePicker value={dateRange} onChange={applyDateRange} label="" />
+        <FilterSidebarSection label="Timeline">
+          <div
+            className="filter-sidebar-periods pf-periods"
+            role="tablist"
+            aria-label="Analytics time period"
+          >
+            {ANALYTICS_PERIOD_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                role="tab"
+                aria-selected={period === preset.id && !hasCustomRange}
+                aria-label={preset.ariaLabel}
+                title={preset.ariaLabel}
+                className={cn(
+                  "pf-period-btn",
+                  period === preset.id &&
+                    !hasCustomRange &&
+                    "pf-period-btn--active"
+                )}
+                onClick={() => {
+                  setCustomRange({ from: "", to: "" });
+                  setPeriod(preset.id);
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <DateRangePicker
+            value={customRange}
+            onChange={(value) => {
+              setCustomRange(value);
+              if (value.from || value.to) setPeriod("custom");
+            }}
+            label="Custom date range"
+          />
+        </FilterSidebarSection>
+
+        <FilterSidebarSection label="Segment">
+          <FilterSidebarGrid>
+            <label className="dash-filter">
+              <span>Agent</span>
+              <FilterSelect
+                value={includeFilters.agent}
+                onChange={(value) => updateFilter("agent", value)}
+                options={agentFilterOptions}
+                ariaLabel="Filter by agent"
+              />
+            </label>
+            <label className="dash-filter">
+              <span>Team</span>
+              <FilterSelect
+                value={includeFilters.teamName}
+                onChange={(value) => updateFilter("teamName", value)}
+                options={teamFilterOptions}
+                ariaLabel="Filter by team"
+              />
+            </label>
+            <label className="dash-filter">
+              <span>Quality analyst</span>
+              <FilterSelect
+                value={includeFilters.auditor}
+                onChange={(value) => updateFilter("auditor", value)}
+                options={auditorFilterOptions}
+                ariaLabel="Filter by quality analyst"
+              />
+            </label>
+          </FilterSidebarGrid>
         </FilterSidebarSection>
       </FilterSidebar>
 
-      {/* ── Tabs ────────────────────────────────────────────── */}
       <div className="qms-toolbar">
         <div className="qms-tabs" role="tablist" aria-label="Analytics sections">
           {TABS.map((item) => (
@@ -225,9 +383,10 @@ export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
       </LoadingZone>
 
       <footer className="qms-analytics__footer">
-        Quality analytics · {data.kpis.total_audits.toLocaleString()} audits
-        · {data.auditors.length} auditors
-        {hasDateFilter && ` · ${dateRange.from || "…"} → ${dateRange.to || "…"}`}
+        Quality analytics · {analytics.kpis.total_audits.toLocaleString()} audits in view
+        {hasActiveFilters
+          ? ` · ${analyticsView.filteredCount} of ${records.length} scoped`
+          : null}
         {" · "}Internal use only
       </footer>
     </div>

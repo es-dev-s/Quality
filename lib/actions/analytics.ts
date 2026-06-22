@@ -5,12 +5,8 @@ import { requirePermission } from "@/lib/auth-guards";
 import { PERMISSIONS } from "@/lib/permissions";
 import { scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
 import type { AuditRow } from "@/lib/audit/types";
-import {
-  computeQmsAnalytics,
-  type AnalyticsAuditRecord,
-} from "@/lib/audit/analytics-metrics";
+import type { AnalyticsAuditRecord } from "@/lib/audit/analytics-metrics";
 import { parseFeedbackSecurity } from "@/lib/audit/feedback";
-import { computeLeaderboardAnalytics } from "@/lib/audit/leaderboard-metrics";
 
 function parseRows(value: unknown): AuditRow[] {
   if (!Array.isArray(value)) return [];
@@ -18,19 +14,10 @@ function parseRows(value: unknown): AuditRow[] {
 }
 
 async function fetchAnalyticsRecords(
-  where: Awaited<ReturnType<typeof scopedAuditWhere>>,
-  startDate?: string,
-  endDate?: string
+  where: Awaited<ReturnType<typeof scopedAuditWhere>>
 ): Promise<AnalyticsAuditRecord[]> {
-  const dateFilter: Record<string, unknown> = {};
-  if (startDate || endDate) {
-    dateFilter.auditDate = {
-      ...(startDate ? { gte: startDate } : {}),
-      ...(endDate   ? { lte: endDate   } : {}),
-    };
-  }
   const submissions = await prisma.auditSubmission.findMany({
-    where: { ...where, ...dateFilter },
+    where,
     select: {
       id: true,
       agent: true,
@@ -70,23 +57,15 @@ async function fetchAnalyticsRecords(
   }));
 }
 
-export async function getAnalyticsData(
-  startDate?: string,
-  endDate?: string
-) {
+/** Loads scoped audit rows for client-side analytics filtering (period + segment). */
+export async function getAnalyticsData() {
   const session = await requirePermission(PERMISSIONS.ANALYTICS_READ);
-  const records = await fetchAnalyticsRecords(
-    await scopedAuditWhere(session),
-    startDate,
-    endDate
-  );
+  const records = await fetchAnalyticsRecords(await scopedAuditWhere(session));
+
   return {
-    ...computeQmsAnalytics(records),
-    leaderboards: computeLeaderboardAnalytics(records),
+    records,
     fetchedAt: new Date().toISOString(),
     recordCount: records.length,
-    dateFrom: startDate ?? null,
-    dateTo: endDate ?? null,
   };
 }
 
