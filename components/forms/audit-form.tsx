@@ -9,7 +9,11 @@ import { useToast } from "@/components/primitives/toast";
 import { saveAuditSubmission, updateAuditSubmission } from "@/lib/actions/audit";
 import { calculateResults } from "@/lib/audit/calculate-results";
 import { getScoringOptions } from "@/lib/audit/scoring-options";
-import { getEffectiveScore } from "@/lib/audit/score-state";
+import {
+  buildDefaultScores,
+  getEffectiveScore,
+  mergeTemplateDefaultScores,
+} from "@/lib/audit/score-state";
 import {
   getSubReasonsForReason,
 } from "@/lib/audit/interaction-options";
@@ -167,7 +171,17 @@ export function AuditForm({
     };
   });
 
-  const [scores, setScores] = useState<ScoresMap>(() => initialScores ?? {});
+  const [scores, setScores] = useState<ScoresMap>(() => {
+    const template =
+      templates.find((t) => t.id === initialTemplateId) ?? templates[0];
+    if (!template) {
+      return initialScores ?? {};
+    }
+    if (initialScores) {
+      return mergeTemplateDefaultScores(template, initialScores);
+    }
+    return buildDefaultScores(template);
+  });
 
   useEffect(() => {
     if (!isEditMode && !submissionKeyRef.current) {
@@ -334,12 +348,16 @@ export function AuditForm({
   };
 
   const handleResetScores = () => {
-    setScores({});
+    setScores(buildDefaultScores(activeTemplate));
   };
 
   const handleInteractionType = (type: InteractionType) => {
     if (type === formData.type || isEditMode) return;
-    setScores({});
+    const nextTemplateId = templateIdForType(type, templates);
+    const nextTemplate =
+      templates.find((template) => template.id === nextTemplateId) ??
+      templates[0];
+    setScores(nextTemplate ? buildDefaultScores(nextTemplate) : {});
     updateForm({ type });
     setSelectedTemplateId(templateIdForType(type, templates));
   };
@@ -419,7 +437,7 @@ export function AuditForm({
       if (sec.isFatal) continue;
       for (const param of sec.params) {
         if (param.scoring === "Y/N-CMM") continue;
-        const val = getEffectiveScore(scores, param.id, false);
+        const val = getEffectiveScore(scores, param.id, false, param.scoring);
         if (val !== "NA") count++;
       }
     }
@@ -822,7 +840,8 @@ export function AuditForm({
                   (p) => getEffectiveScore(scores, p.id, true) === "Y"
                 ).length
               : section.params.filter(
-                  (p) => getEffectiveScore(scores, p.id, false) !== "NA"
+                  (p) =>
+                    getEffectiveScore(scores, p.id, false, p.scoring) !== "NA"
                 ).length;
 
             return (
@@ -872,7 +891,12 @@ export function AuditForm({
                       param.id,
                       normalizeFatalYnScoreValue(
                         param.id,
-                        getEffectiveScore(scores, param.id, section.isFatal)
+                        getEffectiveScore(
+                          scores,
+                          param.id,
+                          section.isFatal,
+                          param.scoring
+                        )
                       ),
                       param.max
                     );

@@ -1,4 +1,5 @@
 import { calculateResults } from "../lib/audit/calculate-results";
+import { buildDefaultScores } from "../lib/audit/score-state";
 import { DEFAULT_INTERACTION_CONFIG, AGENTS, AUDITORS } from "../lib/audit/seed-data";
 import { getLobSubReasonOptions } from "../lib/audit/lob-flat-lists";
 import {
@@ -49,6 +50,15 @@ function verifyTemplate(template: AuditTemplate, expectedScoringParams: number) 
     !!cmm && cmm.params.length === 6,
     `${template.id}: 6 CMM parameters`
   );
+  if (cmm) {
+    const defaults = buildDefaultScores(template);
+    for (const param of cmm.params) {
+      assert(
+        defaults[param.id] === "Y",
+        `${template.id}: CMM default ${param.id} is Y`
+      );
+    }
+  }
 }
 
 assert(CALL_AUDIT_TEMPLATE.name === "Call Quality Audit", "call template name");

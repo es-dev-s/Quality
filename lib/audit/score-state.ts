@@ -2,6 +2,7 @@ import type {
   AuditParameter,
   AuditSection,
   AuditTemplate,
+  ScoringScheme,
   ScoresMap,
 } from "@/lib/audit/types";
 
@@ -13,26 +14,38 @@ export function isScoreAffectingSection(section: AuditSection): boolean {
   return section.params.some(isScoreAffectingParam);
 }
 
-/** Fatal section params default to Y (compliance) when unrated. */
+/** Fatal and CMM params default to Y (compliance) when unrated. */
 export function buildDefaultScores(template: AuditTemplate): ScoresMap {
   const scores: ScoresMap = {};
   for (const sec of template.sections) {
-    if (!sec.isFatal) continue;
     for (const param of sec.params) {
-      scores[param.id] = "Y";
+      if (sec.isFatal || param.scoring === "Y/N-CMM") {
+        scores[param.id] = "Y";
+      }
     }
   }
   return scores;
 }
 
+export function mergeTemplateDefaultScores(
+  template: AuditTemplate,
+  scores: ScoresMap
+): ScoresMap {
+  return { ...buildDefaultScores(template), ...scores };
+}
+
 export function getEffectiveScore(
   scores: ScoresMap,
   paramId: string,
-  isFatal: boolean
+  isFatal: boolean,
+  scoring?: ScoringScheme
 ): string {
   const raw = scores[paramId];
   if (raw !== undefined && raw !== "") {
     return raw;
   }
-  return isFatal ? "Y" : "NA";
+  if (isFatal || scoring === "Y/N-CMM") {
+    return "Y";
+  }
+  return "NA";
 }
