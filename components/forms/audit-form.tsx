@@ -511,14 +511,17 @@ export function AuditForm({
                       role="group"
                       aria-label="Interaction type"
                     >
-                      {(["Call", "Chat"] as InteractionType[]).map((type) => (
+                      {(["Call", "Chat"] as InteractionType[]).map((type) => {
+                        const selected = formData.type === type;
+                        return (
                         <button
                           key={type}
                           type="button"
                           className={cn(
                             "audit-segment__btn",
-                            formData.type === type && "audit-segment__btn--active"
+                            selected && "audit-segment__btn--active"
                           )}
+                          aria-pressed={selected}
                           disabled={isEditMode || pending}
                           onClick={() => handleInteractionType(type)}
                         >
@@ -529,7 +532,8 @@ export function AuditForm({
                           )}
                           {type}
                         </button>
-                      ))}
+                      );
+                      })}
                     </div>
                     <p className="audit-type-switch__hint">
                       {isCallInteraction
