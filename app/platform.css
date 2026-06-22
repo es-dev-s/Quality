@@ -2233,6 +2233,19 @@
   min-width: 8.5rem;
 }
 
+.audit-logs__table th.col-contact,
+.audit-logs__table td.col-contact {
+  min-width: 9.5rem;
+  max-width: 12rem;
+}
+
+.audit-logs__contact {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .audit-logs__agent-feedback {
   display: -webkit-box;
   -webkit-box-orient: vertical;

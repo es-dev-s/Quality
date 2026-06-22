@@ -165,6 +165,7 @@ function matchesSearch(row: AuditLogEntry, query: string) {
     row.feedbackStatus,
     row.feedbackDate ?? "",
     row.agentFeedback,
+    row.mobile,
     referenceAttachmentSearchText(row.referenceUrl),
   ]
     .filter(Boolean)
@@ -196,6 +197,7 @@ function exportCsv(rows: AuditLogEntry[]) {
     "Feedback Date & Time",
     "Acknowledged/Disputed Date & Time",
     "Feedback for the agent",
+    "Number / client name",
     "Reference",
   ];
   const lines = rows.map((r) =>
@@ -215,6 +217,7 @@ function exportCsv(rows: AuditLogEntry[]) {
       r.feedbackDate ? formatFeedbackDateTime(r.feedbackDate) : "",
       r.feedbackStatusAt ? formatFeedbackDateTime(r.feedbackStatusAt) : "",
       r.agentFeedback,
+      r.mobile ?? "",
       r.referenceUrl ?? "",
     ]
       .map((v) => `"${String(v).replace(/"/g, '""')}"`)
@@ -318,7 +321,7 @@ export function AuditLogsTable({
   const { busy: feedbackPending, run: runFeedback } = useBusyAction();
   const tableBusy = deletePending;
 
-  const columnCount = canDeleteAudits ? 13 : 12;
+  const columnCount = canDeleteAudits ? 14 : 13;
 
   useEffect(() => {
     setLastSyncedAt(Date.now());
@@ -1045,6 +1048,7 @@ export function AuditLogsTable({
                     ) : null}
                     <th className="col-agent">Agent</th>
                     <th className="col-type-lob">Type / LOB</th>
+                    <th className="col-contact">Number / client name</th>
                     <th>Audit date</th>
                     <th>Auditor</th>
                     <th>Score</th>
@@ -1101,6 +1105,15 @@ export function AuditLogsTable({
                       </span>
                     </span>
                     <div className="dash-cell-muted">{row.lob}</div>
+                  </td>
+                  <td className="col-contact">
+                    {row.mobile ? (
+                      <span className="audit-logs__contact" title={row.mobile}>
+                        {row.mobile}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td>{row.auditDate}</td>
                   <td>{row.auditor ?? "—"}</td>

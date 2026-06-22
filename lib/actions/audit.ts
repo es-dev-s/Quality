@@ -412,6 +412,7 @@ function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
     feedbackStatusAt: s.feedbackStatusAt,
     agentFeedback: s.agentFeedback ?? "",
     supervisorRemarks: s.supervisorRemarks ?? "",
+    mobile: legacy.mobile || null,
     referenceUrl: legacy.referenceUrl || null,
     submittedBy: s.submittedBy.name ?? s.submittedBy.email,
     createdAt: toIsoTimestamp(s.createdAt),

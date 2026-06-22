@@ -223,6 +223,7 @@ export function ExecutiveReport({ canExport = false }: { canExport?: boolean }) 
                     <th>Type</th>
                     <th>LOB</th>
                     <th>Reason</th>
+                    <th>Number / client name</th>
                     <th>Quality</th>
                     <th>Final</th>
                     <th>Grade</th>
@@ -251,6 +252,7 @@ export function ExecutiveReport({ canExport = false }: { canExport?: boolean }) 
                       <td className="platform-report-table__reason">
                         {row.reason ?? "—"}
                       </td>
+                      <td>{row.mobile ?? "—"}</td>
                       <td className="platform-cell-accent">{row.qualityPct}%</td>
                       <td>
                         {row.hasFatal ? (

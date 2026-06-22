@@ -30,6 +30,7 @@ export type AuditLogEntry = {
   feedbackStatusAt: string | null;
   agentFeedback: string;
   supervisorRemarks: string;
+  mobile: string | null;
   referenceUrl: string | null;
   submittedBy: string;
   createdAt: string;
