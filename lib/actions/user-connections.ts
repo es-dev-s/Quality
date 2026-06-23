@@ -2,7 +2,6 @@
 
 import type { Prisma } from "@prisma/client";
 import { requireAuth } from "@/lib/auth";
-import { ForbiddenError } from "@/lib/auth-guards";
 import {
   fetchAgentAssigneeEntries,
   fetchAgentRosterEntries,
@@ -181,12 +180,12 @@ export async function getConnectedUsersOverview(): Promise<ConnectedUserRow[]> {
   const role = session.user.role;
 
   if (!canViewUserConnections(role)) {
-    throw new ForbiddenError();
+    return [];
   }
 
   const userWhere = await resolveVisibleUserWhere(session.user.id, role);
   if (userWhere === null) {
-    throw new ForbiddenError();
+    return [];
   }
 
   const users = await prisma.user.findMany({

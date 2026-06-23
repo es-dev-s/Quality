@@ -11,8 +11,8 @@ export default function NotFound() {
             The page you requested does not exist or may have been moved.
           </p>
         </div>
-        <Link href="/dashboard" className="ui-btn ui-btn--primary ui-btn--block">
-          Go to Dashboard
+        <Link href="/audit-logs" className="ui-btn ui-btn--primary ui-btn--block">
+          Go to audit logs
         </Link>
       </div>
     </div>

@@ -7,6 +7,7 @@ import { requireAuth } from "@/lib/auth";
 import {
   permissionError,
   requirePermission,
+  requirePermissionResult,
 } from "@/lib/auth-guards";
 import { PERMISSIONS } from "@/lib/permissions";
 import { canEditFeedbackFully, canEditSupervisorRemarks, hasScope, isSuperAdmin } from "@/lib/rbac";
@@ -153,7 +154,9 @@ export async function saveAuditSubmission(
   templateId: string,
   options?: { submissionKey?: string }
 ) {
-  const session = await requirePermission(PERMISSIONS.AUDIT_FORM_WRITE);
+  const auth = await requirePermissionResult(PERMISSIONS.AUDIT_FORM_WRITE);
+  if (auth.error) return { error: auth.error };
+  const session = auth.session!;
 
   const rateLimited = assertWriteRateLimit(session.user.id, "audit:save", {
     limit: 20,
@@ -632,7 +635,9 @@ export async function updateAuditSubmission(
   scores: ScoresMap,
   templateId: string
 ) {
-  const session = await requirePermission(PERMISSIONS.AUDIT_FORM_WRITE);
+  const auth = await requirePermissionResult(PERMISSIONS.AUDIT_FORM_WRITE);
+  if (auth.error) return { error: auth.error };
+  const session = auth.session!;
 
   const rateLimited = assertWriteRateLimit(session.user.id, "audit:update", {
     limit: 30,

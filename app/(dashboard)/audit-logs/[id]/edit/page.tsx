@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { AuditFormSkeleton } from "@/components/dashboard/page-skeletons";
 import { PageFrame } from "@/components/dashboard/page-frame";
@@ -22,7 +22,7 @@ async function EditAuditContent({ id }: { id: string }) {
 
   const editData = await getAuditForEdit(id);
   if (!editData) {
-    notFound();
+    redirect("/audit-logs");
   }
 
   const [workbench, auditors, interactionConfig, auditReferenceOptions] =

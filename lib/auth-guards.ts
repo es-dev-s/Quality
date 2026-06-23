@@ -67,4 +67,13 @@ export function permissionError() {
   return { error: "You do not have permission to perform this action." as const };
 }
 
+/** Like requirePermission but returns a client-friendly error instead of throwing. */
+export async function requirePermissionResult(permission: Permission) {
+  const session = await requireAuth();
+  if (!hasScope(session.user.role, permission)) {
+    return { error: permissionError().error, session: null as null };
+  }
+  return { error: null as null, session };
+}
+
 export { PERMISSIONS };

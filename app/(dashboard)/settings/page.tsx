@@ -28,7 +28,9 @@ function resolveInitialTab(
   value: string | undefined,
   canManageInteraction: boolean,
   canAccessTeam: boolean,
-  canViewConnections: boolean
+  canViewConnections: boolean,
+  canManageUsers: boolean,
+  canManageRoles: boolean
 ): SettingsTab {
   if (value === "interaction") {
     return canManageInteraction ? "interaction" : canAccessTeam ? "team" : "agents";
@@ -36,8 +38,14 @@ function resolveInitialTab(
   if (value === "connected") {
     return canViewConnections ? "connected" : "agents";
   }
-  if (value === "users" || value === "roles" || value === "team") {
-    return value;
+  if (value === "users") {
+    return canManageUsers ? "users" : "agents";
+  }
+  if (value === "roles") {
+    return canManageRoles ? "roles" : "agents";
+  }
+  if (value === "team") {
+    return canAccessTeam ? "team" : "agents";
   }
   return "agents";
 }
@@ -62,7 +70,9 @@ async function SettingsContent({
     params.tab,
     canManageInteraction,
     showTeam,
-    showConnections
+    showConnections,
+    manageUsers,
+    manageRoles
   );
 
   const [interaction, agentsData, users, roles, teamData, connectedUsers] =

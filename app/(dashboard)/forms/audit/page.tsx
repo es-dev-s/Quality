@@ -9,6 +9,7 @@ import { getInteractionConfig } from "@/lib/actions/interaction-config";
 import { getAuditFormWorkbench } from "@/lib/actions/templates";
 import { resolveAuditFormTemplateId } from "@/lib/audit/audit-form-utils";
 import { buildSupervisorAgentMap } from "@/lib/audit/supervisor-agent-map";
+import { resolveAuditSaveRedirect } from "@/lib/navigation/post-action-redirects";
 import type { InteractionType } from "@/lib/audit/types";
 
 type AuditFormPageProps = {
@@ -71,6 +72,7 @@ async function AuditFormContent({
       initialTemplateId={initialTemplateId}
       initialType={initialType}
       supervisorAgentMap={supervisorAgentMap}
+      successRedirect={resolveAuditSaveRedirect(session.user.role)}
     />
   );
 }

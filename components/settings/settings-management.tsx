@@ -170,6 +170,26 @@ export function SettingsManagement({
 
 
   useEffect(() => {
+    const allowed =
+      tab === "agents" ||
+      (tab === "interaction" && canManageInteraction) ||
+      (tab === "team" && canAccessTeam) ||
+      (tab === "connected" && canViewConnections) ||
+      (tab === "users" && canManageUsers) ||
+      (tab === "roles" && canManageRoles);
+    if (!allowed) {
+      setTab("agents");
+    }
+  }, [
+    tab,
+    canManageInteraction,
+    canAccessTeam,
+    canViewConnections,
+    canManageUsers,
+    canManageRoles,
+  ]);
+
+  useEffect(() => {
 
     setTab(initialTab);
 

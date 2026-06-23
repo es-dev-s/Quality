@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAuth } from "@/lib/auth";
-import { requirePermission } from "@/lib/auth-guards";
+import { requirePermissionResult } from "@/lib/auth-guards";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
 import {
   fetchAgentRosterEntries,
@@ -31,6 +31,9 @@ function revalidateAssignmentPaths() {
   revalidatePath("/settings");
   revalidatePath("/audit-logs");
   revalidatePath("/dashboard");
+  revalidatePath("/forms");
+  revalidatePath("/forms/audit");
+  revalidatePath("/analytics");
 }
 
 async function assertQmCanManageAgent(
@@ -95,7 +98,9 @@ async function assertAssigneeIsQualityAnalyst(userId: string) {
 }
 
 export async function assignAgentToUser(agentId: string, assignToUserId: string) {
-  const session = await requirePermission(PERMISSIONS.AGENT_ASSIGN);
+  const auth = await requirePermissionResult(PERMISSIONS.AGENT_ASSIGN);
+  if (auth.error) return { error: auth.error };
+  const session = auth.session!;
 
   const parsed = assignSchema.safeParse({ agentId, assignToUserId });
   if (!parsed.success) {
@@ -142,7 +147,9 @@ export async function assignAgentsToUser(
   agentIds: string[],
   assignToUserId: string
 ) {
-  const session = await requirePermission(PERMISSIONS.AGENT_ASSIGN);
+  const auth = await requirePermissionResult(PERMISSIONS.AGENT_ASSIGN);
+  if (auth.error) return { error: auth.error };
+  const session = auth.session!;
 
   const parsed = bulkAssignSchema.safeParse({ agentIds, assignToUserId });
   if (!parsed.success) {
@@ -216,7 +223,9 @@ export async function removeAgentFromUser(
   agentId: string,
   assignToUserId: string
 ) {
-  const session = await requirePermission(PERMISSIONS.AGENT_ASSIGN);
+  const auth = await requirePermissionResult(PERMISSIONS.AGENT_ASSIGN);
+  if (auth.error) return { error: auth.error };
+  const session = auth.session!;
 
   const parsed = assignSchema.safeParse({ agentId, assignToUserId });
   if (!parsed.success) {

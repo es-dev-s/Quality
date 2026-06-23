@@ -565,14 +565,21 @@ function AgentAssignmentPanel({
         return;
       }
       startTransition(async () => {
-        const result = await assignAgentToUser(agentId, assignToId);
-        if ("error" in result && result.error) {
-          toast(result.error, "error");
-          return;
+        try {
+          const result = await assignAgentToUser(agentId, assignToId);
+          if ("error" in result && result.error) {
+            toast(result.error, "error");
+            return;
+          }
+          toast("Agent assigned.", "success");
+          onChanged();
+          setView("active");
+        } catch {
+          toast(
+            "Could not assign the agent. Sign out and sign in again, then retry.",
+            "error"
+          );
         }
-        toast("Agent assigned.", "success");
-        onChanged();
-        setView("active");
       });
       return;
     }
@@ -585,38 +592,52 @@ function AgentAssignmentPanel({
     }
 
     startTransition(async () => {
-      const result = await assignAgentsToUser(selectedAgentIds, assignToId);
-      if ("error" in result && result.error) {
-        toast(result.error, "error");
-        return;
+      try {
+        const result = await assignAgentsToUser(selectedAgentIds, assignToId);
+        if ("error" in result && result.error) {
+          toast(result.error, "error");
+          return;
+        }
+
+        const assigned = result.assigned ?? selectedAgentIds.length;
+        const skipped = result.skipped ?? 0;
+        const message =
+          skipped > 0
+            ? `${assigned} agent${assigned === 1 ? "" : "s"} assigned. ${skipped} skipped (already assigned or unavailable).`
+            : `${assigned} agent${assigned === 1 ? "" : "s"} assigned.`;
+
+        toast(message, "success");
+        setSelectedAgentIds([]);
+        onChanged();
+        setView("active");
+      } catch {
+        toast(
+          "Could not assign agents. Sign out and sign in again, then retry.",
+          "error"
+        );
       }
-
-      const assigned = result.assigned ?? selectedAgentIds.length;
-      const skipped = result.skipped ?? 0;
-      const message =
-        skipped > 0
-          ? `${assigned} agent${assigned === 1 ? "" : "s"} assigned. ${skipped} skipped (already assigned or unavailable).`
-          : `${assigned} agent${assigned === 1 ? "" : "s"} assigned.`;
-
-      toast(message, "success");
-      setSelectedAgentIds([]);
-      onChanged();
-      setView("active");
     });
   }
 
   function handleRemove(assignment: AgentAssignmentRow) {
     startTransition(async () => {
-      const result = await removeAgentFromUser(
-        assignment.agentId,
-        assignment.assignToId
-      );
-      if ("error" in result && result.error) {
-        toast(result.error, "error");
-        return;
+      try {
+        const result = await removeAgentFromUser(
+          assignment.agentId,
+          assignment.assignToId
+        );
+        if ("error" in result && result.error) {
+          toast(result.error, "error");
+          return;
+        }
+        toast("Assignment removed.", "success");
+        onChanged();
+      } catch {
+        toast(
+          "Could not remove the assignment. Sign out and sign in again, then retry.",
+          "error"
+        );
       }
-      toast("Assignment removed.", "success");
-      onChanged();
     });
   }
 

@@ -38,6 +38,7 @@ import {
 } from "@/lib/audit/feedback";
 import type { FeedbackSecurity, FeedbackStatus } from "@/lib/audit/feedback";
 import { AuditScorePanel } from "@/components/forms/audit-score-panel";
+import { QmsEmpty } from "@/components/analytics/qms-primitives";
 import { ReferenceUrlField } from "@/components/forms/reference-url-field";
 import { resolveAuditorNameForSession } from "@/lib/audit/auditor-name";
 import { normalizeFatalYnScoreValue } from "@/lib/audit/fatal-yn-params";
@@ -147,7 +148,7 @@ export function AuditForm({
   editAuditCode,
   initialFormData,
   initialScores,
-  successRedirect = "/dashboard",
+  successRedirect = "/audit-logs",
   cancelHref,
   supervisorAgentMap = {},
 }: AuditFormProps) {
@@ -383,40 +384,48 @@ export function AuditForm({
 
   const handleSave = () => {
     startTransition(async () => {
-      const submitFormData = isEditMode
-        ? formData
-        : { ...formData, auditDate: todayISO() };
+      try {
+        const submitFormData = isEditMode
+          ? formData
+          : { ...formData, auditDate: todayISO() };
 
-      const calc = calculateResults(
-        submitFormData,
-        scores,
-        activeTemplate,
-        previewRecordContext
-      );
-      if (!calc.ok) {
-        toast(calc.error, "error");
-        return;
+        const calc = calculateResults(
+          submitFormData,
+          scores,
+          activeTemplate,
+          previewRecordContext
+        );
+        if (!calc.ok) {
+          toast(calc.error, "error");
+          return;
+        }
+
+        const res = isEditMode
+          ? await updateAuditSubmission(
+              editAuditId!,
+              submitFormData,
+              scores,
+              activeTemplate.id
+            )
+          : await saveAuditSubmission(submitFormData, scores, activeTemplate.id, {
+              submissionKey: submissionKeyRef.current ?? undefined,
+            });
+
+        if ("error" in res && res.error) {
+          toast(res.error, "error");
+          return;
+        }
+
+        toast(
+          isEditMode ? "Audit updated successfully" : "Audit saved successfully"
+        );
+        router.push(successRedirect);
+      } catch {
+        toast(
+          "Could not save the audit. Sign out and sign in again, then retry.",
+          "error"
+        );
       }
-
-      const res = isEditMode
-        ? await updateAuditSubmission(
-            editAuditId!,
-            submitFormData,
-            scores,
-            activeTemplate.id
-          )
-        : await saveAuditSubmission(submitFormData, scores, activeTemplate.id, {
-            submissionKey: submissionKeyRef.current ?? undefined,
-          });
-
-      if ("error" in res && res.error) {
-        toast(res.error, "error");
-        return;
-      }
-
-      toast(isEditMode ? "Audit updated successfully" : "Audit saved successfully");
-      router.push(successRedirect);
-      router.refresh();
     });
   };
 
@@ -458,7 +467,9 @@ export function AuditForm({
   }, [canCalculate, formData, scores, activeTemplate, previewRecordContext]);
 
   if (!activeTemplate) {
-    return null;
+    return (
+      <QmsEmpty message="No audit template is available. Ask an admin to assign template access, or refresh the page." />
+    );
   }
 
   return (

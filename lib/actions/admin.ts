@@ -592,7 +592,6 @@ export async function createRole(formData: FormData) {
   }
 
   revalidatePath("/settings");
-  revalidatePath("/admin/roles");
   invalidateRoleCaches();
   return { success: true };
 }
@@ -654,7 +653,6 @@ export async function updateRole(formData: FormData) {
   }
 
   revalidatePath("/settings");
-  revalidatePath("/admin/roles");
   invalidateRoleCaches();
   return { success: true };
 }
@@ -678,7 +676,6 @@ export async function updateRoleScopes(roleId: string, scopeSlugs: string[]) {
   }
 
   revalidatePath("/settings");
-  revalidatePath("/admin/roles");
   invalidateRoleCaches();
   return { success: true };
 }
@@ -720,7 +717,6 @@ export async function deleteRole(roleId: string) {
   }
 
   revalidatePath("/settings");
-  revalidatePath("/admin/roles");
   invalidateRoleCaches();
   return { success: true };
 }
@@ -769,7 +765,6 @@ export async function bulkDeleteRoles(roleIds: string[]) {
   }
 
   revalidatePath("/settings");
-  revalidatePath("/admin/roles");
   invalidateRoleCaches();
 
   if (deleted === 0 && skipped.length > 0) {
