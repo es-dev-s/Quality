@@ -4,13 +4,18 @@ import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth-guards";
 import { PERMISSIONS } from "@/lib/permissions";
 import { scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
-import type { AuditRow } from "@/lib/audit/types";
+import type { AuditRow, CategoryScore } from "@/lib/audit/types";
 import type { AnalyticsAuditRecord } from "@/lib/audit/analytics-metrics";
 import { parseFeedbackSecurity } from "@/lib/audit/feedback";
 
 function parseRows(value: unknown): AuditRow[] {
   if (!Array.isArray(value)) return [];
   return value as AuditRow[];
+}
+
+function parseCatScores(value: unknown): Record<string, CategoryScore> {
+  if (!value || typeof value !== "object") return {};
+  return value as Record<string, CategoryScore>;
 }
 
 async function fetchAnalyticsRecords(
@@ -34,6 +39,7 @@ async function fetchAnalyticsRecords(
       reason: true,
       fatalList: true,
       rows: true,
+      catScores: true,
     },
     orderBy: { createdAt: "desc" },
   });
@@ -54,6 +60,7 @@ async function fetchAnalyticsRecords(
     reason: s.reason,
     fatalList: s.fatalList,
     rows: parseRows(s.rows),
+    catScores: parseCatScores(s.catScores),
   }));
 }
 

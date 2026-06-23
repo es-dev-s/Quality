@@ -50,6 +50,7 @@ type ReferenceUrlFieldProps = {
   required?: boolean;
   disabled?: boolean;
   inline?: boolean;
+  fieldClassName?: string;
   auditReferenceOptions?: AuditReferenceOption[];
   onChange: (value: string) => void;
 };
@@ -126,6 +127,7 @@ export function ReferenceUrlField({
   required = false,
   disabled = false,
   inline = false,
+  fieldClassName,
   auditReferenceOptions = [],
   onChange,
 }: ReferenceUrlFieldProps) {
@@ -377,7 +379,8 @@ export function ReferenceUrlField({
     <Field
       className={cn(
         "audit-field audit-reference-field",
-        inline && "audit-contact-field"
+        inline && "audit-contact-field",
+        fieldClassName
       )}
     >
       <div

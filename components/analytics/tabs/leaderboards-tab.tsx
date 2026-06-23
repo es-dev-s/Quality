@@ -219,7 +219,7 @@ export function LeaderboardsTab({
               items={data.weakParams}
               tone="danger"
               title="Parameter drill-down"
-              sub="Bottom 5 performing categories"
+              sub="Bottom 5 performing parameters"
             />
             <ParamAreas
               items={data.strongParams}

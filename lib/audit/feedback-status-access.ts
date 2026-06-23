@@ -20,17 +20,19 @@ export type FeedbackStatusOption = {
   disabled?: boolean;
 };
 
-function statusOptions(
-  statuses: FeedbackStatus[] = FEEDBACK_STATUS_OPTIONS
-): FeedbackStatusOption[] {
+function statusOptions(statuses: FeedbackStatus[]): FeedbackStatusOption[] {
   return statuses.map((status) => ({ value: status, label: status }));
 }
 
 function usesAgentFeedbackWorkflow(role: SessionRole): boolean {
   if (hasScope(role, PERMISSIONS.FEEDBACK_WRITE)) return false;
   if (hasScope(role, PERMISSIONS.AUDIT_FORM_WRITE)) return false;
-  if (hasScope(role, PERMISSIONS.FEEDBACK_STATUS)) return true;
-  return role.slug === SYSTEM_ROLE_SLUGS.AGENT;
+  if (role.slug === SYSTEM_ROLE_SLUGS.AGENT) return true;
+  return (
+    !isDefinedSystemRole(role.slug) &&
+    hasScope(role, PERMISSIONS.FEEDBACK_STATUS) &&
+    !hasScope(role, PERMISSIONS.AUDIT_FORM_WRITE)
+  );
 }
 
 function usesQaFeedbackWorkflow(role: SessionRole): boolean {
@@ -39,14 +41,6 @@ function usesQaFeedbackWorkflow(role: SessionRole): boolean {
   return (
     hasScope(role, PERMISSIONS.FEEDBACK_STATUS) &&
     hasScope(role, PERMISSIONS.AUDIT_FORM_WRITE)
-  );
-}
-
-function isCustomFeedbackRole(role: SessionRole): boolean {
-  return (
-    !isDefinedSystemRole(role.slug) &&
-    hasScope(role, PERMISSIONS.FEEDBACK_STATUS) &&
-    !hasScope(role, PERMISSIONS.AUDIT_FORM_WRITE)
   );
 }
 
@@ -69,11 +63,11 @@ export function getAllowedFeedbackStatuses(
   if (hasScope(role, PERMISSIONS.FEEDBACK_WRITE)) {
     return [...FEEDBACK_STATUS_OPTIONS];
   }
-  if (usesAgentFeedbackWorkflow(role) || isCustomFeedbackRole(role)) {
-    return [...FEEDBACK_STATUS_OPTIONS];
-  }
   if (usesQaFeedbackWorkflow(role)) {
     return QA_FEEDBACK_STATUSES;
+  }
+  if (usesAgentFeedbackWorkflow(role)) {
+    return AGENT_FEEDBACK_STATUSES;
   }
   return [];
 }
@@ -85,6 +79,38 @@ export type FeedbackStatusSelectConfig = {
   selectValue: FeedbackStatus;
   hint?: string;
 };
+
+function agentFeedbackConfig(current: FeedbackStatus): FeedbackStatusSelectConfig {
+  if (current === "Shared") {
+    return {
+      showSelect: true,
+      editable: true,
+      options: statusOptions(AGENT_FEEDBACK_STATUSES),
+      selectValue: current,
+      hint: "Select Acknowledged or Disputed after reviewing shared feedback",
+    };
+  }
+
+  if (current === "Acknowledged" || current === "Disputed") {
+    return {
+      showSelect: true,
+      editable: true,
+      options: statusOptions(AGENT_FEEDBACK_STATUSES),
+      selectValue: current,
+    };
+  }
+
+  return {
+    showSelect: false,
+    editable: false,
+    options: [],
+    selectValue: current,
+    hint:
+      current === "Pending"
+        ? "Waiting for Quality Analyst to share feedback"
+        : "Agent can respond only after feedback is shared",
+  };
+}
 
 /** Dropdown config for one audit row (role + current status). */
 export function getFeedbackStatusSelectConfig(
@@ -100,16 +126,11 @@ export function getFeedbackStatusSelectConfig(
     };
   }
 
-  if (
-    isSuperAdmin(role) ||
-    hasScope(role, PERMISSIONS.FEEDBACK_WRITE) ||
-    usesAgentFeedbackWorkflow(role) ||
-    isCustomFeedbackRole(role)
-  ) {
+  if (isSuperAdmin(role) || hasScope(role, PERMISSIONS.FEEDBACK_WRITE)) {
     return {
       showSelect: true,
       editable: true,
-      options: statusOptions(),
+      options: statusOptions([...FEEDBACK_STATUS_OPTIONS]),
       selectValue: current,
     };
   }
@@ -127,6 +148,10 @@ export function getFeedbackStatusSelectConfig(
     };
   }
 
+  if (usesAgentFeedbackWorkflow(role)) {
+    return agentFeedbackConfig(current);
+  }
+
   return {
     showSelect: false,
     editable: false,
@@ -142,11 +167,11 @@ export function canEditFeedbackDateTimeForStatus(
   if (!role || status === "Pending") return false;
   if (isSuperAdmin(role)) return true;
   if (hasScope(role, PERMISSIONS.FEEDBACK_WRITE)) return true;
-  if (usesAgentFeedbackWorkflow(role) || isCustomFeedbackRole(role)) {
-    return true;
-  }
   if (usesQaFeedbackWorkflow(role)) {
     return status === "Shared";
+  }
+  if (usesAgentFeedbackWorkflow(role)) {
+    return status === "Acknowledged" || status === "Disputed";
   }
   return false;
 }
@@ -162,17 +187,6 @@ export function assertFeedbackStatusChangeAllowed(
     return null;
   }
 
-  if (
-    role &&
-    (usesAgentFeedbackWorkflow(role) ||
-      isCustomFeedbackRole(role))
-  ) {
-    if (!FEEDBACK_STATUS_OPTIONS.includes(next)) {
-      return "Invalid feedback status.";
-    }
-    return null;
-  }
-
   if (role && usesQaFeedbackWorkflow(role)) {
     if (!QA_FEEDBACK_STATUSES.includes(next)) {
       return "Quality Analyst can only set Pending or Shared.";
@@ -181,6 +195,22 @@ export function assertFeedbackStatusChangeAllowed(
       return "This feedback status cannot be changed at your role level.";
     }
     return null;
+  }
+
+  if (role && usesAgentFeedbackWorkflow(role)) {
+    if (!AGENT_FEEDBACK_STATUSES.includes(next)) {
+      return "Agents can only set Acknowledged or Disputed.";
+    }
+    if (previous === "Pending") {
+      return "Feedback must be shared before you can respond.";
+    }
+    if (previous === "Shared") {
+      return null;
+    }
+    if (previous === "Acknowledged" || previous === "Disputed") {
+      return null;
+    }
+    return "This feedback status cannot be changed at your role level.";
   }
 
   return "You do not have permission to change feedback status.";

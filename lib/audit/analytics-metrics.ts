@@ -1,7 +1,12 @@
 import { PASS_RATE_QUALITY_THRESHOLD } from "@/lib/audit/metrics-config";
 import { resolveMetricDate } from "@/lib/audit/metric-dates";
 import type { FeedbackSecurity } from "@/lib/audit/feedback";
-import type { AuditRow } from "@/lib/audit/types";
+import type { AuditRow, CategoryScore } from "@/lib/audit/types";
+import {
+  metricGroupKey,
+  parameterGroupKey,
+  pickDisplayName,
+} from "@/lib/audit/analytics-metric-keys";
 
 export type AnalyticsAuditRecord = {
   id: string;
@@ -17,6 +22,7 @@ export type AnalyticsAuditRecord = {
   feedbackStatus: string;
   feedbackSecurity: FeedbackSecurity;
   rows: AuditRow[];
+  catScores: Record<string, CategoryScore>;
 };
 
 export type QmsParameterStat = {
@@ -140,50 +146,157 @@ function recordMetricDate(record: AnalyticsAuditRecord): Date {
   );
 }
 
-function computeRowMetricStats(
-  records: AnalyticsAuditRecord[],
-  metricKey: "parameter" | "category"
+type MetricAccumulator = {
+  displayName: string;
+  scoreSum: number;
+  maxSum: number;
+  count: number;
+};
+
+function upsertMetricAccumulator(
+  map: Map<string, MetricAccumulator>,
+  key: string,
+  displayName: string,
+  score: number,
+  max: number
+) {
+  if (!key) return;
+  const entry = map.get(key) ?? {
+    displayName,
+    scoreSum: 0,
+    maxSum: 0,
+    count: 0,
+  };
+  entry.displayName = pickDisplayName(entry.displayName, displayName);
+  entry.scoreSum += score;
+  entry.maxSum += max;
+  entry.count += 1;
+  map.set(key, entry);
+}
+
+function metricStatsFromAccumulators(
+  map: Map<string, MetricAccumulator>
 ): QmsParameterStat[] {
-  const byName = new Map<
-    string,
-    { scoreSum: number; maxSum: number; count: number }
-  >();
-
-  for (const record of records) {
-    for (const row of record.rows) {
-      if (row.sel === "NA" || row.max <= 0) continue;
-      const name = metricKey === "parameter" ? row.name : row.cat;
-      if (!name?.trim()) continue;
-      const entry = byName.get(name) ?? {
-        scoreSum: 0,
-        maxSum: 0,
-        count: 0,
-      };
-      entry.scoreSum += row.score;
-      entry.maxSum += row.max;
-      entry.count += 1;
-      byName.set(name, entry);
-    }
-  }
-
-  return Array.from(byName.entries())
-    .map(([name, data]) => {
+  return Array.from(map.values())
+    .map((data) => {
       const score =
-        data.maxSum > 0
-          ? round1((data.scoreSum / data.maxSum) * 100)
-          : 0;
-      const avgRaw =
-        data.count > 0 ? round1(data.scoreSum / data.count) : 0;
+        data.maxSum > 0 ? round1((data.scoreSum / data.maxSum) * 100) : 0;
+      const avgRaw = data.count > 0 ? round1(data.scoreSum / data.count) : 0;
       const maxTypical =
         data.count > 0 ? round1(data.maxSum / data.count) : 0;
       return {
-        name,
+        name: data.displayName,
         score,
         max: maxTypical,
         avg: avgRaw,
       };
     })
     .sort((a, b) => b.score - a.score);
+}
+
+function categoryContributionsForRecord(
+  record: AnalyticsAuditRecord
+): Map<string, { displayName: string; pct: number }> {
+  const entries = new Map<string, { displayName: string; pct: number }>();
+  const catScores = record.catScores ?? {};
+
+  if (Object.keys(catScores).length > 0) {
+    for (const [rawName, cat] of Object.entries(catScores)) {
+      if (cat.max <= 0) continue;
+      const key = metricGroupKey(rawName);
+      if (!key) continue;
+      entries.set(key, {
+        displayName: rawName.trim(),
+        pct: (cat.scored / cat.max) * 100,
+      });
+    }
+    return entries;
+  }
+
+  const bucket = new Map<
+    string,
+    { displayName: string; scoreSum: number; maxSum: number }
+  >();
+
+  for (const row of record.rows) {
+    if (row.sel === "NA" || row.max <= 0) continue;
+    const rawName = row.cat?.trim();
+    if (!rawName) continue;
+    const key = metricGroupKey(rawName);
+    const entry = bucket.get(key) ?? {
+      displayName: rawName,
+      scoreSum: 0,
+      maxSum: 0,
+    };
+    entry.scoreSum += row.score;
+    entry.maxSum += row.max;
+    bucket.set(key, entry);
+  }
+
+  for (const [key, data] of bucket) {
+    entries.set(key, {
+      displayName: data.displayName,
+      pct: data.maxSum > 0 ? (data.scoreSum / data.maxSum) * 100 : 0,
+    });
+  }
+
+  return entries;
+}
+
+function computeRowMetricStats(
+  records: AnalyticsAuditRecord[],
+  metricKey: "parameter" | "category"
+): QmsParameterStat[] {
+  if (metricKey === "category") {
+    const byKey = new Map<
+      string,
+      { displayName: string; pctSum: number; count: number }
+    >();
+
+    for (const record of records) {
+      for (const [key, contribution] of categoryContributionsForRecord(record)) {
+        const entry = byKey.get(key) ?? {
+          displayName: contribution.displayName,
+          pctSum: 0,
+          count: 0,
+        };
+        entry.displayName = pickDisplayName(
+          entry.displayName,
+          contribution.displayName
+        );
+        entry.pctSum += contribution.pct;
+        entry.count += 1;
+        byKey.set(key, entry);
+      }
+    }
+
+    return Array.from(byKey.values())
+      .map((data) => ({
+        name: data.displayName,
+        score: data.count > 0 ? round1(data.pctSum / data.count) : 0,
+        max: 100,
+        avg: data.count > 0 ? round1(data.pctSum / data.count) : 0,
+      }))
+      .sort((a, b) => b.score - a.score);
+  }
+
+  const byKey = new Map<string, MetricAccumulator>();
+
+  for (const record of records) {
+    for (const row of record.rows) {
+      if (row.sel === "NA" || row.max <= 0) continue;
+      const key = parameterGroupKey(row);
+      upsertMetricAccumulator(
+        byKey,
+        key,
+        row.name?.trim() || row.id,
+        row.score,
+        row.max
+      );
+    }
+  }
+
+  return metricStatsFromAccumulators(byKey);
 }
 
 function computeParameterStats(records: AnalyticsAuditRecord[]): QmsParameterStat[] {
@@ -201,7 +314,7 @@ function computeEntityMetricBreakdown(
 ): QmsEntityMetricRow[] {
   const buckets = new Map<
     string,
-    Map<string, { scoreSum: number; maxSum: number; count: number }>
+    Map<string, MetricAccumulator | { displayName: string; pctSum: number; count: number }>
   >();
 
   for (const record of records) {
@@ -215,33 +328,63 @@ function computeEntityMetricBreakdown(
     }
     if (!entity) continue;
 
+    if (!buckets.has(entity)) {
+      buckets.set(entity, new Map());
+    }
+    const metricMap = buckets.get(entity)!;
+
+    if (dimension === "category") {
+      for (const [key, contribution] of categoryContributionsForRecord(record)) {
+        const entry =
+          (metricMap.get(key) as {
+            displayName: string;
+            pctSum: number;
+            count: number;
+          } | undefined) ?? {
+            displayName: contribution.displayName,
+            pctSum: 0,
+            count: 0,
+          };
+        entry.displayName = pickDisplayName(
+          entry.displayName,
+          contribution.displayName
+        );
+        entry.pctSum += contribution.pct;
+        entry.count += 1;
+        metricMap.set(key, entry);
+      }
+      continue;
+    }
+
     for (const row of record.rows) {
       if (row.sel === "NA" || row.max <= 0) continue;
-      const metric = dimension === "parameter" ? row.name : row.cat;
-      if (!metric?.trim()) continue;
-
-      if (!buckets.has(entity)) {
-        buckets.set(entity, new Map());
-      }
-      const metricMap = buckets.get(entity)!;
-      const entry = metricMap.get(metric) ?? {
-        scoreSum: 0,
-        maxSum: 0,
-        count: 0,
-      };
-      entry.scoreSum += row.score;
-      entry.maxSum += row.max;
-      entry.count += 1;
-      metricMap.set(metric, entry);
+      const key = parameterGroupKey(row);
+      upsertMetricAccumulator(
+        metricMap as Map<string, MetricAccumulator>,
+        key,
+        row.name?.trim() || row.id,
+        row.score,
+        row.max
+      );
     }
   }
 
   const rows: QmsEntityMetricRow[] = [];
   for (const [entity, metricMap] of buckets) {
-    for (const [metric, data] of metricMap) {
+    for (const [, data] of metricMap) {
+      if ("pctSum" in data) {
+        rows.push({
+          entity,
+          metric: data.displayName,
+          score: data.count > 0 ? round1(data.pctSum / data.count) : 0,
+          samples: data.count,
+        });
+        continue;
+      }
+
       rows.push({
         entity,
-        metric,
+        metric: data.displayName,
         score:
           data.maxSum > 0
             ? round1((data.scoreSum / data.maxSum) * 100)

@@ -43,6 +43,29 @@ import { resolveAuditorNameForSession } from "@/lib/audit/auditor-name";
 import { normalizeFatalYnScoreValue } from "@/lib/audit/fatal-yn-params";
 import { normalizeProbingPreferredModeScoreValue } from "@/lib/audit/probing-preferred-mode-swap";
 import { createRandomUUID } from "@/lib/random-id";
+import {
+  getCallInteractionDefaultWarnings,
+  validateChatInteractionDetails,
+} from "@/lib/audit/interaction-form-validation";
+import {
+  AUDIT_FORM_NOTICE,
+  AUDIT_FORM_TOAST,
+} from "@/lib/audit/form-validation-messages";
+import { validateScoringSectionsComplete } from "@/lib/audit/scoring-form-validation";
+
+const INTERACTION_FIELD_IDS: Partial<Record<keyof AuditFormData, string>> = {
+  supervisor: "supervisor",
+  agent: "agent",
+  auditor: "auditor",
+  callDate: "callDate",
+  businessType: "businessType",
+  lob: "lob",
+  sublob: "sublob",
+  reason: "reason",
+  mobile: "mobile",
+  referenceUrl: "referenceUrl",
+  response: "response",
+};
 
 function templateInteractionType(templateId: string): InteractionType | null {
   if (templateId === "chat") return "Chat";
@@ -182,6 +205,13 @@ export function AuditForm({
     }
     return buildDefaultScores(template);
   });
+  const [highlightedFieldIds, setHighlightedFieldIds] = useState<string[]>([]);
+  const [highlightedScoreParamIds, setHighlightedScoreParamIds] = useState<
+    string[]
+  >([]);
+  const [interactionNotice, setInteractionNotice] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     if (!isEditMode && !submissionKeyRef.current) {
@@ -226,6 +256,7 @@ export function AuditForm({
   );
 
   const isCallInteraction = formData.type === "Call";
+  const isChatInteraction = formData.type === "Chat";
   const feedbackDateRequired = formData.feedbackStatus !== "Pending";
 
   const selectableLOBs = useMemo(
@@ -300,8 +331,25 @@ export function AuditForm({
     [matchedLOB, formData.sublob]
   );
 
+  const fieldAttentionClass = useCallback(
+    (fieldId: string, baseClassName = "audit-field") =>
+      cn(
+        baseClassName,
+        highlightedFieldIds.includes(fieldId) && "audit-field--attention"
+      ),
+    [highlightedFieldIds]
+  );
+
   const updateForm = useCallback((patch: Partial<AuditFormData>) => {
     setFormData((prev) => ({ ...prev, ...patch }));
+    const touchedFieldIds = Object.keys(patch)
+      .map((key) => INTERACTION_FIELD_IDS[key as keyof AuditFormData])
+      .filter((fieldId): fieldId is string => Boolean(fieldId));
+    if (touchedFieldIds.length > 0) {
+      setHighlightedFieldIds((ids) =>
+        ids.filter((id) => !touchedFieldIds.includes(id))
+      );
+    }
   }, []);
 
   const handleBusinessType = (businessType: BusinessType) => {
@@ -344,10 +392,12 @@ export function AuditForm({
 
   const handleScore = (paramId: string, value: string) => {
     setScores((prev) => ({ ...prev, [paramId]: value }));
+    setHighlightedScoreParamIds((ids) => ids.filter((id) => id !== paramId));
   };
 
   const handleResetScores = () => {
     setScores(buildDefaultScores(activeTemplate));
+    setHighlightedScoreParamIds([]);
   };
 
   const handleInteractionType = (type: InteractionType) => {
@@ -359,6 +409,9 @@ export function AuditForm({
     setScores(nextTemplate ? buildDefaultScores(nextTemplate) : {});
     updateForm({ type });
     setSelectedTemplateId(templateIdForType(type, templates));
+    setHighlightedFieldIds([]);
+    setHighlightedScoreParamIds([]);
+    setInteractionNotice(null);
   };
 
   const handleCalculate = () => {
@@ -386,6 +439,53 @@ export function AuditForm({
         const submitFormData = isEditMode
           ? formData
           : { ...formData, auditDate: todayISO() };
+
+        if (isChatInteraction) {
+          const chatValidation = validateChatInteractionDetails(
+            submitFormData,
+            reasons.length
+          );
+          if (!chatValidation.ok) {
+            setHighlightedFieldIds(chatValidation.fieldIds);
+            setHighlightedScoreParamIds([]);
+            setInteractionNotice(AUDIT_FORM_NOTICE.requiredFields);
+            toast(AUDIT_FORM_TOAST.requiredFields, "error");
+            return;
+          }
+        }
+
+        const scoringValidation = validateScoringSectionsComplete(
+          activeTemplate,
+          scores
+        );
+        if (!scoringValidation.ok) {
+          setHighlightedFieldIds([]);
+          setHighlightedScoreParamIds(scoringValidation.paramIds);
+          setInteractionNotice(null);
+          toast(AUDIT_FORM_TOAST.scoreAllParameters, "error");
+          requestAnimationFrame(() => {
+            document
+              .getElementById(`score-param-${scoringValidation.paramIds[0]}`)
+              ?.scrollIntoView({ behavior: "smooth", block: "center" });
+          });
+          return;
+        }
+
+        setInteractionNotice(null);
+        setHighlightedFieldIds([]);
+        setHighlightedScoreParamIds([]);
+
+        if (isCallInteraction) {
+          const callWarnings = getCallInteractionDefaultWarnings(
+            submitFormData,
+            reasons.length
+          );
+          if (callWarnings.fieldIds.length > 0) {
+            setHighlightedFieldIds(callWarnings.fieldIds);
+            setInteractionNotice(AUDIT_FORM_NOTICE.callOptional);
+            toast(AUDIT_FORM_TOAST.reviewHighlights, "warning");
+          }
+        }
 
         const calc = calculateResults(
           submitFormData,
@@ -526,6 +626,18 @@ export function AuditForm({
 
             <div className="audit-panel__body">
               <div className="audit-details">
+                {interactionNotice ? (
+                  <div
+                    className={cn(
+                      "audit-panel__notice",
+                      isChatInteraction && "audit-panel__notice--error"
+                    )}
+                    role={isChatInteraction ? "alert" : "status"}
+                  >
+                    {interactionNotice}
+                  </div>
+                ) : null}
+
                 <div className="audit-details__row audit-details__row--full">
                   <div className="audit-type-switch">
                     <span className="audit-type-switch__label">Interaction type</span>
@@ -567,8 +679,13 @@ export function AuditForm({
                 </div>
 
                 <div className="audit-details__row">
-                  <Field className="audit-field">
-                    <Label htmlFor="supervisor">Supervisor</Label>
+                  <Field className={fieldAttentionClass("supervisor")}>
+                    <Label htmlFor="supervisor">
+                      Supervisor
+                      {isChatInteraction ? (
+                        <span className="audit-required"> *</span>
+                      ) : null}
+                    </Label>
                     <Select
                       id="supervisor"
                       className="audit-control"
@@ -585,8 +702,13 @@ export function AuditForm({
                     </Select>
                   </Field>
 
-                  <Field className="audit-field">
-                    <Label htmlFor="agent">Agent</Label>
+                  <Field className={fieldAttentionClass("agent")}>
+                    <Label htmlFor="agent">
+                      Agent
+                      {isChatInteraction ? (
+                        <span className="audit-required"> *</span>
+                      ) : null}
+                    </Label>
                     <Select
                       id="agent"
                       className="audit-control"
@@ -609,8 +731,13 @@ export function AuditForm({
                     </Select>
                   </Field>
 
-                  <Field className="audit-field">
-                    <Label htmlFor="auditor">Quality Analyst</Label>
+                  <Field className={fieldAttentionClass("auditor")}>
+                    <Label htmlFor="auditor">
+                      Quality Analyst
+                      {isChatInteraction ? (
+                        <span className="audit-required"> *</span>
+                      ) : null}
+                    </Label>
                     <Select
                       id="auditor"
                       className="audit-control"
@@ -628,9 +755,12 @@ export function AuditForm({
                 </div>
 
                 <div className="audit-details__row">
-                  <Field className="audit-field">
+                  <Field className={fieldAttentionClass("callDate")}>
                     <Label htmlFor="callDate">
                       {isCallInteraction ? "Call date" : "Chat date"}
+                      {isChatInteraction ? (
+                        <span className="audit-required"> *</span>
+                      ) : null}
                     </Label>
                     <Input
                       id="callDate"
@@ -641,8 +771,13 @@ export function AuditForm({
                     />
                   </Field>
 
-                  <Field className="audit-field">
-                    <Label htmlFor="businessType">Business Type</Label>
+                  <Field className={fieldAttentionClass("businessType")}>
+                    <Label htmlFor="businessType">
+                      Business Type
+                      {isChatInteraction ? (
+                        <span className="audit-required"> *</span>
+                      ) : null}
+                    </Label>
                     <Select
                       id="businessType"
                       className="audit-control"
@@ -678,8 +813,13 @@ export function AuditForm({
                 </div>
 
                 <div className="audit-details__row">
-                  <Field className="audit-field">
-                    <Label htmlFor="lob">LOB</Label>
+                  <Field className={fieldAttentionClass("lob")}>
+                    <Label htmlFor="lob">
+                      LOB
+                      {isChatInteraction ? (
+                        <span className="audit-required"> *</span>
+                      ) : null}
+                    </Label>
                     <Select
                       id="lob"
                       className="audit-control"
@@ -703,8 +843,13 @@ export function AuditForm({
                     </Select>
                   </Field>
 
-                  <Field className="audit-field">
-                    <Label htmlFor="sublob">Reason</Label>
+                  <Field className={fieldAttentionClass("sublob")}>
+                    <Label htmlFor="sublob">
+                      Reason
+                      {isChatInteraction ? (
+                        <span className="audit-required"> *</span>
+                      ) : null}
+                    </Label>
                     <Select
                       id="sublob"
                       className="audit-control"
@@ -723,8 +868,13 @@ export function AuditForm({
                     </Select>
                   </Field>
 
-                  <Field className="audit-field">
-                    <Label htmlFor="reason">Sub-reason</Label>
+                  <Field className={fieldAttentionClass("reason")}>
+                    <Label htmlFor="reason">
+                      Sub-reason
+                      {isChatInteraction && reasons.length > 0 ? (
+                        <span className="audit-required"> *</span>
+                      ) : null}
+                    </Label>
                     <Select
                       id="reason"
                       className="audit-control"
@@ -749,10 +899,18 @@ export function AuditForm({
                 </div>
 
                 <div className="audit-details__row audit-details__row--pair audit-details__row--contact">
-                  <Field className="audit-field audit-contact-field">
+                  <Field
+                    className={fieldAttentionClass(
+                      "mobile",
+                      "audit-field audit-contact-field"
+                    )}
+                  >
                     <div className="audit-contact-field__label-row">
                       <Label htmlFor="mobile">
                         {formData.type === "Call" ? "Mobile number" : "Number / name"}
+                        {isChatInteraction ? (
+                          <span className="audit-required"> *</span>
+                        ) : null}
                       </Label>
                     </div>
                     <Input
@@ -770,9 +928,13 @@ export function AuditForm({
                       onChange={(e) => updateForm({ mobile: e.target.value })}
                     />
                     <p className="audit-field__hint ui-hint">
-                      Optional — {formData.type === "Call"
-                        ? "customer phone number for this call"
-                        : "identifier for this chat (name, number, or ticket ID)"}
+                      {isChatInteraction
+                        ? "Required — guest name, ticket ID, or phone number"
+                        : `Optional — ${
+                            formData.type === "Call"
+                              ? "customer phone number for this call"
+                              : "identifier for this chat (name, number, or ticket ID)"
+                          }`}
                     </p>
                   </Field>
 
@@ -780,14 +942,24 @@ export function AuditForm({
                     value={formData.referenceUrl}
                     interactionType={formData.type}
                     inline
+                    required={false}
+                    fieldClassName={fieldAttentionClass(
+                      "referenceUrl",
+                      "audit-field audit-reference-field audit-contact-field"
+                    )}
                     auditReferenceOptions={auditReferenceOptions}
                     onChange={(referenceUrl) => updateForm({ referenceUrl })}
                   />
                 </div>
 
                 <div className="audit-details__row audit-details__row--full">
-                  <Field className="audit-field">
-                    <Label htmlFor="response">Agent&apos;s Response</Label>
+                  <Field className={fieldAttentionClass("response")}>
+                    <Label htmlFor="response">
+                      Agent&apos;s Response
+                      {isChatInteraction ? (
+                        <span className="audit-required"> *</span>
+                      ) : null}
+                    </Label>
                     <textarea
                       id="response"
                       className="audit-control audit-textarea"
@@ -812,13 +984,17 @@ export function AuditForm({
                   (p) =>
                     getEffectiveScore(scores, p.id, false, p.scoring) !== "NA"
                 ).length;
+            const sectionHasMissingScores = section.params.some((param) =>
+              highlightedScoreParamIds.includes(param.id)
+            );
 
             return (
               <section
                 key={`${selectedTemplateId}-${section.id}`}
                 className={cn(
                   "audit-panel",
-                  sectionRated > 0 && "audit-panel--rated"
+                  sectionRated > 0 && "audit-panel--rated",
+                  sectionHasMissingScores && "audit-panel--attention"
                 )}
               >
                 <header className="audit-panel__head">
@@ -844,6 +1020,12 @@ export function AuditForm({
                     </div>
                   </div>
                 </header>
+
+                {sectionHasMissingScores ? (
+                  <div className="audit-panel__notice" role="alert">
+                    {AUDIT_FORM_NOTICE.scoreParameters}
+                  </div>
+                ) : null}
 
                 <div className="audit-score-list">
                   <div className="audit-score-list__head">
@@ -880,10 +1062,13 @@ export function AuditForm({
                     return (
                       <div
                         key={param.id}
+                        id={`score-param-${param.id}`}
                         className={cn(
                           "audit-score-row",
                           toneClass(tone, "audit-score-row"),
-                          isRated && tone !== "na" && "audit-score-row--active"
+                          isRated && tone !== "na" && "audit-score-row--active",
+                          highlightedScoreParamIds.includes(param.id) &&
+                            "audit-score-row--attention"
                         )}
                       >
                         <div className="audit-score-row__info">

@@ -196,8 +196,8 @@ export function ParametersTab({ data, sortOrder }: ParametersTabProps) {
                 </tr>
               </thead>
               <tbody>
-                {slice.map((p) => (
-                  <tr key={p.name}>
+                {slice.map((p, index) => (
+                  <tr key={`${p.name}-${index}`}>
                     <td className="qms-cell-strong">{p.name}</td>
                     <td>{p.avg}</td>
                     <td>{p.max}</td>

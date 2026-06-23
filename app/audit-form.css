@@ -620,6 +620,40 @@
   margin-left: 1px;
 }
 
+.audit-panel__notice {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-warning, #d97706) 35%, var(--color-border));
+  background: color-mix(in srgb, var(--color-warning, #d97706) 8%, var(--color-surface));
+  color: var(--color-fg);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.audit-panel__notice--error {
+  border-color: color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+}
+
+.audit-panel--attention {
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--color-warning, #d97706) 35%, var(--color-border));
+}
+
+.audit-panel--attention .audit-panel__notice {
+  margin: 0 var(--audit-pad-x) 12px;
+}
+
+.audit-field--attention .audit-control,
+.audit-field--attention .audit-textarea,
+.audit-field--attention .audit-ref-attach__empty,
+.audit-field--attention .audit-ref-attach__chip,
+.audit-field--attention .audit-ref-attach__add-btn {
+  border-color: color-mix(in srgb, var(--color-warning, #d97706) 70%, var(--color-border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-warning, #d97706) 18%, transparent);
+}
+
 .audit-field__hint {
   margin: 6px 0 0;
   font-size: 0.75rem;
@@ -760,6 +794,15 @@
 
 .audit-score-row:last-child {
   border-bottom: none;
+}
+
+.audit-score-row--attention {
+  background: color-mix(in srgb, var(--color-warning, #d97706) 8%, var(--color-surface));
+}
+
+.audit-score-row--attention .audit-score-row__select {
+  border-color: color-mix(in srgb, var(--color-warning, #d97706) 70%, var(--color-border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-warning, #d97706) 18%, transparent);
 }
 
 .audit-score-row--set {

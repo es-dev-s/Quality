@@ -1,4 +1,8 @@
 import type { AuditRow } from "@/lib/audit/types";
+import {
+  parameterGroupKey,
+  pickDisplayName,
+} from "@/lib/audit/analytics-metric-keys";
 import type { AnalyticsAuditRecord } from "@/lib/audit/analytics-metrics";
 
 export type LeaderboardRow = {
@@ -92,25 +96,34 @@ export function computeLeaderboardAnalytics(
     }
   }
 
-  const paramTotals: Record<string, { scored: number; max: number; cat: string }> =
-    {};
+  const paramTotals = new Map<
+    string,
+    { scored: number; max: number; cat: string; displayName: string }
+  >();
 
   for (const record of records) {
     for (const row of record.rows) {
-      if (row.max === 0) continue;
-      if (!paramTotals[row.name]) {
-        paramTotals[row.name] = { scored: 0, max: 0, cat: row.cat };
-      }
-      paramTotals[row.name].scored += row.score;
-      paramTotals[row.name].max += row.max;
+      if (row.sel === "NA" || row.max <= 0) continue;
+      const key = parameterGroupKey(row);
+      const entry = paramTotals.get(key) ?? {
+        scored: 0,
+        max: 0,
+        cat: row.cat,
+        displayName: row.name?.trim() || row.id,
+      };
+      entry.displayName = pickDisplayName(entry.displayName, row.name);
+      entry.cat = row.cat || entry.cat;
+      entry.scored += row.score;
+      entry.max += row.max;
+      paramTotals.set(key, entry);
     }
   }
 
-  const paramAnalysis = Object.entries(paramTotals)
-    .map(([name, v]) => ({
-      name,
-      cat: v.cat,
-      pct: v.max > 0 ? Math.round((v.scored / v.max) * 100) : 0,
+  const paramAnalysis = Array.from(paramTotals.values())
+    .map((value) => ({
+      name: value.displayName,
+      cat: value.cat,
+      pct: value.max > 0 ? Math.round((value.scored / value.max) * 100) : 0,
     }))
     .sort((a, b) => a.pct - b.pct);
 

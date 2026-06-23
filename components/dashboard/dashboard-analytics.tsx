@@ -15,7 +15,6 @@ import {
 import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
 import { Badge } from "@/components/primitives/badge";
 import { FilterSelect } from "@/components/filters/filter-select";
-import { Select } from "@/components/primitives/field";
 import { LoadingZone } from "@/components/primitives/loading-zone";
 import { cn } from "@/lib/utils";
 import { FatalOccurrencesModal } from "@/components/dashboard/fatal-occurrences-modal";
@@ -38,6 +37,7 @@ import {
   filterByCustomRange,
   filterCurrentMonth,
   hasActiveIncludeFilters,
+  resolveTrendRangeBounds,
   type DashboardIncludeFilters,
   type DashboardPeriod,
   type TrendGranularity,
@@ -128,6 +128,23 @@ export function DashboardAnalytics({
     return filterByPeriod(scopedRecords, period, referenceNow);
   }, [scopedRecords, period, customRange, referenceNow]);
 
+  const trendRangeBounds = useMemo(
+    () =>
+      resolveTrendRangeBounds(
+        {
+          period: customRange.from || customRange.to ? "custom" : period,
+          customFrom: customRange.from,
+          customTo: customRange.to,
+        },
+        referenceNow
+      ),
+    [period, customRange, referenceNow]
+  );
+
+  const trendGranularityLabel =
+    TREND_OPTIONS.find((option) => option.id === trendGranularity)?.label ??
+    "Week by week";
+
   const monthRecords = useMemo(
     () => filterCurrentMonth(scopedRecords, referenceNow),
     [scopedRecords, referenceNow]
@@ -145,8 +162,14 @@ export function DashboardAnalytics({
   );
 
   const trendData = useMemo(
-    () => computeTrendData(scopedRecords, trendGranularity, referenceNow),
-    [scopedRecords, trendGranularity, referenceNow]
+    () =>
+      computeTrendData(
+        filtered,
+        trendGranularity,
+        referenceNow,
+        trendRangeBounds
+      ),
+    [filtered, trendGranularity, referenceNow, trendRangeBounds]
   );
 
   const agentTargets = useMemo(
@@ -181,10 +204,10 @@ export function DashboardAnalytics({
   }
 
   const recentSubmissions = useMemo(() => {
-    return [...records]
+    return [...filtered]
       .sort((a, b) => b.auditDate.localeCompare(a.auditDate))
       .slice(0, 5);
-  }, [records]);
+  }, [filtered]);
 
   function handleRefresh() {
     startRefresh(() => {
@@ -203,6 +226,7 @@ export function DashboardAnalytics({
     setIncludeFilters(EMPTY_INCLUDE_FILTERS);
     setCustomRange({ from: "", to: "" });
     setPeriod("overall");
+    setTrendGranularity("week");
   }
 
   const dashboardFilterChips = useMemo(() => {
@@ -249,8 +273,15 @@ export function DashboardAnalytics({
         onRemove: () => updateFilter("auditType", ""),
       });
     }
+    if (trendGranularity !== "week") {
+      chips.push({
+        key: "trend",
+        label: trendGranularityLabel,
+        onRemove: () => setTrendGranularity("week"),
+      });
+    }
     return chips;
-  }, [customRange, period, includeFilters]);
+  }, [customRange, period, includeFilters, trendGranularity, trendGranularityLabel]);
 
   const sidebarFilterCount = dashboardFilterChips.length;
 
@@ -339,7 +370,7 @@ export function DashboardAnalytics({
         open={filterSidebar.open}
         onOpenChange={filterSidebar.onOpenChange}
         title="Dashboard filters"
-        description="Set the time period and segment filters for KPIs and charts."
+        description="Set the time period, trend view, and segment filters for KPIs and charts."
         activeCount={sidebarFilterCount}
         onClearAll={clearFilters}
         clearDisabled={sidebarFilterCount === 0}
@@ -375,6 +406,26 @@ export function DashboardAnalytics({
             }}
             label="Custom date range"
           />
+        </FilterSidebarSection>
+
+        <FilterSidebarSection label="Trend view">
+          <label className="dash-filter">
+            <span>Avg quality score chart</span>
+            <FilterSelect
+              value={trendGranularity}
+              onChange={(value) =>
+                setTrendGranularity(value as TrendGranularity)
+              }
+              options={TREND_OPTIONS.map((option) => ({
+                value: option.id,
+                label: option.label,
+              }))}
+              ariaLabel="Trend chart granularity"
+            />
+          </label>
+          <p className="ui-hint dash-filter__hint">
+            Uses the same period and segment filters as the dashboard KPIs.
+          </p>
         </FilterSidebarSection>
 
         <FilterSidebarSection label="Segment">
@@ -487,23 +538,9 @@ export function DashboardAnalytics({
             <div>
               <h2 className="dash-panel__title">Avg quality score</h2>
               <p className="dash-panel__desc">
-                Rolling average by day, week, or month
+                {trendGranularityLabel} · filtered period
               </p>
             </div>
-            <Select
-              className="dash-select"
-              value={trendGranularity}
-              onChange={(e) =>
-                setTrendGranularity(e.target.value as TrendGranularity)
-              }
-              aria-label="Trend granularity"
-            >
-              {TREND_OPTIONS.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
-              ))}
-            </Select>
           </div>
           <div className="dash-trend">
             {trendData.map((point) => {

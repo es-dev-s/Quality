@@ -144,6 +144,17 @@ export type TrendPoint = {
   count: number;
 };
 
+export type TrendRangeBounds = {
+  start: Date;
+  end: Date;
+};
+
+export type TrendRangeInput = {
+  period: DashboardPeriod;
+  customFrom: string;
+  customTo: string;
+};
+
 export type AgentTargetRow = {
   name: string;
   achieved: number;
@@ -375,27 +386,138 @@ export function computeScoreDistribution(
   }));
 }
 
+function averageQualityPct(records: DashboardAuditRecord[]): number {
+  if (records.length === 0) return 0;
+  return Math.round(
+    records.reduce((sum, record) => sum + record.qualityPct, 0) / records.length
+  );
+}
+
+function recordsInRange(
+  records: DashboardAuditRecord[],
+  start: Date,
+  end: Date
+): DashboardAuditRecord[] {
+  return records.filter((record) => {
+    const date = recordMetricDate(record);
+    return date >= start && date < end;
+  });
+}
+
+export function resolveTrendRangeBounds(
+  input: TrendRangeInput,
+  now = new Date()
+): TrendRangeBounds | null {
+  if (input.customFrom || input.customTo) {
+    const start = input.customFrom
+      ? parseMetricDate(input.customFrom)
+      : addDays(parseMetricDate(input.customTo || input.customFrom), -90);
+    const end = input.customTo
+      ? addDays(parseMetricDate(input.customTo), 1)
+      : addDays(startOfDay(now), 1);
+    return { start, end };
+  }
+
+  const today = startOfDay(now);
+  if (input.period === "overall") return null;
+  if (input.period === "today") {
+    return { start: today, end: addDays(today, 1) };
+  }
+  if (input.period === "yesterday") {
+    const yesterday = addDays(today, -1);
+    return { start: yesterday, end: today };
+  }
+  if (input.period === "week") {
+    const weekStart = startOfWeekMonday(now);
+    return { start: weekStart, end: addDays(weekStart, 7) };
+  }
+  if (input.period === "month") {
+    return {
+      start: new Date(now.getFullYear(), now.getMonth(), 1),
+      end: new Date(now.getFullYear(), now.getMonth() + 1, 1),
+    };
+  }
+  return null;
+}
+
+function buildTrendBucketsInRange(
+  records: DashboardAuditRecord[],
+  granularity: TrendGranularity,
+  bounds: TrendRangeBounds
+): TrendPoint[] {
+  const points: TrendPoint[] = [];
+
+  if (granularity === "day") {
+    let cursor = startOfDay(bounds.start);
+    while (cursor < bounds.end && points.length < 31) {
+      const next = addDays(cursor, 1);
+      const bucket = recordsInRange(records, cursor, next);
+      points.push({
+        id: `d-${cursor.getFullYear()}-${cursor.getMonth()}-${cursor.getDate()}`,
+        name: formatDayLabel(cursor),
+        score: averageQualityPct(bucket),
+        count: bucket.length,
+      });
+      cursor = next;
+    }
+    return points;
+  }
+
+  if (granularity === "week") {
+    let cursor = startOfWeekMonday(bounds.start);
+    while (cursor < bounds.end && points.length < 12) {
+      const next = addDays(cursor, 7);
+      const bucket = recordsInRange(records, cursor, next);
+      points.push({
+        id: `w-${cursor.getFullYear()}-${cursor.getMonth()}-${cursor.getDate()}`,
+        name: formatWeekLabel(cursor),
+        score: averageQualityPct(bucket),
+        count: bucket.length,
+      });
+      cursor = next;
+    }
+    return points;
+  }
+
+  let cursor = new Date(bounds.start.getFullYear(), bounds.start.getMonth(), 1);
+  const endMonth = new Date(bounds.end.getFullYear(), bounds.end.getMonth(), 1);
+  while (cursor <= endMonth && points.length < 12) {
+    const next = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    const bucket = records.filter((record) =>
+      isSameMonth(recordMetricDate(record), cursor)
+    );
+    points.push({
+      id: `m-${cursor.getFullYear()}-${cursor.getMonth()}`,
+      name: formatMonthLabel(cursor),
+      score: averageQualityPct(bucket),
+      count: bucket.length,
+    });
+    cursor = next;
+  }
+
+  return points;
+}
+
 export function computeTrendData(
   records: DashboardAuditRecord[],
   granularity: TrendGranularity,
-  now = new Date()
+  now = new Date(),
+  bounds?: TrendRangeBounds | null
 ): TrendPoint[] {
+  if (bounds) {
+    return buildTrendBucketsInRange(records, granularity, bounds);
+  }
+
   if (granularity === "month") {
     return Array.from({ length: 6 }).map((_, i) => {
       const date = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
       const filtered = records.filter((r) =>
         isSameMonth(recordMetricDate(r), date)
       );
-      const score =
-        filtered.length > 0
-          ? Math.round(
-              filtered.reduce((s, r) => s + r.qualityPct, 0) / filtered.length
-            )
-          : 0;
       return {
         id: `m-${date.getFullYear()}-${date.getMonth()}`,
         name: formatMonthLabel(date),
-        score,
+        score: averageQualityPct(filtered),
         count: filtered.length,
       };
     });
@@ -406,20 +528,11 @@ export function computeTrendData(
       const anchor = addDays(now, -7 * (7 - i));
       const weekStart = startOfWeekMonday(anchor);
       const weekEnd = addDays(weekStart, 7);
-      const filtered = records.filter((r) => {
-        const d = recordMetricDate(r);
-        return d >= weekStart && d < weekEnd;
-      });
-      const score =
-        filtered.length > 0
-          ? Math.round(
-              filtered.reduce((s, r) => s + r.qualityPct, 0) / filtered.length
-            )
-          : 0;
+      const filtered = recordsInRange(records, weekStart, weekEnd);
       return {
         id: `w-${weekStart.getFullYear()}-${weekStart.getMonth()}-${weekStart.getDate()}`,
         name: formatWeekLabel(weekStart),
-        score,
+        score: averageQualityPct(filtered),
         count: filtered.length,
       };
     });
@@ -427,19 +540,12 @@ export function computeTrendData(
 
   return Array.from({ length: 14 }).map((_, i) => {
     const date = addDays(now, -(13 - i));
-    const filtered = records.filter((r) =>
-      isSameDay(recordMetricDate(r), date)
-    );
-    const score =
-      filtered.length > 0
-        ? Math.round(
-            filtered.reduce((s, r) => s + r.qualityPct, 0) / filtered.length
-          )
-        : 0;
+    const dayStart = startOfDay(date);
+    const filtered = recordsInRange(records, dayStart, addDays(dayStart, 1));
     return {
       id: `d-${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`,
       name: formatDayLabel(date),
-      score,
+      score: averageQualityPct(filtered),
       count: filtered.length,
     };
   });
