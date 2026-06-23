@@ -94,23 +94,16 @@ export function validateChatInteractionDetails(
   };
 }
 
-const CALL_SOFT_FIELD_IDS = new Set([
-  "lob",
-  "sublob",
-  "reason",
-  "mobile",
-  "referenceUrl",
-  "response",
-]);
-
-export function getCallInteractionDefaultWarnings(
+export function validateCallInteractionDetails(
   formData: AuditFormData,
   subReasonCount: number
-): { fieldIds: string[] } {
-  const missing = findMissingInteractionFields(formData, subReasonCount).filter(
-    (field) => CALL_SOFT_FIELD_IDS.has(field.id)
-  );
+): { ok: true } | { ok: false; fieldIds: string[] } {
+  const missing = findMissingInteractionFields(formData, subReasonCount);
+  if (missing.length === 0) {
+    return { ok: true };
+  }
   return {
+    ok: false,
     fieldIds: missing.map((f) => f.id),
   };
 }
