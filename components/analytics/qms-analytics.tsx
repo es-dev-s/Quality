@@ -15,12 +15,16 @@ import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
 import { useBusyAction } from "@/lib/hooks/use-busy-action";
 import { getAnalyticsData, type AnalyticsPageData } from "@/lib/actions/analytics";
 import {
+  ANALYTICS_INTERACTION_PRESETS,
   ANALYTICS_PERIOD_PRESETS,
   applyAnalyticsFilters,
+  DEFAULT_ANALYTICS_INTERACTION_FILTER,
   EMPTY_ANALYTICS_INCLUDE_FILTERS,
   extractAnalyticsFilterOptions,
   hasActiveAnalyticsIncludeFilters,
+  hasActiveAnalyticsInteractionFilter,
   type AnalyticsIncludeFilters,
+  type AnalyticsInteractionFilter,
 } from "@/lib/audit/analytics-filters";
 import { summaryChipClass } from "@/lib/audit/analytics-metrics";
 import type { DashboardPeriod } from "@/lib/audit/dashboard-metrics";
@@ -67,6 +71,8 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
   const [includeFilters, setIncludeFilters] = useState<AnalyticsIncludeFilters>(
     EMPTY_ANALYTICS_INCLUDE_FILTERS
   );
+  const [interactionFilter, setInteractionFilter] =
+    useState<AnalyticsInteractionFilter>(DEFAULT_ANALYTICS_INTERACTION_FILTER);
   const filterSidebar = useFilterSidebar();
   const { busy: isLoading, run: runBusy } = useBusyAction();
   const [error, setError] = useState<string | null>(null);
@@ -95,9 +101,10 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
         period,
         customRange,
         includeFilters,
+        interactionFilter,
         referenceNow,
       }),
-    [records, period, customRange, includeFilters, referenceNow]
+    [records, period, customRange, includeFilters, interactionFilter, referenceNow]
   );
 
   const analytics = useMemo(
@@ -125,7 +132,8 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
   const hasActiveFilters =
     hasCustomRange ||
     period !== "overall" ||
-    hasActiveAnalyticsIncludeFilters(includeFilters);
+    hasActiveAnalyticsIncludeFilters(includeFilters) ||
+    hasActiveAnalyticsInteractionFilter(interactionFilter);
 
   function updateFilter<K extends keyof AnalyticsIncludeFilters>(
     key: K,
@@ -138,6 +146,7 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
     setIncludeFilters(EMPTY_ANALYTICS_INCLUDE_FILTERS);
     setCustomRange({ from: "", to: "" });
     setPeriod("overall");
+    setInteractionFilter(DEFAULT_ANALYTICS_INTERACTION_FILTER);
   }
 
   const filterChips = useMemo(() => {
@@ -179,9 +188,20 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
         onRemove: () => updateFilter("auditor", ""),
       });
     }
+    if (hasActiveAnalyticsInteractionFilter(interactionFilter)) {
+      const preset = ANALYTICS_INTERACTION_PRESETS.find(
+        (entry) => entry.id === interactionFilter
+      );
+      chips.push({
+        key: "interaction",
+        label: preset?.ariaLabel ?? "Interaction type",
+        onRemove: () =>
+          setInteractionFilter(DEFAULT_ANALYTICS_INTERACTION_FILTER),
+      });
+    }
 
     return chips;
-  }, [customRange, period, includeFilters, hasCustomRange]);
+  }, [customRange, period, includeFilters, interactionFilter, hasCustomRange]);
 
   const sidebarFilterCount = filterChips.length;
 
@@ -234,6 +254,13 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
             </span>
             <span className="qms-summary-chip qms-summary-chip--muted">
               {analytics.kpis.total_audits.toLocaleString()} audits
+              {analytics.kpis.call_count > 0 && analytics.kpis.chat_count > 0 ? (
+                <span style={{ fontWeight: 500, opacity: 0.75 }}>
+                  {" "}
+                  ({analytics.kpis.call_count} call · {analytics.kpis.chat_count}{" "}
+                  chat)
+                </span>
+              ) : null}
               {hasActiveFilters ? (
                 <span style={{ fontWeight: 500, opacity: 0.75 }}> (filtered)</span>
               ) : null}
@@ -337,6 +364,36 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
             }}
             label="Custom date range"
           />
+        </FilterSidebarSection>
+
+        <FilterSidebarSection label="Interaction type">
+          <div
+            className="filter-sidebar-periods pf-periods"
+            role="tablist"
+            aria-label="Interaction type filter"
+          >
+            {ANALYTICS_INTERACTION_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                role="tab"
+                aria-selected={interactionFilter === preset.id}
+                aria-label={preset.ariaLabel}
+                title={preset.ariaLabel}
+                className={cn(
+                  "pf-period-btn",
+                  interactionFilter === preset.id && "pf-period-btn--active"
+                )}
+                onClick={() => setInteractionFilter(preset.id)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <p className="ui-hint" style={{ marginTop: 8 }}>
+            Both combines call and chat parameters with matching names and
+            merged counts.
+          </p>
         </FilterSidebarSection>
 
         <FilterSidebarSection label="Segment">

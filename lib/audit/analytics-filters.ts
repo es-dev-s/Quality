@@ -17,6 +17,21 @@ export type AnalyticsIncludeFilters = {
   auditor: string;
 };
 
+export type AnalyticsInteractionFilter = "both" | "call" | "chat";
+
+export const DEFAULT_ANALYTICS_INTERACTION_FILTER: AnalyticsInteractionFilter =
+  "both";
+
+export const ANALYTICS_INTERACTION_PRESETS: {
+  id: AnalyticsInteractionFilter;
+  label: string;
+  ariaLabel: string;
+}[] = [
+  { id: "both", label: "Both", ariaLabel: "Call and chat combined" },
+  { id: "call", label: "Call", ariaLabel: "Call audits only" },
+  { id: "chat", label: "Chat", ariaLabel: "Chat audits only" },
+];
+
 export const EMPTY_ANALYTICS_INCLUDE_FILTERS: AnalyticsIncludeFilters = {
   agent: "",
   teamName: "",
@@ -87,6 +102,27 @@ export function hasActiveAnalyticsIncludeFilters(
   return Boolean(filters.agent || filters.teamName || filters.auditor);
 }
 
+export function hasActiveAnalyticsInteractionFilter(
+  interactionFilter: AnalyticsInteractionFilter
+): boolean {
+  return interactionFilter !== DEFAULT_ANALYTICS_INTERACTION_FILTER;
+}
+
+export function filterAnalyticsByInteractionType(
+  records: AnalyticsAuditRecord[],
+  interactionFilter: AnalyticsInteractionFilter
+): AnalyticsAuditRecord[] {
+  if (interactionFilter === "both") return records;
+  const target = interactionFilter === "call" ? "Call" : "Chat";
+  return records.filter((record) => record.type === target);
+}
+
+export function shouldMergeParametersAcrossInteractionTypes(
+  interactionFilter: AnalyticsInteractionFilter
+): boolean {
+  return interactionFilter === "both";
+}
+
 export function filterAnalyticsByPeriod(
   records: AnalyticsAuditRecord[],
   period: DashboardPeriod,
@@ -115,10 +151,15 @@ export function applyAnalyticsFilters(
     period: DashboardPeriod;
     customRange: DateRangeValue;
     includeFilters: AnalyticsIncludeFilters;
+    interactionFilter: AnalyticsInteractionFilter;
     referenceNow: Date;
   }
 ) {
   let filtered = filterAnalyticsByInclude(records, options.includeFilters);
+  filtered = filterAnalyticsByInteractionType(
+    filtered,
+    options.interactionFilter
+  );
 
   if (options.customRange.from || options.customRange.to) {
     filtered = filterAnalyticsByCustomRange(
@@ -134,9 +175,17 @@ export function applyAnalyticsFilters(
     );
   }
 
+  const mergeParametersAcrossInteractionTypes =
+    shouldMergeParametersAcrossInteractionTypes(options.interactionFilter);
+
   return {
-    ...computeQmsAnalytics(filtered),
-    leaderboards: computeLeaderboardAnalytics(filtered),
+    ...computeQmsAnalytics(filtered, options.referenceNow, {
+      mergeParametersAcrossInteractionTypes,
+    }),
+    leaderboards: computeLeaderboardAnalytics(filtered, {
+      mergeParametersAcrossInteractionTypes,
+    }),
     filteredCount: filtered.length,
+    interactionFilter: options.interactionFilter,
   };
 }

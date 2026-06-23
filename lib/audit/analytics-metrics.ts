@@ -3,10 +3,20 @@ import { resolveMetricDate } from "@/lib/audit/metric-dates";
 import type { FeedbackSecurity } from "@/lib/audit/feedback";
 import type { AuditRow, CategoryScore } from "@/lib/audit/types";
 import {
+  canonicalCategoryKey,
+  canonicalCategoryLabel,
   metricGroupKey,
-  parameterGroupKey,
   pickDisplayName,
+  resolveParameterGroupKey,
 } from "@/lib/audit/analytics-metric-keys";
+
+export type AnalyticsAggregationOptions = {
+  mergeParametersAcrossInteractionTypes: boolean;
+};
+
+const DEFAULT_AGGREGATION_OPTIONS: AnalyticsAggregationOptions = {
+  mergeParametersAcrossInteractionTypes: false,
+};
 
 export type AnalyticsAuditRecord = {
   id: string;
@@ -203,10 +213,10 @@ function categoryContributionsForRecord(
   if (Object.keys(catScores).length > 0) {
     for (const [rawName, cat] of Object.entries(catScores)) {
       if (cat.max <= 0) continue;
-      const key = metricGroupKey(rawName);
+      const key = canonicalCategoryKey(rawName);
       if (!key) continue;
       entries.set(key, {
-        displayName: rawName.trim(),
+        displayName: canonicalCategoryLabel(rawName),
         pct: (cat.scored / cat.max) * 100,
       });
     }
@@ -222,9 +232,9 @@ function categoryContributionsForRecord(
     if (row.sel === "NA" || row.max <= 0) continue;
     const rawName = row.cat?.trim();
     if (!rawName) continue;
-    const key = metricGroupKey(rawName);
+    const key = canonicalCategoryKey(rawName);
     const entry = bucket.get(key) ?? {
-      displayName: rawName,
+      displayName: canonicalCategoryLabel(rawName),
       scoreSum: 0,
       maxSum: 0,
     };
@@ -235,7 +245,7 @@ function categoryContributionsForRecord(
 
   for (const [key, data] of bucket) {
     entries.set(key, {
-      displayName: data.displayName,
+      displayName: canonicalCategoryLabel(data.displayName),
       pct: data.maxSum > 0 ? (data.scoreSum / data.maxSum) * 100 : 0,
     });
   }
@@ -245,7 +255,8 @@ function categoryContributionsForRecord(
 
 function computeRowMetricStats(
   records: AnalyticsAuditRecord[],
-  metricKey: "parameter" | "category"
+  metricKey: "parameter" | "category",
+  aggregation: AnalyticsAggregationOptions = DEFAULT_AGGREGATION_OPTIONS
 ): QmsParameterStat[] {
   if (metricKey === "category") {
     const byKey = new Map<
@@ -260,9 +271,8 @@ function computeRowMetricStats(
           pctSum: 0,
           count: 0,
         };
-        entry.displayName = pickDisplayName(
-          entry.displayName,
-          contribution.displayName
+        entry.displayName = canonicalCategoryLabel(
+          pickDisplayName(entry.displayName, contribution.displayName)
         );
         entry.pctSum += contribution.pct;
         entry.count += 1;
@@ -285,7 +295,10 @@ function computeRowMetricStats(
   for (const record of records) {
     for (const row of record.rows) {
       if (row.sel === "NA" || row.max <= 0) continue;
-      const key = parameterGroupKey(row);
+      const key = resolveParameterGroupKey(
+        row,
+        aggregation.mergeParametersAcrossInteractionTypes
+      );
       upsertMetricAccumulator(
         byKey,
         key,
@@ -299,18 +312,25 @@ function computeRowMetricStats(
   return metricStatsFromAccumulators(byKey);
 }
 
-function computeParameterStats(records: AnalyticsAuditRecord[]): QmsParameterStat[] {
-  return computeRowMetricStats(records, "parameter");
+function computeParameterStats(
+  records: AnalyticsAuditRecord[],
+  aggregation: AnalyticsAggregationOptions = DEFAULT_AGGREGATION_OPTIONS
+): QmsParameterStat[] {
+  return computeRowMetricStats(records, "parameter", aggregation);
 }
 
-function computeCategoryStats(records: AnalyticsAuditRecord[]): QmsCategoryStat[] {
-  return computeRowMetricStats(records, "category");
+function computeCategoryStats(
+  records: AnalyticsAuditRecord[],
+  aggregation: AnalyticsAggregationOptions = DEFAULT_AGGREGATION_OPTIONS
+): QmsCategoryStat[] {
+  return computeRowMetricStats(records, "category", aggregation);
 }
 
 function computeEntityMetricBreakdown(
   records: AnalyticsAuditRecord[],
   entityKey: "team" | "agent" | "auditor",
-  dimension: "parameter" | "category"
+  dimension: "parameter" | "category",
+  aggregation: AnalyticsAggregationOptions = DEFAULT_AGGREGATION_OPTIONS
 ): QmsEntityMetricRow[] {
   const buckets = new Map<
     string,
@@ -345,9 +365,8 @@ function computeEntityMetricBreakdown(
             pctSum: 0,
             count: 0,
           };
-        entry.displayName = pickDisplayName(
-          entry.displayName,
-          contribution.displayName
+        entry.displayName = canonicalCategoryLabel(
+          pickDisplayName(entry.displayName, contribution.displayName)
         );
         entry.pctSum += contribution.pct;
         entry.count += 1;
@@ -358,7 +377,10 @@ function computeEntityMetricBreakdown(
 
     for (const row of record.rows) {
       if (row.sel === "NA" || row.max <= 0) continue;
-      const key = parameterGroupKey(row);
+      const key = resolveParameterGroupKey(
+        row,
+        aggregation.mergeParametersAcrossInteractionTypes
+      );
       upsertMetricAccumulator(
         metricMap as Map<string, MetricAccumulator>,
         key,
@@ -535,7 +557,8 @@ function computeWeekSplit(records: AnalyticsAuditRecord[], now = new Date()) {
 
 export function computeQmsAnalytics(
   records: AnalyticsAuditRecord[],
-  now = new Date()
+  now = new Date(),
+  aggregation: AnalyticsAggregationOptions = DEFAULT_AGGREGATION_OPTIONS
 ): QmsAnalyticsData {
   const total = records.length;
   const overallAvg = total > 0 ? round1(avg(records.map((r) => r.qualityPct))) : 0;
@@ -605,8 +628,8 @@ export function computeQmsAnalytics(
       week2: weekSplit.week2,
       ...bands,
     },
-    params: computeParameterStats(records),
-    categories: computeCategoryStats(records),
+    params: computeParameterStats(records, aggregation),
+    categories: computeCategoryStats(records, aggregation),
     teams,
     bottom_agents: sortedAgentsAsc.slice(0, 10),
     top_agents: sortedAgentsDesc.slice(0, 10),
@@ -615,28 +638,38 @@ export function computeQmsAnalytics(
     team_param_breakdown: computeEntityMetricBreakdown(
       records,
       "team",
-      "parameter"
+      "parameter",
+      aggregation
     ),
-    team_cat_breakdown: computeEntityMetricBreakdown(records, "team", "category"),
+    team_cat_breakdown: computeEntityMetricBreakdown(
+      records,
+      "team",
+      "category",
+      aggregation
+    ),
     agent_param_breakdown: computeEntityMetricBreakdown(
       records,
       "agent",
-      "parameter"
+      "parameter",
+      aggregation
     ),
     agent_cat_breakdown: computeEntityMetricBreakdown(
       records,
       "agent",
-      "category"
+      "category",
+      aggregation
     ),
     auditor_param_breakdown: computeEntityMetricBreakdown(
       records,
       "auditor",
-      "parameter"
+      "parameter",
+      aggregation
     ),
     auditor_cat_breakdown: computeEntityMetricBreakdown(
       records,
       "auditor",
-      "category"
+      "category",
+      aggregation
     ),
   };
 }

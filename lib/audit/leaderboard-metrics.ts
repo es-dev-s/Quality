@@ -1,9 +1,12 @@
-import type { AuditRow } from "@/lib/audit/types";
 import {
-  parameterGroupKey,
+  canonicalCategoryLabel,
   pickDisplayName,
+  resolveParameterGroupKey,
 } from "@/lib/audit/analytics-metric-keys";
-import type { AnalyticsAuditRecord } from "@/lib/audit/analytics-metrics";
+import type {
+  AnalyticsAggregationOptions,
+  AnalyticsAuditRecord,
+} from "@/lib/audit/analytics-metrics";
 
 export type LeaderboardRow = {
   name: string;
@@ -66,7 +69,10 @@ function processBuckets(buckets: Record<string, Bucket>): LeaderboardRow[] {
 }
 
 export function computeLeaderboardAnalytics(
-  records: (AnalyticsAuditRecord & { reason?: string | null; fatalList?: unknown })[]
+  records: (AnalyticsAuditRecord & { reason?: string | null; fatalList?: unknown })[],
+  aggregation: AnalyticsAggregationOptions = {
+    mergeParametersAcrossInteractionTypes: false,
+  }
 ): LeaderboardAnalytics {
   const categories = {
     agents: {} as Record<string, Bucket>,
@@ -104,15 +110,18 @@ export function computeLeaderboardAnalytics(
   for (const record of records) {
     for (const row of record.rows) {
       if (row.sel === "NA" || row.max <= 0) continue;
-      const key = parameterGroupKey(row);
+      const key = resolveParameterGroupKey(
+        row,
+        aggregation.mergeParametersAcrossInteractionTypes
+      );
       const entry = paramTotals.get(key) ?? {
         scored: 0,
         max: 0,
-        cat: row.cat,
+        cat: canonicalCategoryLabel(row.cat),
         displayName: row.name?.trim() || row.id,
       };
       entry.displayName = pickDisplayName(entry.displayName, row.name);
-      entry.cat = row.cat || entry.cat;
+      entry.cat = canonicalCategoryLabel(row.cat || entry.cat);
       entry.scored += row.score;
       entry.max += row.max;
       paramTotals.set(key, entry);
