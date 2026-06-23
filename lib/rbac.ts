@@ -86,6 +86,16 @@ export function firstAccessiblePath(
   return null;
 }
 
+/** Where to send the user after a successful audit save (role-aware). */
+export function resolveAuditSaveRedirect(
+  role: SessionRole | null | undefined
+): string {
+  if (hasScope(role, PERMISSIONS.AUDIT_LOGS_READ)) return "/audit-logs";
+  if (hasScope(role, PERMISSIONS.OVERVIEW_READ)) return "/dashboard";
+  if (hasScope(role, PERMISSIONS.AUDIT_FORM_READ)) return "/forms";
+  return firstAccessiblePath(role) ?? "/access-denied";
+}
+
 export function canManageUsers(role?: SessionRole | null): boolean {
   return hasScope(role, PERMISSIONS.ADMIN_USERS);
 }
