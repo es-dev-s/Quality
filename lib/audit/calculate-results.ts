@@ -7,7 +7,6 @@ import type {
   ScoresMap,
 } from "@/lib/audit/types";
 import { isScoringFatal, resolveParamScore } from "@/lib/audit/resolve-score";
-import { validateInteractionDetails } from "@/lib/audit/validate-interaction-details";
 
 function randomAuditSuffix(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") {
@@ -51,10 +50,6 @@ export function calculateResults(
 ): CalculateResult {
   if (!template) {
     return { ok: false, error: "No audit template loaded." };
-  }
-  const interactionError = validateInteractionDetails(formData);
-  if (interactionError) {
-    return { ok: false, error: interactionError };
   }
 
   let totalScored = 0;

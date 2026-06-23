@@ -9,9 +9,12 @@ import {
   type ReactNode,
 } from "react";
 import { RealtimeProvider } from "@/components/dashboard/realtime-provider";
+import { NotificationsProvider } from "@/components/dashboard/notifications-panel";
+import { SessionGuard } from "@/components/dashboard/session-guard";
 import type { SessionRole } from "@/lib/rbac";
 
 export type DashboardUser = {
+  id: string;
   name?: string | null;
   email?: string | null;
   role: SessionRole;
@@ -62,13 +65,16 @@ export function DashboardShell({ user, children }: DashboardShellProps) {
   return (
     <ShellContext.Provider value={value}>
       <RealtimeProvider>
-        <div
-          className="dashboard-root"
-          data-collapsed={collapsed ? "true" : "false"}
-          data-mobile-open={mobileOpen ? "true" : "false"}
-        >
-          {children}
-        </div>
+        <NotificationsProvider>
+          <SessionGuard userId={user.id} />
+          <div
+            className="dashboard-root"
+            data-collapsed={collapsed ? "true" : "false"}
+            data-mobile-open={mobileOpen ? "true" : "false"}
+          >
+            {children}
+          </div>
+        </NotificationsProvider>
       </RealtimeProvider>
     </ShellContext.Provider>
   );

@@ -31,6 +31,7 @@ model User {
   assignmentsMade      AgentAssignment[]       @relation("AgentAssignedByQM")
   securityAuditTargets SecurityAuditLog[]      @relation("SecurityAuditTarget")
   securityAuditActions SecurityAuditLog[]      @relation("SecurityAuditActor")
+  notifications        Notification[]
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
 
@@ -255,6 +256,7 @@ model AuditSubmission {
   catScores      Json
   rows           Json
   record         Json
+  notifications  Notification[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -270,4 +272,25 @@ model AuditSubmission {
   @@index([submittedById, auditDate])
   @@index([templateId, auditDate])
   @@index([id, createdAt])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  type      String
+  title     String
+  body      String
+  auditId   String?   @map("audit_id")
+  auditCode String?   @map("audit_code")
+  meta      Json?
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  audit AuditSubmission? @relation(fields: [auditId], references: [id], onDelete: SetNull)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@index([auditId])
+  @@map("notifications")
 }

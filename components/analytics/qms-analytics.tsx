@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { FilterChipBar } from "@/components/filters/filter-chip-bar";
 import { FilterClearButton } from "@/components/filters/filter-clear-button";
@@ -34,25 +34,30 @@ import { OverviewTab } from "@/components/analytics/tabs/overview-tab";
 import { ParametersTab } from "@/components/analytics/tabs/parameters-tab";
 import { TeamsTab } from "@/components/analytics/tabs/teams-tab";
 import { LeaderboardsTab } from "@/components/analytics/tabs/leaderboards-tab";
-
-const TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "parameters", label: "Parameters" },
-  { id: "teams", label: "Teams" },
-  { id: "agents", label: "Agents" },
-  { id: "compliance", label: "Compliance" },
-  { id: "auditors", label: "Auditors" },
-  { id: "leaderboards", label: "Leaderboards" },
-] as const;
-
-type TabId = (typeof TABS)[number]["id"];
+import {
+  ANALYTICS_TAB_LABELS,
+  analyticsFilterVisibility,
+  analyticsTabsForRole,
+  getAnalyticsScopeDescription,
+  type AnalyticsTabId,
+} from "@/lib/audit/analytics-role-config";
 
 type QmsAnalyticsProps = {
   data: AnalyticsPageData;
+  roleSlug: string;
 };
 
-export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
-  const [tab, setTab] = useState<TabId>("overview");
+export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps) {
+  const visibleTabs = useMemo(() => analyticsTabsForRole(roleSlug), [roleSlug]);
+  const scopeDescription = useMemo(
+    () => getAnalyticsScopeDescription(roleSlug),
+    [roleSlug]
+  );
+  const filterVisibility = useMemo(
+    () => analyticsFilterVisibility(roleSlug),
+    [roleSlug]
+  );
+  const [tab, setTab] = useState<AnalyticsTabId>("overview");
   const [liveBase, setLiveBase] = useState<AnalyticsPageData | null>(null);
   const [period, setPeriod] = useState<DashboardPeriod>("overall");
   const [customRange, setCustomRange] = useState<DateRangeValue>({ from: "", to: "" });
@@ -62,6 +67,12 @@ export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
   const filterSidebar = useFilterSidebar();
   const { busy: isLoading, run: runBusy } = useBusyAction();
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!visibleTabs.includes(tab)) {
+      setTab(visibleTabs[0] ?? "overview");
+    }
+  }, [tab, visibleTabs]);
 
   const baseData = liveBase ?? initialData;
   const records = baseData.records;
@@ -217,6 +228,12 @@ export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
                 <span style={{ fontWeight: 500, opacity: 0.75 }}> (filtered)</span>
               ) : null}
             </span>
+            <span
+              className="qms-summary-chip qms-summary-chip--muted qms-summary-chip--scope"
+              title={scopeDescription}
+            >
+              {scopeDescription}
+            </span>
             <div className="pf-bar__chips">
               <FilterChipBar inline showClearButton={false} chips={filterChips} />
             </div>
@@ -314,53 +331,59 @@ export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
 
         <FilterSidebarSection label="Segment">
           <FilterSidebarGrid>
-            <label className="dash-filter">
-              <span>Agent</span>
-              <FilterSelect
-                value={includeFilters.agent}
-                onChange={(value) => updateFilter("agent", value)}
-                options={agentFilterOptions}
-                ariaLabel="Filter by agent"
-              />
-            </label>
-            <label className="dash-filter">
-              <span>Team</span>
-              <FilterSelect
-                value={includeFilters.teamName}
-                onChange={(value) => updateFilter("teamName", value)}
-                options={teamFilterOptions}
-                ariaLabel="Filter by team"
-              />
-            </label>
-            <label className="dash-filter">
-              <span>Quality analyst</span>
-              <FilterSelect
-                value={includeFilters.auditor}
-                onChange={(value) => updateFilter("auditor", value)}
-                options={auditorFilterOptions}
-                ariaLabel="Filter by quality analyst"
-              />
-            </label>
+            {filterVisibility.agent ? (
+              <label className="dash-filter">
+                <span>Agent</span>
+                <FilterSelect
+                  value={includeFilters.agent}
+                  onChange={(value) => updateFilter("agent", value)}
+                  options={agentFilterOptions}
+                  ariaLabel="Filter by agent"
+                />
+              </label>
+            ) : null}
+            {filterVisibility.teamName ? (
+              <label className="dash-filter">
+                <span>Team</span>
+                <FilterSelect
+                  value={includeFilters.teamName}
+                  onChange={(value) => updateFilter("teamName", value)}
+                  options={teamFilterOptions}
+                  ariaLabel="Filter by team"
+                />
+              </label>
+            ) : null}
+            {filterVisibility.auditor ? (
+              <label className="dash-filter">
+                <span>Quality analyst</span>
+                <FilterSelect
+                  value={includeFilters.auditor}
+                  onChange={(value) => updateFilter("auditor", value)}
+                  options={auditorFilterOptions}
+                  ariaLabel="Filter by quality analyst"
+                />
+              </label>
+            ) : null}
           </FilterSidebarGrid>
         </FilterSidebarSection>
       </FilterSidebar>
 
       <div className="qms-toolbar">
         <div className="qms-tabs" role="tablist" aria-label="Analytics sections">
-          {TABS.map((item) => (
+          {visibleTabs.map((itemId) => (
             <button
-              key={item.id}
+              key={itemId}
               type="button"
               role="tab"
-              aria-selected={tab === item.id}
+              aria-selected={tab === itemId}
               className={
-                tab === item.id
+                tab === itemId
                   ? "qms-tabs__btn qms-tabs__btn--active"
                   : "qms-tabs__btn"
               }
-              onClick={() => setTab(item.id)}
+              onClick={() => setTab(itemId)}
             >
-              {item.label}
+              {ANALYTICS_TAB_LABELS[itemId]}
             </button>
           ))}
         </div>
@@ -387,6 +410,8 @@ export function QmsAnalytics({ data: initialData }: QmsAnalyticsProps) {
         {hasActiveFilters
           ? ` · ${analyticsView.filteredCount} of ${records.length} scoped`
           : null}
+        {" · "}
+        {scopeDescription}
         {" · "}Internal use only
       </footer>
     </div>

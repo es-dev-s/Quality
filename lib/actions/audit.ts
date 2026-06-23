@@ -42,6 +42,7 @@ import {
   getCachedDashboardRecords,
   parseAuditPageLimit,
 } from "@/lib/cached-queries/audit-submissions";
+import { dispatchFatalAuditNotifications } from "@/lib/notifications/dispatch-fatal-audit";
 import { invalidateAuditCaches } from "@/lib/invalidate-cache";
 import { ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
@@ -338,6 +339,21 @@ export async function saveAuditSubmission(
     auditId: createdId ?? record.id,
     submittedById: session.user.id,
   });
+
+  if (record.hasFatal && createdId) {
+    void dispatchFatalAuditNotifications({
+      auditId: createdId,
+      auditCode: record.id,
+      agent: record.agent,
+      supervisor: record.supervisor || null,
+      auditor: record.auditor || null,
+      type: record.type,
+      fatalList: record.fatalList,
+      submittedById: session.user.id,
+    }).catch((error) => {
+      console.error("dispatchFatalAuditNotifications failed:", error);
+    });
+  }
 
   return { success: true, record };
 }
@@ -669,6 +685,7 @@ export async function updateAuditSubmission(
     select: {
       id: true,
       auditCode: true,
+      hasFatal: true,
       feedbackStatus: true,
       submittedById: true,
     },
@@ -791,6 +808,21 @@ export async function updateAuditSubmission(
     type: "audit:updated",
     auditId: validId,
   });
+
+  if (record.hasFatal && !existing.hasFatal) {
+    void dispatchFatalAuditNotifications({
+      auditId: validId,
+      auditCode: record.id,
+      agent: record.agent,
+      supervisor: record.supervisor || null,
+      auditor: record.auditor || null,
+      type: record.type,
+      fatalList: record.fatalList,
+      submittedById: session.user.id,
+    }).catch((error) => {
+      console.error("dispatchFatalAuditNotifications failed:", error);
+    });
+  }
 
   return { success: true, record };
 }

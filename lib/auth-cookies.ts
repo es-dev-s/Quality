@@ -42,3 +42,49 @@ export function buildHttpAuthCookies() {
 }
 
 export const useSecureCookies = resolveUseSecureCookies();
+
+/** All Auth.js cookie names that may exist across HTTP/HTTPS deployments. */
+export const AUTH_COOKIE_NAMES = [
+  "authjs.session-token",
+  "__Secure-authjs.session-token",
+  "__Host-authjs.session-token",
+  "authjs.callback-url",
+  "__Secure-authjs.callback-url",
+  "authjs.csrf-token",
+  "__Secure-authjs.csrf-token",
+] as const;
+
+type CookieCarrier = {
+  cookies: {
+    delete: (name: string) => void;
+    set: (
+      name: string,
+      value: string,
+      options?: {
+        path?: string;
+        maxAge?: number;
+        httpOnly?: boolean;
+        sameSite?: "lax" | "strict" | "none";
+        secure?: boolean;
+      }
+    ) => void;
+  };
+};
+
+/** Force-delete auth cookies even when signOut misses a variant (common on mixed HTTP/HTTPS). */
+export function clearAuthCookies<T extends CookieCarrier>(response: T): T {
+  for (const name of AUTH_COOKIE_NAMES) {
+    response.cookies.delete(name);
+    response.cookies.set(name, "", {
+      path: "/",
+      maxAge: 0,
+      httpOnly: true,
+      sameSite: "lax",
+      secure:
+        name.startsWith("__Secure-") ||
+        name.startsWith("__Host-") ||
+        useSecureCookies,
+    });
+  }
+  return response;
+}

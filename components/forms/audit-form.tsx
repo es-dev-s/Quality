@@ -17,7 +17,6 @@ import {
 import {
   getSubReasonsForReason,
 } from "@/lib/audit/interaction-options";
-import { isInteractionDetailsComplete } from "@/lib/audit/validate-interaction-details";
 import { getScoreTone, toneClass } from "@/lib/audit/score-visual";
 import type { AuditReferenceOption } from "@/lib/actions/audit";
 import type { TemplateListItem } from "@/lib/actions/templates";
@@ -344,7 +343,6 @@ export function AuditForm({
   };
 
   const handleScore = (paramId: string, value: string) => {
-    if (!isInteractionDetailsComplete(formData)) return;
     setScores((prev) => ({ ...prev, [paramId]: value }));
   };
 
@@ -453,10 +451,8 @@ export function AuditForm({
     return count;
   }, [scores, activeTemplate.sections]);
 
-  const canCalculate = isInteractionDetailsComplete(formData);
-
   const liveResult = useMemo(() => {
-    if (!canCalculate || !activeTemplate) return null;
+    if (!activeTemplate) return null;
     const calc = calculateResults(
       formData,
       scores,
@@ -464,7 +460,7 @@ export function AuditForm({
       previewRecordContext
     );
     return calc.ok ? calc.record : null;
-  }, [canCalculate, formData, scores, activeTemplate, previewRecordContext]);
+  }, [formData, scores, activeTemplate, previewRecordContext]);
 
   if (!activeTemplate) {
     return (
@@ -499,7 +495,6 @@ export function AuditForm({
             variant="secondary"
             size="sm"
             onClick={handleCalculate}
-            disabled={!canCalculate}
           >
             Calculate Score
           </Button>
@@ -507,7 +502,6 @@ export function AuditForm({
             size="sm"
             loading={pending}
             onClick={handleSave}
-            disabled={!canCalculate}
           >
             {isEditMode ? "Save changes" : "Save to History"}
           </Button>
@@ -574,14 +568,11 @@ export function AuditForm({
 
                 <div className="audit-details__row">
                   <Field className="audit-field">
-                    <Label htmlFor="supervisor">
-                      Supervisor <span className="audit-required">*</span>
-                    </Label>
+                    <Label htmlFor="supervisor">Supervisor</Label>
                     <Select
                       id="supervisor"
                       className="audit-control"
                       value={formData.supervisor}
-                      required
                       disabled={pending}
                       onChange={(e) => handleSupervisorChange(e.target.value)}
                     >
@@ -595,14 +586,11 @@ export function AuditForm({
                   </Field>
 
                   <Field className="audit-field">
-                    <Label htmlFor="agent">
-                      Agent <span className="audit-required">*</span>
-                    </Label>
+                    <Label htmlFor="agent">Agent</Label>
                     <Select
                       id="agent"
                       className="audit-control"
                       value={formData.agent}
-                      required
                       disabled={!formData.supervisor.trim() || pending}
                       onChange={(e) => updateForm({ agent: e.target.value })}
                     >
@@ -622,14 +610,11 @@ export function AuditForm({
                   </Field>
 
                   <Field className="audit-field">
-                    <Label htmlFor="auditor">
-                      Quality Analyst <span className="audit-required">*</span>
-                    </Label>
+                    <Label htmlFor="auditor">Quality Analyst</Label>
                     <Select
                       id="auditor"
                       className="audit-control"
                       value={formData.auditor}
-                      required
                       onChange={(e) => updateForm({ auditor: e.target.value })}
                     >
                       <option value="">Select Quality Analyst</option>
@@ -645,28 +630,23 @@ export function AuditForm({
                 <div className="audit-details__row">
                   <Field className="audit-field">
                     <Label htmlFor="callDate">
-                      {isCallInteraction ? "Call date" : "Chat date"}{" "}
-                      <span className="audit-required">*</span>
+                      {isCallInteraction ? "Call date" : "Chat date"}
                     </Label>
                     <Input
                       id="callDate"
                       className="audit-control"
                       type="date"
                       value={formData.callDate}
-                      required
                       onChange={(e) => updateForm({ callDate: e.target.value })}
                     />
                   </Field>
 
                   <Field className="audit-field">
-                    <Label htmlFor="businessType">
-                      Business Type <span className="audit-required">*</span>
-                    </Label>
+                    <Label htmlFor="businessType">Business Type</Label>
                     <Select
                       id="businessType"
                       className="audit-control"
                       value={formData.businessType}
-                      required
                       onChange={(e) => handleBusinessType(e.target.value)}
                     >
                       <option value="">Select Business Type</option>
@@ -699,15 +679,12 @@ export function AuditForm({
 
                 <div className="audit-details__row">
                   <Field className="audit-field">
-                    <Label htmlFor="lob">
-                      LOB <span className="audit-required">*</span>
-                    </Label>
+                    <Label htmlFor="lob">LOB</Label>
                     <Select
                       id="lob"
                       className="audit-control"
                       value={formData.lob}
                       disabled={!formData.businessType}
-                      required
                       onChange={(e) => handleLOB(e.target.value)}
                     >
                       <option value="">
@@ -727,15 +704,12 @@ export function AuditForm({
                   </Field>
 
                   <Field className="audit-field">
-                    <Label htmlFor="sublob">
-                      Reason <span className="audit-required">*</span>
-                    </Label>
+                    <Label htmlFor="sublob">Reason</Label>
                     <Select
                       id="sublob"
                       className="audit-control"
                       value={formData.sublob}
                       disabled={!formData.lob}
-                      required
                       onChange={(e) => handleSubLOB(e.target.value)}
                     >
                       <option value="">
@@ -750,15 +724,12 @@ export function AuditForm({
                   </Field>
 
                   <Field className="audit-field">
-                    <Label htmlFor="reason">
-                      Sub-reason <span className="audit-required">*</span>
-                    </Label>
+                    <Label htmlFor="reason">Sub-reason</Label>
                     <Select
                       id="reason"
                       className="audit-control"
                       value={formData.reason}
                       disabled={!formData.sublob || reasons.length === 0}
-                      required={reasons.length > 0}
                       onChange={(e) => handleReason(e.target.value)}
                     >
                       <option value="">
@@ -816,17 +787,13 @@ export function AuditForm({
 
                 <div className="audit-details__row audit-details__row--full">
                   <Field className="audit-field">
-                    <Label htmlFor="response">
-                      Agent&apos;s Response{" "}
-                      <span className="audit-required">*</span>
-                    </Label>
+                    <Label htmlFor="response">Agent&apos;s Response</Label>
                     <textarea
                       id="response"
                       className="audit-control audit-textarea"
                       rows={3}
                       placeholder="Briefly describe the outcome..."
                       value={formData.response}
-                      required
                       onChange={(e) => updateForm({ response: e.target.value })}
                     />
                   </Field>
@@ -834,15 +801,6 @@ export function AuditForm({
               </div>
             </div>
           </section>
-
-          {!canCalculate && (
-            <div className="audit-form__alert" role="status">
-              <p>
-                Complete all required Interaction Details fields above before
-                scoring parameters below.
-              </p>
-            </div>
-          )}
 
           {activeTemplate.sections.map((section, index) => {
             const sectionMax = section.params.reduce((sum, p) => sum + p.max, 0);
@@ -860,8 +818,7 @@ export function AuditForm({
                 key={`${selectedTemplateId}-${section.id}`}
                 className={cn(
                   "audit-panel",
-                  sectionRated > 0 && "audit-panel--rated",
-                  !canCalculate && "audit-panel--locked"
+                  sectionRated > 0 && "audit-panel--rated"
                 )}
               >
                 <header className="audit-panel__head">
@@ -950,7 +907,6 @@ export function AuditForm({
                               toneClass(tone, "audit-control")
                             )}
                             value={current}
-                            disabled={!canCalculate}
                             onChange={(e) =>
                               handleScore(param.id, e.target.value)
                             }
@@ -1075,7 +1031,6 @@ export function AuditForm({
           result={liveResult}
           ratedCount={ratedScoringCount}
           totalScoringParams={scoringParamCount}
-          canCalculate={canCalculate}
           fixed
         />
       </div>

@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { AuthError } from "next-auth";
-import { signIn } from "@/lib/auth";
+import { signIn, signOut } from "@/lib/auth";
 import {
   loginFailureMessage,
   verifyCredentialsForLogin,
@@ -97,6 +97,8 @@ export async function loginAction(
   }
 
   try {
+    // Drop stale JWT cookies before issuing a new session (fixes re-login after deactivate/activate).
+    await signOut({ redirect: false });
     await signIn("credentials", {
       email,
       password,

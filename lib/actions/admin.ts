@@ -20,6 +20,7 @@ import {
   invalidateRoleCaches,
   invalidateUserCaches,
 } from "@/lib/invalidate-cache";
+import { broadcastToUser } from "@/lib/sse-broadcast";
 import {
   SECURITY_AUDIT_ACTIONS,
   logSecurityAudit,
@@ -815,6 +816,11 @@ export async function setUserActive(userId: string, isActive: boolean) {
     },
   });
 
+  const lifecycleEvent = {
+    type: isActive ? ("user:activated" as const) : ("user:deactivated" as const),
+    userId,
+  };
+
   await logSecurityAudit({
     action: isActive
       ? SECURITY_AUDIT_ACTIONS.USER_ACTIVATED
@@ -831,12 +837,11 @@ export async function setUserActive(userId: string, isActive: boolean) {
       CACHE_TAGS.AGENTS,
       CACHE_TAGS.AUDIT_SUBMISSIONS,
       CACHE_TAGS.userAgents(session.user.id),
+      CACHE_TAGS.userAgents(userId),
     ],
-    {
-      type: isActive ? "user:activated" : "user:deactivated",
-      userId,
-    }
+    lifecycleEvent
   );
+  broadcastToUser(userId, lifecycleEvent);
 
   return { success: true as const };
 }

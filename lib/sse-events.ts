@@ -1,3 +1,5 @@
+import type { NotificationItem } from "@/lib/notifications/types";
+
 export type SSEEvent =
   | { type: "connected"; userId: string }
   | { type: "audit:created"; auditId: string; submittedById: string }
@@ -8,7 +10,14 @@ export type SSEEvent =
   | { type: "agent:assigned"; agentId: string; assignedToId: string }
   | { type: "agent:unassigned"; agentId: string; assignedToId: string }
   | { type: "agent:approved"; agentId: string }
+  | { type: "notification:new"; notification: NotificationItem }
   | { type: "invalidate"; tags: string[] };
+
+export function isNotificationSSEEvent(
+  event: SSEEvent
+): event is Extract<SSEEvent, { type: "notification:new" }> {
+  return event.type === "notification:new";
+}
 
 export function isAuditSSEEvent(event: SSEEvent): boolean {
   return (

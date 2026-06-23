@@ -13,6 +13,9 @@ import { resolveEffectiveScopes } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import type { SessionRole } from "@/lib/rbac";
 import { isSuperAdmin } from "@/lib/rbac";
+import {
+  validateSessionAgainstUser,
+} from "@/lib/auth-session-policy";
 import { cache } from "react";
 
 ensureAuthEnv();
@@ -101,9 +104,8 @@ export async function requireAuth() {
     throw new AccountNotApprovedError();
   }
 
-  const tokenSessionVersion = Number(session.user.sessionVersion ?? 0);
-  const dbSessionVersion = Number(user.sessionVersion ?? 0);
-  if (dbSessionVersion > tokenSessionVersion) {
+  const sessionFailure = validateSessionAgainstUser(session.user, user);
+  if (sessionFailure === "session_revoked") {
     throw new SessionRevokedError();
   }
 

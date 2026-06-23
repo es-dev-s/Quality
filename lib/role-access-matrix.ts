@@ -186,11 +186,13 @@ export const EXPECTED_SYSTEM_ROLE_MATRIX: Record<
   [SYSTEM_ROLE_SLUGS.AGENT]: {
     overview: "Read",
     auditLogs: "Read",
+    analytics: "Read",
     feedback: "Change status",
   },
   [SYSTEM_ROLE_SLUGS.SUPERVISOR]: {
     overview: "Read",
     auditLogs: "Read",
+    analytics: "Read",
     settings: "Partial",
     team: "Read/Write",
     feedback: "Read",
@@ -198,6 +200,7 @@ export const EXPECTED_SYSTEM_ROLE_MATRIX: Record<
   [SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]: {
     overview: "Read",
     auditLogs: "Read",
+    analytics: "Read",
     auditForm: "Read/Write",
     settings: "Partial",
     team: "Read/Write",

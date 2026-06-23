@@ -6,6 +6,7 @@ import {
   SessionRevokedError,
 } from "@/lib/auth-errors";
 import { redirectForInvalidSession } from "@/lib/auth-redirects";
+import type { InvalidSessionReason } from "@/lib/auth-redirects";
 import { PERMISSIONS, type Permission } from "@/lib/permissions";
 import { canAccessPath, firstAccessiblePath, hasScope } from "@/lib/rbac";
 
@@ -24,6 +25,16 @@ export function isInvalidSessionError(error: unknown): boolean {
   );
 }
 
+export function invalidSessionRedirectReason(error: unknown): InvalidSessionReason {
+  if (error instanceof AccountDeactivatedError) {
+    return "deactivated";
+  }
+  if (error instanceof AccountNotApprovedError) {
+    return "not_approved";
+  }
+  return "session";
+}
+
 export async function requirePermission(permission: Permission) {
   const session = await requireAuth();
   if (!hasScope(session.user.role, permission)) {
@@ -38,7 +49,7 @@ export async function requirePageAccess(pathname: string) {
     session = await requireAuth();
   } catch (error) {
     if (isInvalidSessionError(error)) {
-      redirectForInvalidSession(pathname);
+      redirectForInvalidSession(pathname, invalidSessionRedirectReason(error));
     }
     throw error;
   }

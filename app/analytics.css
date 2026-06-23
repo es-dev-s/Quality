@@ -80,6 +80,14 @@
   font-weight: 600;
 }
 
+.qms-summary-chip--scope {
+  max-width: min(100%, 28rem);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .qms-summary-chip__tag {
   font-weight: 500;
   opacity: 0.75;

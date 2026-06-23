@@ -6,7 +6,6 @@ type AuditScorePanelProps = {
   result: AuditRecord | null;
   ratedCount: number;
   totalScoringParams: number;
-  canCalculate: boolean;
   fixed?: boolean;
 };
 
@@ -14,7 +13,6 @@ export function AuditScorePanel({
   result,
   ratedCount,
   totalScoringParams,
-  canCalculate,
   fixed = false,
 }: AuditScorePanelProps) {
   const gradeKey = getGradeKey(result);
@@ -44,25 +42,21 @@ export function AuditScorePanel({
         <header className="audit-score-panel__header">
           <h3 className="audit-score-panel__title">Quality Output</h3>
           <p className="audit-score-panel__subtitle">
-            {!canCalculate
-              ? "Agent and LOB required"
-              : result
-                ? unrated
-                  ? "Score parameters to calculate quality %"
-                  : `${result.finalPct}% — ${result.grade}`
-                : "Calculate score to generate output"}
+            {result
+              ? unrated
+                ? "Score parameters to calculate quality %"
+                : `${result.finalPct}% — ${result.grade}`
+              : "Score parameters to generate output"}
           </p>
         </header>
 
-        {!canCalculate || !result ? (
+        {!result ? (
           <div className="audit-score-panel__empty">
             <div className="audit-score-panel__ring audit-score-panel__ring--empty">
               <span aria-hidden>—</span>
             </div>
             <p className="audit-score-panel__empty-text">
-              {!canCalculate
-                ? "Fill in Agent and LOB, then score parameters."
-                : "Select scores for each parameter, then use Calculate score."}
+              Select scores for each parameter to see quality output.
             </p>
             <div className="audit-score-panel__progress">
               <div className="audit-score-panel__progress-top">

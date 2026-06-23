@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { DashboardSidebar } from "@/components/dashboard/sidebar";
 import { DashboardShell } from "@/components/dashboard/shell";
 import { requireAuth } from "@/lib/auth";
-import { isInvalidSessionError } from "@/lib/auth-guards";
+import { isInvalidSessionError, invalidSessionRedirectReason } from "@/lib/auth-guards";
 import { redirectForInvalidSession } from "@/lib/auth-redirects";
 
 export default async function DashboardLayout({
@@ -21,7 +21,7 @@ export default async function DashboardLayout({
     );
   } catch (error) {
     if (isInvalidSessionError(error)) {
-      redirectForInvalidSession();
+      redirectForInvalidSession(undefined, invalidSessionRedirectReason(error));
     }
 
     redirect("/login");

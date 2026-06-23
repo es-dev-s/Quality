@@ -6,9 +6,14 @@ import { requirePageAccess } from "@/lib/auth-guards";
 import { getAnalyticsData } from "@/lib/actions/analytics";
 
 async function AnalyticsContent() {
-  await requirePageAccess("/analytics");
+  const session = await requirePageAccess("/analytics");
   const data = await getAnalyticsData();
-  return <QmsAnalytics data={data} />;
+  return (
+    <QmsAnalytics
+      data={data}
+      roleSlug={session.user.role.slug}
+    />
+  );
 }
 
 export default function AnalyticsPage() {

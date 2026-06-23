@@ -12,13 +12,20 @@ export default function LoginPage() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/dashboard";
   const sessionReason = searchParams.get("reason");
-  const sessionWasCleared = sessionReason === "session";
+  const sessionWasCleared =
+    sessionReason === "session" ||
+    sessionReason === "deactivated" ||
+    sessionReason === "not_approved";
   const [state, formAction, pending] = useActionState(loginAction, initialState);
 
   const sessionNotice =
     sessionReason === "session"
       ? "Your session expired or was signed out elsewhere. Please sign in again."
-      : null;
+      : sessionReason === "deactivated"
+        ? "This account was deactivated and your session was cleared. Sign in again after an administrator reactivates your account."
+        : sessionReason === "not_approved"
+          ? "Your account is not approved for login yet. Contact your Quality Manager."
+          : null;
 
   return (
     <div className="login-page">

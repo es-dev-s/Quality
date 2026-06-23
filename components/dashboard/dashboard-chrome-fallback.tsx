@@ -19,6 +19,7 @@ export function DashboardChromeFallback({
   return (
     <DashboardShell
       user={{
+        id: "loading",
         name: null,
         email: null,
         role: LOADING_SHELL_ROLE,

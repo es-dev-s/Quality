@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Button } from "@/components/primitives/button";
 import { NavbarUserMenu } from "@/components/dashboard/navbar-user-menu";
+import { NotificationBell } from "@/components/dashboard/notifications-panel";
 import { useDashboardShell } from "@/components/dashboard/shell";
 import { resolvePageTitle } from "@/lib/page-titles";
 
@@ -48,6 +49,7 @@ export function DashboardToolbar({ actions }: DashboardToolbarProps) {
 
       <div className="dashboard-toolbar__end">
         {actions ? <div className="dashboard-toolbar__actions">{actions}</div> : null}
+        <NotificationBell />
         <NavbarUserMenu />
       </div>
     </div>

@@ -11,14 +11,14 @@ export const scoresMapSchema = z.record(z.string(), scoreValueSchema);
 
 export const auditFormDataSchema = z
   .object({
-    agent: z.string().trim().min(1, "Agent is required"),
+    agent: z.string(),
     supervisor: z.string(),
     auditor: z.string(),
     type: z.enum(["Call", "Chat"]),
-    businessType: z.string().trim().min(1, "Business type is required"),
-    callDate: z.string().trim().min(1, "Call date is required"),
-    auditDate: z.string().trim().min(1, "Audit date is required"),
-    lob: z.string().trim().min(1, "LOB is required"),
+    businessType: z.string(),
+    callDate: z.string(),
+    auditDate: z.string(),
+    lob: z.string(),
     sublob: z.string(),
     mobile: z.string(),
     referenceUrl: z.string(),
