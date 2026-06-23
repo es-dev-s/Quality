@@ -9,7 +9,16 @@ import {
   QmsSectionTitle,
 } from "@/components/analytics/qms-primitives";
 
-export function OverviewTab({ data }: { data: QmsAnalyticsData }) {
+import type { AnalyticsSortOrder } from "@/lib/audit/analytics-sort";
+import { sortByNumber } from "@/lib/audit/analytics-sort";
+
+export function OverviewTab({
+  data,
+  sortOrder,
+}: {
+  data: QmsAnalyticsData;
+  sortOrder: AnalyticsSortOrder;
+}) {
   const { kpis } = data;
   const agentTotal =
     kpis.below_80 + kpis.btw_80_90 + kpis.btw_90_95 + kpis.above_95;
@@ -23,6 +32,12 @@ export function OverviewTab({ data }: { data: QmsAnalyticsData }) {
 
   const coverageTotal = kpis.week1 + kpis.week2 || 1;
   const auditTotal = kpis.total_audits || 1;
+
+  const fatalByTeam = sortByNumber(
+    data.fatal_by_team,
+    (item) => item.count,
+    sortOrder
+  );
 
   return (
     <div className="qms-tab">
@@ -158,14 +173,14 @@ export function OverviewTab({ data }: { data: QmsAnalyticsData }) {
         </QmsCard>
       </div>
 
-      {data.fatal_by_team.length > 0 && (
+      {fatalByTeam.length > 0 && (
         <QmsCard>
           <QmsSectionTitle
             title="Fatal incidents by team"
             sub="Teams requiring immediate escalation"
           />
           <div className="qms-fatal-grid">
-            {data.fatal_by_team.map((item) => (
+            {fatalByTeam.map((item) => (
               <div key={item.team} className="qms-fatal-chip">
                 <p className="qms-fatal-chip__count">{item.count}</p>
                 <p className="qms-fatal-chip__team">{item.team}</p>

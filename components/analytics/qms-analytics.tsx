@@ -41,6 +41,8 @@ import {
   getAnalyticsScopeDescription,
   type AnalyticsTabId,
 } from "@/lib/audit/analytics-role-config";
+import type { AnalyticsSortOrder } from "@/lib/audit/analytics-sort";
+import { QmsSortToggle } from "@/components/analytics/analytics-controls";
 
 type QmsAnalyticsProps = {
   data: AnalyticsPageData;
@@ -58,6 +60,7 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
     [roleSlug]
   );
   const [tab, setTab] = useState<AnalyticsTabId>("overview");
+  const [sortOrder, setSortOrder] = useState<AnalyticsSortOrder>("desc");
   const [liveBase, setLiveBase] = useState<AnalyticsPageData | null>(null);
   const [period, setPeriod] = useState<DashboardPeriod>("overall");
   const [customRange, setCustomRange] = useState<DateRangeValue>({ from: "", to: "" });
@@ -101,12 +104,19 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
     () => ({
       kpis: analyticsView.kpis,
       params: analyticsView.params,
+      categories: analyticsView.categories,
       teams: analyticsView.teams,
       bottom_agents: analyticsView.bottom_agents,
       top_agents: analyticsView.top_agents,
       auditors: analyticsView.auditors,
       fatal_by_team: analyticsView.fatal_by_team,
       leaderboards: analyticsView.leaderboards,
+      team_param_breakdown: analyticsView.team_param_breakdown,
+      team_cat_breakdown: analyticsView.team_cat_breakdown,
+      agent_param_breakdown: analyticsView.agent_param_breakdown,
+      agent_cat_breakdown: analyticsView.agent_cat_breakdown,
+      auditor_param_breakdown: analyticsView.auditor_param_breakdown,
+      auditor_cat_breakdown: analyticsView.auditor_cat_breakdown,
     }),
     [analyticsView]
   );
@@ -369,23 +379,26 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
       </FilterSidebar>
 
       <div className="qms-toolbar">
-        <div className="qms-tabs" role="tablist" aria-label="Analytics sections">
-          {visibleTabs.map((itemId) => (
-            <button
-              key={itemId}
-              type="button"
-              role="tab"
-              aria-selected={tab === itemId}
-              className={
-                tab === itemId
-                  ? "qms-tabs__btn qms-tabs__btn--active"
-                  : "qms-tabs__btn"
-              }
-              onClick={() => setTab(itemId)}
-            >
-              {ANALYTICS_TAB_LABELS[itemId]}
-            </button>
-          ))}
+        <div className="qms-toolbar__row">
+          <div className="qms-tabs" role="tablist" aria-label="Analytics sections">
+            {visibleTabs.map((itemId) => (
+              <button
+                key={itemId}
+                type="button"
+                role="tab"
+                aria-selected={tab === itemId}
+                className={
+                  tab === itemId
+                    ? "qms-tabs__btn qms-tabs__btn--active"
+                    : "qms-tabs__btn"
+                }
+                onClick={() => setTab(itemId)}
+              >
+                {ANALYTICS_TAB_LABELS[itemId]}
+              </button>
+            ))}
+          </div>
+          <QmsSortToggle value={sortOrder} onChange={setSortOrder} />
         </div>
       </div>
 
@@ -394,14 +407,20 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
         label="Loading analytics…"
         className="qms-analytics__body loading-zone--min"
       >
-        {tab === "overview" && <OverviewTab data={analytics} />}
-        {tab === "parameters" && <ParametersTab data={analytics} />}
-        {tab === "teams" && <TeamsTab data={analytics} />}
-        {tab === "agents" && <AgentsTab data={analytics} />}
-        {tab === "compliance" && <ComplianceTab data={analytics} />}
-        {tab === "auditors" && <AuditorsTab data={analytics} />}
+        {tab === "overview" && <OverviewTab data={analytics} sortOrder={sortOrder} />}
+        {tab === "parameters" && (
+          <ParametersTab data={analytics} sortOrder={sortOrder} />
+        )}
+        {tab === "teams" && <TeamsTab data={analytics} sortOrder={sortOrder} />}
+        {tab === "agents" && <AgentsTab data={analytics} sortOrder={sortOrder} />}
+        {tab === "compliance" && (
+          <ComplianceTab data={analytics} sortOrder={sortOrder} />
+        )}
+        {tab === "auditors" && (
+          <AuditorsTab data={analytics} sortOrder={sortOrder} />
+        )}
         {tab === "leaderboards" && (
-          <LeaderboardsTab data={analytics.leaderboards} />
+          <LeaderboardsTab data={analytics.leaderboards} sortOrder={sortOrder} />
         )}
       </LoadingZone>
 

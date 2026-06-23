@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -13,6 +13,11 @@ import {
   YAxis,
 } from "recharts";
 import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
+import {
+  sortByNumber,
+  type AnalyticsSortOrder,
+} from "@/lib/audit/analytics-sort";
+import { EntityBreakdownTable } from "@/components/analytics/entity-breakdown-table";
 import { QmsChartTooltip } from "@/components/analytics/qms-chart-tooltip";
 import {
   CHART_COLORS,
@@ -31,9 +36,22 @@ import {
   usePaginatedRows,
 } from "@/components/primitives/data-table-panel";
 
-export function TeamsTab({ data }: { data: QmsAnalyticsData }) {
-  const pagination = usePaginatedRows(data.teams);
-  const [view, setView] = useState("chart");
+type TeamsTabProps = {
+  data: QmsAnalyticsData;
+  sortOrder: AnalyticsSortOrder;
+};
+
+export function TeamsTab({ data, sortOrder }: TeamsTabProps) {
+  const [view, setView] = useState<"summary" | "parameter" | "category">(
+    "summary"
+  );
+  const [layout, setLayout] = useState<"chart" | "table">("chart");
+
+  const teams = useMemo(
+    () => sortByNumber(data.teams, (team) => team.avg, sortOrder),
+    [data.teams, sortOrder]
+  );
+  const pagination = usePaginatedRows(teams);
 
   if (data.teams.length === 0) {
     return (
@@ -41,14 +59,55 @@ export function TeamsTab({ data }: { data: QmsAnalyticsData }) {
     );
   }
 
-  const above90 = data.teams.filter((t) => t.avg >= 90).length;
-  const below90 = data.teams.filter((t) => t.avg < 90).length;
-  const topTeam = data.teams[0];
-  const weakTeam = data.teams[data.teams.length - 1];
-  const chartData = data.teams;
+  if (view !== "summary") {
+    return (
+      <div className="qms-tab">
+        <QmsViewToggle
+          value={view}
+          onChange={(id) => setView(id as "summary" | "parameter" | "category")}
+          options={[
+            { id: "summary", label: "Summary" },
+            { id: "parameter", label: "Parameter wise" },
+            { id: "category", label: "Category wise" },
+          ]}
+        />
+        <EntityBreakdownTable
+          rows={
+            view === "parameter"
+              ? data.team_param_breakdown
+              : data.team_cat_breakdown
+          }
+          entityLabel="Team lead (TL)"
+          metricLabel={view === "parameter" ? "Parameter" : "Category"}
+          sortOrder={sortOrder}
+          title={
+            view === "parameter"
+              ? "Team lead — parameter wise"
+              : "Team lead — category wise"
+          }
+          sub="Average score per supervisor and rubric segment"
+        />
+      </div>
+    );
+  }
+
+  const above90 = teams.filter((t) => t.avg >= 90).length;
+  const below90 = teams.filter((t) => t.avg < 90).length;
+  const topTeam = sortByNumber(teams, (t) => t.avg, "desc")[0];
+  const weakTeam = sortByNumber(teams, (t) => t.avg, "asc")[0];
 
   return (
     <div className="qms-tab">
+      <QmsViewToggle
+        value={view}
+        onChange={(id) => setView(id as "summary" | "parameter" | "category")}
+        options={[
+          { id: "summary", label: "Summary" },
+          { id: "parameter", label: "Parameter wise" },
+          { id: "category", label: "Category wise" },
+        ]}
+      />
+
       <div className="qms-kpi-row">
         <QmsKpiTile
           label="Teams above target"
@@ -64,38 +123,38 @@ export function TeamsTab({ data }: { data: QmsAnalyticsData }) {
         />
         <QmsKpiTile
           label="Top team"
-          value={topTeam.team}
-          sub={`${topTeam.avg}% avg quality`}
+          value={topTeam?.team ?? "—"}
+          sub={topTeam ? `${topTeam.avg}% avg quality` : undefined}
           tone="warn"
           compact
         />
         <QmsKpiTile
           label="Weakest team"
-          value={weakTeam.team}
-          sub={`${weakTeam.avg}% avg quality`}
+          value={weakTeam?.team ?? "—"}
+          sub={weakTeam ? `${weakTeam.avg}% avg quality` : undefined}
           tone="danger"
           compact
         />
       </div>
 
       <QmsViewToggle
-        value={view}
-        onChange={setView}
+        value={layout}
+        onChange={(id) => setLayout(id as "chart" | "table")}
         options={[
           { id: "chart", label: "Chart view" },
           { id: "table", label: "Table view" },
         ]}
       />
 
-      {view === "chart" ? (
+      {layout === "chart" ? (
         <QmsCard className="qms-card--chart">
           <QmsSectionTitle
             title="Team performance ranking"
-            sub="Sorted by average quality score"
+            sub={`Sorted ${sortOrder === "desc" ? "high to low" : "low to high"}`}
           />
           <QmsChartFrame className="qms-chart--xl">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ bottom: 48, left: 4, right: 8 }}>
+              <BarChart data={teams} margin={{ bottom: 48, left: 4, right: 8 }}>
                 <CartesianGrid
                   strokeDasharray="3 3"
                   stroke={CHART_COLORS.grid}
@@ -129,7 +188,7 @@ export function TeamsTab({ data }: { data: QmsAnalyticsData }) {
                   radius={[4, 4, 0, 0]}
                   isAnimationActive={false}
                 >
-                  {chartData.map((row) => (
+                  {teams.map((row) => (
                     <Cell key={row.team} fill={scoreHex(row.avg)} />
                   ))}
                 </Bar>
@@ -143,57 +202,57 @@ export function TeamsTab({ data }: { data: QmsAnalyticsData }) {
           <DataTablePanel
             pagination={pagination}
             renderTable={(slice) => (
-            <table className="ui-table qms-table platform-report-table">
-              <thead>
-                <tr>
-                  {["Rank", "Team", "Avg score", "Audits", "Status", "Gap"].map(
-                    (h) => (
-                      <th key={h}>{h}</th>
-                    )
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {slice.map((team, index) => {
-                  const rank = pagination.start + index - 1;
-                  return (
-                  <tr key={team.team}>
-                    <td className={rank < 3 ? "qms-cell-rank" : undefined}>
-                      {rank === 0
-                        ? "1st"
-                        : rank === 1
-                          ? "2nd"
-                          : rank === 2
-                            ? "3rd"
-                            : `#${rank + 1}`}
-                    </td>
-                    <td className="qms-cell-strong">{team.team}</td>
-                    <td style={{ color: scoreHex(team.avg), fontWeight: 800 }}>
-                      {team.avg}%
-                    </td>
-                    <td>{team.count}</td>
-                    <td>
-                      <QmsBadge
-                        label={team.avg >= 90 ? "On target" : "Below target"}
-                        score={team.avg}
-                      />
-                    </td>
-                    <td
-                      className={
-                        team.avg >= 90
-                          ? "qms-cell-positive"
-                          : "qms-cell-negative"
-                      }
-                    >
-                      {team.avg >= 90
-                        ? `+${(team.avg - 90).toFixed(1)}%`
-                        : `${(team.avg - 90).toFixed(1)}%`}
-                    </td>
+              <table className="ui-table qms-table platform-report-table platform-report-table--expanded">
+                <thead>
+                  <tr>
+                    {["Rank", "Team", "Avg score", "Audits", "Status", "Gap"].map(
+                      (h) => (
+                        <th key={h}>{h}</th>
+                      )
+                    )}
                   </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {slice.map((team, index) => {
+                    const rank = pagination.start + index - 1;
+                    return (
+                      <tr key={team.team}>
+                        <td className={rank < 3 ? "qms-cell-rank" : undefined}>
+                          {rank === 0
+                            ? "1st"
+                            : rank === 1
+                              ? "2nd"
+                              : rank === 2
+                                ? "3rd"
+                                : `#${rank + 1}`}
+                        </td>
+                        <td className="qms-cell-strong">{team.team}</td>
+                        <td style={{ color: scoreHex(team.avg), fontWeight: 800 }}>
+                          {team.avg}%
+                        </td>
+                        <td>{team.count}</td>
+                        <td>
+                          <QmsBadge
+                            label={team.avg >= 90 ? "On target" : "Below target"}
+                            score={team.avg}
+                          />
+                        </td>
+                        <td
+                          className={
+                            team.avg >= 90
+                              ? "qms-cell-positive"
+                              : "qms-cell-negative"
+                          }
+                        >
+                          {team.avg >= 90
+                            ? `+${(team.avg - 90).toFixed(1)}%`
+                            : `${(team.avg - 90).toFixed(1)}%`}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           />
         </QmsCard>

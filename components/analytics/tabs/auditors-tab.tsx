@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -12,6 +13,11 @@ import {
 } from "recharts";
 import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
 import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
+import {
+  sortByNumber,
+  type AnalyticsSortOrder,
+} from "@/lib/audit/analytics-sort";
+import { EntityBreakdownTable } from "@/components/analytics/entity-breakdown-table";
 import { QmsChartTooltip } from "@/components/analytics/qms-chart-tooltip";
 import {
   CHART_COLORS,
@@ -21,6 +27,7 @@ import {
   QmsEmpty,
   QmsKpiTile,
   QmsSectionTitle,
+  QmsViewToggle,
   scoreHex,
 } from "@/components/analytics/qms-primitives";
 import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
@@ -39,28 +46,77 @@ const AUDITOR_COLORS = [
   CHART_COLORS.purple,
 ];
 
-export function AuditorsTab({ data }: { data: QmsAnalyticsData }) {
-  const pagination = usePaginatedRows(data.auditors);
+type AuditorsTabProps = {
+  data: QmsAnalyticsData;
+  sortOrder: AnalyticsSortOrder;
+};
+
+export function AuditorsTab({ data, sortOrder }: AuditorsTabProps) {
+  const [view, setView] = useState<"summary" | "parameter" | "category">(
+    "summary"
+  );
+
+  const auditors = useMemo(
+    () => sortByNumber(data.auditors, (row) => row.avg, sortOrder),
+    [data.auditors, sortOrder]
+  );
+  const pagination = usePaginatedRows(auditors);
+
+  const viewToggle = (
+    <QmsViewToggle
+      value={view}
+      onChange={(id) => setView(id as "summary" | "parameter" | "category")}
+      options={[
+        { id: "summary", label: "Summary" },
+        { id: "parameter", label: "Parameter wise" },
+        { id: "category", label: "Category wise" },
+      ]}
+    />
+  );
+
   if (data.auditors.length === 0) {
     return <QmsEmpty message="No auditor workload data yet." />;
   }
 
-  const total = data.auditors.reduce((sum, a) => sum + a.count, 0);
-  const top = data.auditors[0];
+  if (view !== "summary") {
+    return (
+      <div className="qms-tab">
+        {viewToggle}
+        <EntityBreakdownTable
+          rows={
+            view === "parameter"
+              ? data.auditor_param_breakdown
+              : data.auditor_cat_breakdown
+          }
+          entityLabel="Quality analyst (QA)"
+          metricLabel={view === "parameter" ? "Parameter" : "Category"}
+          sortOrder={sortOrder}
+          title={
+            view === "parameter"
+              ? "QA — parameter wise"
+              : "QA — category wise"
+          }
+          sub="Average score per quality analyst and rubric segment"
+        />
+      </div>
+    );
+  }
+
+  const total = auditors.reduce((sum, a) => sum + a.count, 0);
+  const top = sortByNumber(auditors, (a) => a.avg, "desc")[0];
   const avgQuality =
-    data.auditors.length > 0
-      ? Math.round(
-          data.auditors.reduce((sum, a) => sum + a.avg, 0) /
-            data.auditors.length
-        )
+    auditors.length > 0
+      ? Math.round(auditors.reduce((sum, a) => sum + a.avg, 0) / auditors.length)
       : 0;
 
   return (
     <div className="qms-tab">
+      {viewToggle}
+
       <div className="qms-kpi-row">
         <QmsKpiTile
           label="Active auditors"
-          value={data.auditors.length}
+          value={auditors.length}
           sub="Quality team members"
           tone="accent"
         />
@@ -78,8 +134,8 @@ export function AuditorsTab({ data }: { data: QmsAnalyticsData }) {
         />
         <QmsKpiTile
           label="Top auditor"
-          value={top.name.split(" ")[0]}
-          sub={`${top.count} audits · ${top.avg}% avg`}
+          value={top?.name.split(" ")[0] ?? "—"}
+          sub={top ? `${top.count} audits · ${top.avg}% avg` : undefined}
           tone="warn"
         />
       </div>
@@ -93,7 +149,7 @@ export function AuditorsTab({ data }: { data: QmsAnalyticsData }) {
           <QmsChartFrame>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={data.auditors}
+                data={auditors}
                 margin={{ bottom: 48, left: 4, right: 8 }}
               >
                 <CartesianGrid
@@ -117,7 +173,7 @@ export function AuditorsTab({ data }: { data: QmsAnalyticsData }) {
                   radius={[4, 4, 0, 0]}
                   isAnimationActive={false}
                 >
-                  {data.auditors.map((_, index) => (
+                  {auditors.map((_, index) => (
                     <Cell
                       key={index}
                       fill={AUDITOR_COLORS[index % AUDITOR_COLORS.length]}
@@ -132,12 +188,12 @@ export function AuditorsTab({ data }: { data: QmsAnalyticsData }) {
         <QmsCard className="qms-card--chart">
           <QmsSectionTitle
             title="QA-wise quality score"
-            sub="Average quality % per auditor"
+            sub={`Average quality % · ${sortOrder === "desc" ? "high to low" : "low to high"}`}
           />
           <QmsChartFrame>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={data.auditors}
+                data={auditors}
                 margin={{ bottom: 48, left: 4, right: 8 }}
               >
                 <CartesianGrid
@@ -168,7 +224,7 @@ export function AuditorsTab({ data }: { data: QmsAnalyticsData }) {
                   radius={[4, 4, 0, 0]}
                   isAnimationActive={false}
                 >
-                  {data.auditors.map((row) => (
+                  {auditors.map((row) => (
                     <Cell key={row.name} fill={scoreHex(row.avg)} />
                   ))}
                 </Bar>
@@ -183,43 +239,43 @@ export function AuditorsTab({ data }: { data: QmsAnalyticsData }) {
         <DataTablePanel
           pagination={pagination}
           renderTable={(slice) => (
-          <table className="ui-table qms-table platform-report-table">
-            <thead>
-              <tr>
-                {[
-                  "Auditor",
-                  "Audits",
-                  "Avg QA score",
-                  "Pass rate",
-                  "Status",
-                ].map((h) => (
-                  <th key={h}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {slice.map((auditor) => (
-                <tr key={auditor.name}>
-                  <td className="qms-cell-strong">{auditor.name}</td>
-                  <td className="qms-cell-accent">{auditor.count}</td>
-                  <td style={{ color: scoreHex(auditor.avg), fontWeight: 800 }}>
-                    {auditor.avg}%
-                  </td>
-                  <td>{auditor.passRate}%</td>
-                  <td>
-                    <QmsBadge
-                      label={
-                        auditor.avg >= PASS_RATE_TARGET_PCT
-                          ? "On target"
-                          : "Below target"
-                      }
-                      score={auditor.avg}
-                    />
-                  </td>
+            <table className="ui-table qms-table platform-report-table platform-report-table--expanded">
+              <thead>
+                <tr>
+                  {[
+                    "Auditor",
+                    "Audits",
+                    "Avg QA score",
+                    "Pass rate",
+                    "Status",
+                  ].map((h) => (
+                    <th key={h}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {slice.map((auditor) => (
+                  <tr key={auditor.name}>
+                    <td className="qms-cell-strong">{auditor.name}</td>
+                    <td className="qms-cell-accent">{auditor.count}</td>
+                    <td style={{ color: scoreHex(auditor.avg), fontWeight: 800 }}>
+                      {auditor.avg}%
+                    </td>
+                    <td>{auditor.passRate}%</td>
+                    <td>
+                      <QmsBadge
+                        label={
+                          auditor.avg >= PASS_RATE_TARGET_PCT
+                            ? "On target"
+                            : "Below target"
+                        }
+                        score={auditor.avg}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         />
       </QmsCard>

@@ -27,6 +27,15 @@
   flex-wrap: wrap;
 }
 
+.qms-toolbar__row .qms-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.qms-toolbar__row .qms-view-toggle {
+  flex: 0 0 auto;
+}
+
 .qms-analytics__summary {
   display: flex;
   flex-wrap: wrap;

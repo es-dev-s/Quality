@@ -26,6 +26,15 @@ export type QmsParameterStat = {
   avg: number;
 };
 
+export type QmsCategoryStat = QmsParameterStat;
+
+export type QmsEntityMetricRow = {
+  entity: string;
+  metric: string;
+  score: number;
+  samples: number;
+};
+
 export type QmsTeamStat = {
   team: string;
   avg: number;
@@ -74,11 +83,18 @@ export type QmsKpis = {
 export type QmsAnalyticsData = {
   kpis: QmsKpis;
   params: QmsParameterStat[];
+  categories: QmsCategoryStat[];
   teams: QmsTeamStat[];
   bottom_agents: QmsAgentStat[];
   top_agents: QmsAgentStat[];
   auditors: QmsAuditorStat[];
   fatal_by_team: { team: string; count: number }[];
+  team_param_breakdown: QmsEntityMetricRow[];
+  team_cat_breakdown: QmsEntityMetricRow[];
+  agent_param_breakdown: QmsEntityMetricRow[];
+  agent_cat_breakdown: QmsEntityMetricRow[];
+  auditor_param_breakdown: QmsEntityMetricRow[];
+  auditor_cat_breakdown: QmsEntityMetricRow[];
 };
 
 const MIN_AGENT_AUDITS = 3;
@@ -124,7 +140,10 @@ function recordMetricDate(record: AnalyticsAuditRecord): Date {
   );
 }
 
-function computeParameterStats(records: AnalyticsAuditRecord[]): QmsParameterStat[] {
+function computeRowMetricStats(
+  records: AnalyticsAuditRecord[],
+  metricKey: "parameter" | "category"
+): QmsParameterStat[] {
   const byName = new Map<
     string,
     { scoreSum: number; maxSum: number; count: number }
@@ -133,7 +152,9 @@ function computeParameterStats(records: AnalyticsAuditRecord[]): QmsParameterSta
   for (const record of records) {
     for (const row of record.rows) {
       if (row.sel === "NA" || row.max <= 0) continue;
-      const entry = byName.get(row.name) ?? {
+      const name = metricKey === "parameter" ? row.name : row.cat;
+      if (!name?.trim()) continue;
+      const entry = byName.get(name) ?? {
         scoreSum: 0,
         maxSum: 0,
         count: 0,
@@ -141,7 +162,7 @@ function computeParameterStats(records: AnalyticsAuditRecord[]): QmsParameterSta
       entry.scoreSum += row.score;
       entry.maxSum += row.max;
       entry.count += 1;
-      byName.set(row.name, entry);
+      byName.set(name, entry);
     }
   }
 
@@ -163,6 +184,80 @@ function computeParameterStats(records: AnalyticsAuditRecord[]): QmsParameterSta
       };
     })
     .sort((a, b) => b.score - a.score);
+}
+
+function computeParameterStats(records: AnalyticsAuditRecord[]): QmsParameterStat[] {
+  return computeRowMetricStats(records, "parameter");
+}
+
+function computeCategoryStats(records: AnalyticsAuditRecord[]): QmsCategoryStat[] {
+  return computeRowMetricStats(records, "category");
+}
+
+function computeEntityMetricBreakdown(
+  records: AnalyticsAuditRecord[],
+  entityKey: "team" | "agent" | "auditor",
+  dimension: "parameter" | "category"
+): QmsEntityMetricRow[] {
+  const buckets = new Map<
+    string,
+    Map<string, { scoreSum: number; maxSum: number; count: number }>
+  >();
+
+  for (const record of records) {
+    let entity: string | null = null;
+    if (entityKey === "team") {
+      entity = record.supervisor?.trim() || "Unassigned";
+    } else if (entityKey === "agent") {
+      entity = record.agent?.trim() || null;
+    } else {
+      entity = record.auditor?.trim() || null;
+    }
+    if (!entity) continue;
+
+    for (const row of record.rows) {
+      if (row.sel === "NA" || row.max <= 0) continue;
+      const metric = dimension === "parameter" ? row.name : row.cat;
+      if (!metric?.trim()) continue;
+
+      if (!buckets.has(entity)) {
+        buckets.set(entity, new Map());
+      }
+      const metricMap = buckets.get(entity)!;
+      const entry = metricMap.get(metric) ?? {
+        scoreSum: 0,
+        maxSum: 0,
+        count: 0,
+      };
+      entry.scoreSum += row.score;
+      entry.maxSum += row.max;
+      entry.count += 1;
+      metricMap.set(metric, entry);
+    }
+  }
+
+  const rows: QmsEntityMetricRow[] = [];
+  for (const [entity, metricMap] of buckets) {
+    for (const [metric, data] of metricMap) {
+      rows.push({
+        entity,
+        metric,
+        score:
+          data.maxSum > 0
+            ? round1((data.scoreSum / data.maxSum) * 100)
+            : 0,
+        samples: data.count,
+      });
+    }
+  }
+
+  return rows.sort((a, b) => {
+    const entityCmp = a.entity.localeCompare(b.entity, undefined, {
+      sensitivity: "base",
+    });
+    if (entityCmp !== 0) return entityCmp;
+    return b.score - a.score;
+  });
 }
 
 function computeAgentStats(records: AnalyticsAuditRecord[]): QmsAgentStat[] {
@@ -368,10 +463,37 @@ export function computeQmsAnalytics(
       ...bands,
     },
     params: computeParameterStats(records),
+    categories: computeCategoryStats(records),
     teams,
     bottom_agents: sortedAgentsAsc.slice(0, 10),
     top_agents: sortedAgentsDesc.slice(0, 10),
     auditors: computeAuditorStats(records),
     fatal_by_team: computeFatalByTeam(records),
+    team_param_breakdown: computeEntityMetricBreakdown(
+      records,
+      "team",
+      "parameter"
+    ),
+    team_cat_breakdown: computeEntityMetricBreakdown(records, "team", "category"),
+    agent_param_breakdown: computeEntityMetricBreakdown(
+      records,
+      "agent",
+      "parameter"
+    ),
+    agent_cat_breakdown: computeEntityMetricBreakdown(
+      records,
+      "agent",
+      "category"
+    ),
+    auditor_param_breakdown: computeEntityMetricBreakdown(
+      records,
+      "auditor",
+      "parameter"
+    ),
+    auditor_cat_breakdown: computeEntityMetricBreakdown(
+      records,
+      "auditor",
+      "category"
+    ),
   };
 }

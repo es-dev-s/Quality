@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -12,6 +13,11 @@ import {
   YAxis,
 } from "recharts";
 import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
+import {
+  sortByNumber,
+  type AnalyticsSortOrder,
+} from "@/lib/audit/analytics-sort";
+import { QmsMetricDimensionToggle } from "@/components/analytics/analytics-controls";
 import { QmsChartTooltip } from "@/components/analytics/qms-chart-tooltip";
 import {
   CHART_COLORS,
@@ -30,15 +36,33 @@ import {
   usePaginatedRows,
 } from "@/components/primitives/data-table-panel";
 
-export function ParametersTab({ data }: { data: QmsAnalyticsData }) {
-  const pagination = usePaginatedRows(data.params);
-  if (data.params.length === 0) {
+type ParametersTabProps = {
+  data: QmsAnalyticsData;
+  sortOrder: AnalyticsSortOrder;
+};
+
+export function ParametersTab({ data, sortOrder }: ParametersTabProps) {
+  const [dimension, setDimension] = useState<"parameter" | "category">(
+    "parameter"
+  );
+
+  const metricRows =
+    dimension === "parameter" ? data.params : data.categories;
+  const metricLabel = dimension === "parameter" ? "Parameter" : "Category";
+
+  const sorted = useMemo(
+    () => sortByNumber(metricRows, (row) => row.score, sortOrder),
+    [metricRows, sortOrder]
+  );
+
+  const pagination = usePaginatedRows(sorted);
+
+  if (metricRows.length === 0) {
     return (
       <QmsEmpty message="No parameter-level data yet. Submit audits to see parameter analytics." />
     );
   }
 
-  const sorted = [...data.params].sort((a, b) => a.score - b.score);
   const avgScore =
     sorted.length > 0
       ? Math.round(
@@ -50,26 +74,30 @@ export function ParametersTab({ data }: { data: QmsAnalyticsData }) {
 
   return (
     <div className="qms-tab qms-params-tab">
-      <QmsCard className="qms-card--chart qms-card--radar-featured">
-        <QmsSectionTitle
-          title="Radar view"
-          sub="Parameter coverage map — actual scores vs 90% target"
-        />
-        <div className="qms-radar-featured__canvas">
-          <ParameterRadarChart params={data.params} />
-        </div>
-      </QmsCard>
+      <QmsMetricDimensionToggle value={dimension} onChange={setDimension} />
+
+      {dimension === "parameter" ? (
+        <QmsCard className="qms-card--chart qms-card--radar-featured">
+          <QmsSectionTitle
+            title="Radar view"
+            sub="Parameter coverage map — actual scores vs 90% target"
+          />
+          <div className="qms-radar-featured__canvas">
+            <ParameterRadarChart params={data.params} />
+          </div>
+        </QmsCard>
+      ) : null}
 
       <QmsCard className="qms-card--chart qms-card--param-scores">
         <div className="qms-param-scores__head">
           <QmsSectionTitle
-            title="Quality parameter scores"
-            sub="All parameters compared against the 90% quality target"
+            title={`Quality ${metricLabel.toLowerCase()} scores`}
+            sub={`All ${metricLabel.toLowerCase()}s compared against the 90% quality target`}
           />
-          <div className="qms-param-scores__stats" aria-label="Parameter score summary">
+          <div className="qms-param-scores__stats" aria-label="Score summary">
             <div className="qms-param-scores__stat">
               <span className="qms-param-scores__stat-value">{sorted.length}</span>
-              <span className="qms-param-scores__stat-label">Parameters</span>
+              <span className="qms-param-scores__stat-label">{metricLabel}s</span>
             </div>
             <div className="qms-param-scores__stat">
               <span className="qms-param-scores__stat-value">{avgScore}%</span>
@@ -87,21 +115,10 @@ export function ParametersTab({ data }: { data: QmsAnalyticsData }) {
           </div>
         </div>
 
-        <div className="qms-param-scores__legend" aria-hidden>
-          <span className="qms-param-scores__legend-item">
-            <span className="qms-param-scores__legend-swatch qms-param-scores__legend-swatch--bars" />
-            Parameter score
-          </span>
-          <span className="qms-param-scores__legend-item">
-            <span className="qms-param-scores__legend-swatch qms-param-scores__legend-swatch--target" />
-            90% target
-          </span>
-        </div>
-
         <QmsChartFrame
           className="qms-chart--parameters"
           empty={sorted.length === 0}
-          emptyMessage="No scored parameters in this date range."
+          emptyMessage={`No scored ${metricLabel.toLowerCase()}s in this date range.`}
         >
           <ResponsiveContainer width="100%" height="100%" minHeight={400}>
             <BarChart
@@ -164,55 +181,50 @@ export function ParametersTab({ data }: { data: QmsAnalyticsData }) {
       </QmsCard>
 
       <QmsCard>
-        <QmsSectionTitle title="Parameter detail table" />
+        <QmsSectionTitle title={`${metricLabel} detail table`} />
         <DataTablePanel
           pagination={pagination}
           renderTable={(slice) => (
-          <table className="ui-table qms-table platform-report-table">
-            <thead>
-              <tr>
-                {[
-                  "Parameter",
-                  "Avg raw",
-                  "Max",
-                  "Score %",
-                  "Status",
-                  "Gap to target",
-                ].map((h) => (
-                  <th key={h}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {slice.map((p) => (
-                <tr key={p.name}>
-                  <td className="qms-cell-strong">{p.name}</td>
-                  <td>{p.avg}</td>
-                  <td>{p.max}</td>
-                  <td>
-                    <div className="qms-cell-score">
-                      <span style={{ color: scoreHex(p.score), fontWeight: 800 }}>
-                        {p.score}%
-                      </span>
-                      <QmsSparkline value={p.score} />
-                    </div>
-                  </td>
-                  <td>
-                    <QmsBadge score={p.score} />
-                  </td>
-                  <td
-                    className={
-                      p.score >= 90 ? "qms-cell-positive" : "qms-cell-negative"
-                    }
-                  >
-                    {p.score >= 90
-                      ? `+${(p.score - 90).toFixed(1)}%`
-                      : `${(p.score - 90).toFixed(1)}%`}
-                  </td>
+            <table className="ui-table qms-table platform-report-table platform-report-table--expanded">
+              <thead>
+                <tr>
+                  {[metricLabel, "Avg raw", "Max", "Score %", "Status", "Gap to target"].map(
+                    (h) => (
+                      <th key={h}>{h}</th>
+                    )
+                  )}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {slice.map((p) => (
+                  <tr key={p.name}>
+                    <td className="qms-cell-strong">{p.name}</td>
+                    <td>{p.avg}</td>
+                    <td>{p.max}</td>
+                    <td>
+                      <div className="qms-cell-score">
+                        <span style={{ color: scoreHex(p.score), fontWeight: 800 }}>
+                          {p.score}%
+                        </span>
+                        <QmsSparkline value={p.score} />
+                      </div>
+                    </td>
+                    <td>
+                      <QmsBadge score={p.score} />
+                    </td>
+                    <td
+                      className={
+                        p.score >= 90 ? "qms-cell-positive" : "qms-cell-negative"
+                      }
+                    >
+                      {p.score >= 90
+                        ? `+${(p.score - 90).toFixed(1)}%`
+                        : `${(p.score - 90).toFixed(1)}%`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         />
       </QmsCard>

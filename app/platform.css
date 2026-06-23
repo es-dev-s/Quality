@@ -231,6 +231,60 @@
   white-space: nowrap;
 }
 
+.platform-report-table--compact thead th,
+.platform-report-table--compact tbody td {
+  padding: 6px 10px;
+  font-size: 0.75rem;
+}
+
+.platform-report-table--compact .platform-report-table__reason {
+  max-width: 120px;
+}
+
+.platform-report-table__scroll--compact {
+  max-height: min(52vh, 540px);
+}
+
+.platform-report-table--expanded {
+  min-width: max(100%, 1180px);
+}
+
+.platform-report-table--expanded thead th,
+.platform-report-table--expanded tbody td {
+  padding: 12px 16px;
+  white-space: normal;
+  word-break: break-word;
+  vertical-align: top;
+  min-width: 7.5rem;
+}
+
+.platform-report-table--expanded .platform-report-table__code {
+  min-width: 6.5rem;
+}
+
+.platform-report-table--expanded .platform-report-table__reason {
+  max-width: none;
+  white-space: normal;
+  min-width: 12rem;
+}
+
+.platform-report-table__scroll--expanded {
+  max-height: min(72vh, 920px);
+}
+
+.platform-report-density {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-right: 8px;
+}
+
+.platform-report-density .pf-period-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .platform-report-pagination {
   display: flex;
   align-items: center;

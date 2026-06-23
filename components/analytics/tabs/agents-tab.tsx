@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -13,6 +13,11 @@ import {
   YAxis,
 } from "recharts";
 import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
+import {
+  sortByNumber,
+  type AnalyticsSortOrder,
+} from "@/lib/audit/analytics-sort";
+import { EntityBreakdownTable } from "@/components/analytics/entity-breakdown-table";
 import { QmsChartTooltip } from "@/components/analytics/qms-chart-tooltip";
 import {
   CHART_COLORS,
@@ -29,8 +34,72 @@ import {
   usePaginatedRows,
 } from "@/components/primitives/data-table-panel";
 
-export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
-  const [view, setView] = useState<"bottom" | "top">("bottom");
+type AgentsTabProps = {
+  data: QmsAnalyticsData;
+  sortOrder: AnalyticsSortOrder;
+};
+
+export function AgentsTab({ data, sortOrder }: AgentsTabProps) {
+  const [view, setView] = useState<"summary" | "parameter" | "category">(
+    "summary"
+  );
+  const [performance, setPerformance] = useState<"bottom" | "top">("bottom");
+
+  const agents = useMemo(() => {
+    const source =
+      performance === "bottom" ? data.bottom_agents : data.top_agents;
+    return sortByNumber(source, (agent) => agent.avg, sortOrder);
+  }, [data.bottom_agents, data.top_agents, performance, sortOrder]);
+
+  const pagination = usePaginatedRows(agents);
+
+  const viewToggle = (
+    <QmsViewToggle
+      value={view}
+      onChange={(id) => setView(id as "summary" | "parameter" | "category")}
+      options={[
+        { id: "summary", label: "Summary" },
+        { id: "parameter", label: "Parameter wise" },
+        { id: "category", label: "Category wise" },
+      ]}
+    />
+  );
+
+  if (view !== "summary") {
+    if (
+      (view === "parameter" && data.agent_param_breakdown.length === 0) ||
+      (view === "category" && data.agent_cat_breakdown.length === 0)
+    ) {
+      return (
+        <div className="qms-tab">
+          {viewToggle}
+          <QmsEmpty message="No agent breakdown data yet." />
+        </div>
+      );
+    }
+
+    return (
+      <div className="qms-tab">
+        {viewToggle}
+        <EntityBreakdownTable
+          rows={
+            view === "parameter"
+              ? data.agent_param_breakdown
+              : data.agent_cat_breakdown
+          }
+          entityLabel="Agent"
+          metricLabel={view === "parameter" ? "Parameter" : "Category"}
+          sortOrder={sortOrder}
+          title={
+            view === "parameter"
+              ? "Agent — parameter wise"
+              : "Agent — category wise"
+          }
+          sub="Average score per agent and rubric segment"
+        />
+      </div>
+    );
+  }
 
   if (data.bottom_agents.length === 0 && data.top_agents.length === 0) {
     return (
@@ -38,16 +107,16 @@ export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
     );
   }
 
-  const agents = view === "bottom" ? data.bottom_agents : data.top_agents;
-  const pagination = usePaginatedRows(agents);
   const chartData =
-    view === "top" ? [...data.top_agents].reverse() : data.bottom_agents;
+    sortOrder === "asc" ? agents : [...agents].reverse();
 
   return (
     <div className="qms-tab">
+      {viewToggle}
+
       <QmsViewToggle
-        value={view}
-        onChange={(id) => setView(id as "bottom" | "top")}
+        value={performance}
+        onChange={(id) => setPerformance(id as "bottom" | "top")}
         options={[
           { id: "bottom", label: "Needs attention" },
           { id: "top", label: "Star performers" },
@@ -56,16 +125,18 @@ export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
 
       <div
         className={
-          view === "bottom" ? "qms-alert qms-alert--danger" : "qms-alert qms-alert--success"
+          performance === "bottom"
+            ? "qms-alert qms-alert--danger"
+            : "qms-alert qms-alert--success"
         }
       >
         <p className="qms-alert__title">
-          {view === "bottom"
+          {performance === "bottom"
             ? "Immediate coaching required"
             : "Recognition & best practice sharing"}
         </p>
         <p className="qms-alert__text">
-          {view === "bottom"
+          {performance === "bottom"
             ? `These ${data.bottom_agents.length} agents are below the 90% quality target. Schedule targeted coaching sessions.`
             : "These agents consistently deliver outstanding quality. Use their techniques as training benchmarks."}
         </p>
@@ -74,11 +145,11 @@ export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
       <QmsCard className="qms-card--chart">
         <QmsSectionTitle
           title={
-            view === "bottom"
+            performance === "bottom"
               ? "Bottom agents by quality score"
               : "Top agents by quality score"
           }
-          sub="Agents with ≥3 audits"
+          sub={`Agents with ≥3 audits · ${sortOrder === "desc" ? "high to low" : "low to high"}`}
         />
         <QmsChartFrame>
           <ResponsiveContainer width="100%" height="100%">
@@ -93,7 +164,7 @@ export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
                 height={60}
               />
               <YAxis
-                domain={view === "top" ? [88, 100] : [0, 100]}
+                domain={performance === "top" ? [88, 100] : [0, 100]}
                 tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
                 tickFormatter={(v) => `${v}%`}
               />
@@ -101,7 +172,7 @@ export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
                 {...QMS_CHART_TOOLTIP}
                 content={<QmsChartTooltip suffix="%" />}
               />
-              {view === "bottom" && (
+              {performance === "bottom" && (
                 <ReferenceLine
                   y={90}
                   stroke={CHART_COLORS.accent}
@@ -113,7 +184,7 @@ export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
                   <Cell
                     key={row.agent}
                     fill={
-                      view === "bottom"
+                      performance === "bottom"
                         ? CHART_COLORS.red
                         : index === chartData.length - 1
                           ? CHART_COLORS.amber
@@ -131,76 +202,76 @@ export function AgentsTab({ data }: { data: QmsAnalyticsData }) {
         <DataTablePanel
           pagination={pagination}
           renderTable={(slice) => (
-          <table className="ui-table qms-table platform-report-table">
-            <thead>
-              <tr>
-                {(view === "bottom"
-                  ? ["Agent", "Avg score", "Audits", "Gap to target", "Priority"]
-                  : ["Rank", "Agent", "Avg score", "Audits", "Above target", "Award"]
-                ).map((h) => (
-                  <th key={h}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {slice.map((agent, index) => {
-                const rank = pagination.start + index - 1;
-                return (
-                <tr key={agent.agent}>
-                  {view === "top" && (
-                    <td className={rank < 3 ? "qms-cell-rank" : undefined}>
-                      {rank === 0
-                        ? "1st"
-                        : rank === 1
-                          ? "2nd"
-                          : rank === 2
-                            ? "3rd"
-                            : `#${rank + 1}`}
-                    </td>
-                  )}
-                  <td className="qms-cell-strong">{agent.agent}</td>
-                  <td
-                    className={
-                      view === "bottom"
-                        ? "qms-cell-negative"
-                        : "qms-cell-positive"
-                    }
-                  >
-                    {agent.avg}%
-                  </td>
-                  <td>{agent.count}</td>
-                  <td
-                    className={
-                      view === "bottom"
-                        ? "qms-cell-negative"
-                        : "qms-cell-positive"
-                    }
-                  >
-                    {view === "bottom"
-                      ? `${(agent.avg - 90).toFixed(1)}%`
-                      : `+${(agent.avg - 90).toFixed(1)}%`}
-                  </td>
-                  <td>
-                    <QmsBadge
-                      label={
-                        view === "bottom"
-                          ? agent.avg < 60
-                            ? "Urgent"
-                            : agent.avg < 75
-                              ? "High"
-                              : "Medium"
-                          : agent.avg >= 96
-                            ? "Elite"
-                            : "Star"
-                      }
-                      score={agent.avg}
-                    />
-                  </td>
+            <table className="ui-table qms-table platform-report-table platform-report-table--expanded">
+              <thead>
+                <tr>
+                  {(performance === "bottom"
+                    ? ["Agent", "Avg score", "Audits", "Gap to target", "Priority"]
+                    : ["Rank", "Agent", "Avg score", "Audits", "Above target", "Award"]
+                  ).map((h) => (
+                    <th key={h}>{h}</th>
+                  ))}
                 </tr>
-                );
-              })}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {slice.map((agent, index) => {
+                  const rank = pagination.start + index - 1;
+                  return (
+                    <tr key={agent.agent}>
+                      {performance === "top" && (
+                        <td className={rank < 3 ? "qms-cell-rank" : undefined}>
+                          {rank === 0
+                            ? "1st"
+                            : rank === 1
+                              ? "2nd"
+                              : rank === 2
+                                ? "3rd"
+                                : `#${rank + 1}`}
+                        </td>
+                      )}
+                      <td className="qms-cell-strong">{agent.agent}</td>
+                      <td
+                        className={
+                          performance === "bottom"
+                            ? "qms-cell-negative"
+                            : "qms-cell-positive"
+                        }
+                      >
+                        {agent.avg}%
+                      </td>
+                      <td>{agent.count}</td>
+                      <td
+                        className={
+                          performance === "bottom"
+                            ? "qms-cell-negative"
+                            : "qms-cell-positive"
+                        }
+                      >
+                        {performance === "bottom"
+                          ? `${(agent.avg - 90).toFixed(1)}%`
+                          : `+${(agent.avg - 90).toFixed(1)}%`}
+                      </td>
+                      <td>
+                        <QmsBadge
+                          label={
+                            performance === "bottom"
+                              ? agent.avg < 60
+                                ? "Urgent"
+                                : agent.avg < 75
+                                  ? "High"
+                                  : "Medium"
+                              : agent.avg >= 96
+                                ? "Elite"
+                                : "Star"
+                          }
+                          score={agent.avg}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
         />
       </QmsCard>

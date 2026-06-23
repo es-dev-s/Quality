@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { LeaderboardAnalytics } from "@/lib/audit/leaderboard-metrics";
+import type { AnalyticsSortOrder } from "@/lib/audit/analytics-sort";
+import { sortByNumber } from "@/lib/audit/analytics-sort";
 import {
   QmsCard,
   QmsEmpty,
@@ -31,11 +33,17 @@ type ViewId = (typeof VIEWS)[number]["id"];
 function LeaderboardTable({
   rows,
   title,
+  sortOrder,
 }: {
   rows: LeaderboardAnalytics["agents"];
   title: string;
+  sortOrder: AnalyticsSortOrder;
 }) {
-  const pagination = usePaginatedRows(rows);
+  const sortedRows = useMemo(
+    () => sortByNumber(rows, (row) => row.quality, sortOrder),
+    [rows, sortOrder]
+  );
+  const pagination = usePaginatedRows(sortedRows);
 
   if (rows.length === 0) {
     return <QmsEmpty message={`No ${title.toLowerCase()} data available yet.`} />;
@@ -45,12 +53,12 @@ function LeaderboardTable({
     <QmsCard>
       <QmsSectionTitle
         title={`${title} rankings`}
-        sub="Sorted by average quality score"
+        sub={`Sorted ${sortOrder === "desc" ? "high to low" : "low to high"}`}
       />
       <DataTablePanel
         pagination={pagination}
         renderTable={(slice) => (
-        <table className="ui-table qms-table platform-leaderboard platform-report-table">
+        <table className="ui-table qms-table platform-leaderboard platform-report-table platform-report-table--expanded">
           <thead>
             <tr>
               <th>Rank</th>
@@ -168,7 +176,10 @@ function ParamAreas({
   );
 }
 
-export function LeaderboardsTab({ data }: LeaderboardsTabProps) {
+export function LeaderboardsTab({
+  data,
+  sortOrder,
+}: LeaderboardsTabProps & { sortOrder: AnalyticsSortOrder }) {
   const [view, setView] = useState<ViewId>("overview");
 
   const dataset =
@@ -217,10 +228,10 @@ export function LeaderboardsTab({ data }: LeaderboardsTabProps) {
               sub="Top performing compliance parameters"
             />
           </div>
-          <LeaderboardTable rows={data.agents} title="Agent" />
+          <LeaderboardTable rows={data.agents} title="Agent" sortOrder={sortOrder} />
         </>
       ) : (
-        <LeaderboardTable rows={dataset} title={title} />
+        <LeaderboardTable rows={dataset} title={title} sortOrder={sortOrder} />
       )}
     </div>
   );

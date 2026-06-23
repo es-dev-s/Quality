@@ -2,6 +2,7 @@
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
+import type { AnalyticsSortOrder } from "@/lib/audit/analytics-sort";
 import { QmsChartTooltip } from "@/components/analytics/qms-chart-tooltip";
 import {
   CHART_COLORS,
@@ -14,7 +15,13 @@ import {
 } from "@/components/analytics/qms-primitives";
 import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
 
-export function ComplianceTab({ data }: { data: QmsAnalyticsData }) {
+export function ComplianceTab({
+  data,
+  sortOrder: _sortOrder,
+}: {
+  data: QmsAnalyticsData;
+  sortOrder: AnalyticsSortOrder;
+}) {
   const { kpis } = data;
   const feedbackTotal = kpis.fb_done + kpis.fb_pending + kpis.fb_disputed;
   const complianceRate =

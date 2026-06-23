@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Calendar, Download, Printer } from "lucide-react";
+import { Calendar, Download, Maximize2, Minimize2, Printer } from "lucide-react";
 import { FilterTriggerButton } from "@/components/filters/filter-trigger-button";
 import {
   FilterSidebar,
@@ -17,6 +17,15 @@ import { getReportData, type ReportPageData } from "@/lib/actions/reports";
 import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
 import { useStaleRequestGuard } from "@/lib/hooks/use-stale-request-guard";
 import { exportReportCsv } from "@/lib/reports/export-csv";
+import { cn } from "@/lib/utils";
+
+type ReportTableDensity = "compact" | "standard" | "expanded";
+
+const DENSITY_OPTIONS: { id: ReportTableDensity; label: string }[] = [
+  { id: "compact", label: "Compact" },
+  { id: "standard", label: "Standard" },
+  { id: "expanded", label: "Expanded" },
+];
 
 function defaultRange() {
   const end = new Date();
@@ -40,6 +49,7 @@ export function ExecutiveReport({ canExport = false }: { canExport?: boolean }) 
   const [range, setRange] = useState(initial);
   const [appliedRange, setAppliedRange] = useState(initial);
   const [data, setData] = useState<ReportPageData | null>(null);
+  const [tableDensity, setTableDensity] = useState<ReportTableDensity>("expanded");
   const [isPending, startTransition] = useTransition();
   const filterSidebar = useFilterSidebar();
   const { beginRequest } = useStaleRequestGuard();
@@ -84,6 +94,42 @@ export function ExecutiveReport({ canExport = false }: { canExport?: boolean }) 
           />
         </div>
         <div className="platform-report__actions">
+          <div
+            className="platform-report-density"
+            role="group"
+            aria-label="Table detail density"
+          >
+            {DENSITY_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={cn(
+                  "pf-period-btn",
+                  tableDensity === option.id && "pf-period-btn--active"
+                )}
+                onClick={() => setTableDensity(option.id)}
+                title={
+                  option.id === "expanded"
+                    ? "Stretch columns for full detail visibility"
+                    : option.label
+                }
+              >
+                {option.id === "expanded" ? (
+                  <>
+                    <Maximize2 size={13} aria-hidden />
+                    {option.label}
+                  </>
+                ) : option.id === "compact" ? (
+                  <>
+                    <Minimize2 size={13} aria-hidden />
+                    {option.label}
+                  </>
+                ) : (
+                  option.label
+                )}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             className="ui-btn ui-btn--secondary ui-btn--sm"
@@ -210,8 +256,20 @@ export function ExecutiveReport({ canExport = false }: { canExport?: boolean }) 
 
           <DataTablePanel
             pagination={pagination}
+            scrollClassName={cn(
+              tableDensity === "expanded" &&
+                "platform-report-table__scroll--expanded",
+              tableDensity === "compact" &&
+                "platform-report-table__scroll--compact"
+            )}
             renderTable={(slice) => (
-              <table className="ui-table platform-table platform-report-table">
+              <table
+                className={cn(
+                  "ui-table platform-table platform-report-table",
+                  tableDensity === "compact" && "platform-report-table--compact",
+                  tableDensity === "expanded" && "platform-report-table--expanded"
+                )}
+              >
                 <thead>
                   <tr>
                     <th>Audit ID</th>
