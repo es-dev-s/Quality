@@ -32,10 +32,9 @@ import { MessageSquare, Phone } from "lucide-react";
 import {
   FEEDBACK_SECURITY_OPTIONS,
   FEEDBACK_SEVERITY_LABEL,
-  FEEDBACK_STATUS_OPTIONS,
   defaultAuditFeedback,
 } from "@/lib/audit/feedback";
-import type { FeedbackSecurity, FeedbackStatus } from "@/lib/audit/feedback";
+import type { FeedbackSecurity } from "@/lib/audit/feedback";
 import { AuditScorePanel } from "@/components/forms/audit-score-panel";
 import { QmsEmpty } from "@/components/analytics/qms-primitives";
 import { ReferenceUrlField } from "@/components/forms/reference-url-field";
@@ -47,6 +46,7 @@ import {
   validateCallInteractionDetails,
   validateChatInteractionDetails,
 } from "@/lib/audit/interaction-form-validation";
+import { validateFeedbackSection } from "@/lib/audit/feedback-form-validation";
 import {
   AUDIT_FORM_NOTICE,
   AUDIT_FORM_TOAST,
@@ -65,6 +65,8 @@ const INTERACTION_FIELD_IDS: Partial<Record<keyof AuditFormData, string>> = {
   mobile: "mobile",
   referenceUrl: "referenceUrl",
   response: "response",
+  feedbackSecurity: "feedbackSecurity",
+  agentFeedback: "agentFeedback",
 };
 
 function templateInteractionType(templateId: string): InteractionType | null {
@@ -263,8 +265,6 @@ export function AuditForm({
     return isCallInteraction || isChatInteraction;
   }
 
-  const feedbackDateRequired = formData.feedbackStatus !== "Pending";
-
   const selectableLOBs = useMemo(
     () =>
       config.lobs.filter(
@@ -384,18 +384,6 @@ export function AuditForm({
     updateForm({ reason });
   };
 
-  const handleFeedbackStatus = (feedbackStatus: FeedbackStatus) => {
-    if (feedbackStatus === "Pending") {
-      updateForm({ feedbackStatus, feedbackDate: "" });
-      return;
-    }
-
-    updateForm({
-      feedbackStatus,
-      feedbackDate: formData.feedbackDate || todayISO(),
-    });
-  };
-
   const handleScore = (paramId: string, value: string) => {
     setScores((prev) => ({ ...prev, [paramId]: value }));
     setHighlightedScoreParamIds((ids) => ids.filter((id) => id !== paramId));
@@ -472,6 +460,20 @@ export function AuditForm({
           requestAnimationFrame(() => {
             document
               .getElementById(`score-param-${scoringValidation.paramIds[0]}`)
+              ?.scrollIntoView({ behavior: "smooth", block: "center" });
+          });
+          return;
+        }
+
+        const feedbackValidation = validateFeedbackSection(submitFormData);
+        if (!feedbackValidation.ok) {
+          setHighlightedFieldIds(feedbackValidation.fieldIds);
+          setHighlightedScoreParamIds([]);
+          setInteractionNotice(AUDIT_FORM_NOTICE.requiredFields);
+          toast(AUDIT_FORM_TOAST.requiredFields, "error");
+          requestAnimationFrame(() => {
+            document
+              .getElementById(feedbackValidation.fieldIds[0]!)
               ?.scrollIntoView({ behavior: "smooth", block: "center" });
           });
           return;
@@ -1117,13 +1119,20 @@ export function AuditForm({
 
             <div className="audit-panel__body">
               <div className="audit-details">
+                <p className="audit-field__hint audit-field__hint--block">
+                  Feedback status and date are updated from the Audit Log.
+                </p>
                 <div className="audit-details__row">
-                  <Field className="audit-field">
-                    <Label htmlFor="feedbackSecurity">{FEEDBACK_SEVERITY_LABEL}</Label>
+                  <Field className={fieldAttentionClass("feedbackSecurity")}>
+                    <Label htmlFor="feedbackSecurity">
+                      {FEEDBACK_SEVERITY_LABEL}
+                      <span className="audit-required"> *</span>
+                    </Label>
                     <Select
                       id="feedbackSecurity"
                       className="audit-control"
                       value={formData.feedbackSecurity}
+                      required
                       onChange={(e) =>
                         updateForm({
                           feedbackSecurity: e.target.value as FeedbackSecurity,
@@ -1132,7 +1141,7 @@ export function AuditForm({
                     >
                       {FEEDBACK_SECURITY_OPTIONS.map((option) => (
                         <option key={option} value={option}>
-                          {option}
+                          {option === "NA" ? "Select severity" : option}
                         </option>
                       ))}
                     </Select>
@@ -1140,55 +1149,38 @@ export function AuditForm({
 
                   <Field className="audit-field">
                     <Label htmlFor="feedbackStatus">Feedback Status</Label>
-                    <Select
+                    <Input
                       id="feedbackStatus"
                       className="audit-control"
                       value={formData.feedbackStatus}
-                      onChange={(e) =>
-                        handleFeedbackStatus(e.target.value as FeedbackStatus)
-                      }
-                    >
-                      {FEEDBACK_STATUS_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </Select>
+                      readOnly
+                      disabled
+                    />
                   </Field>
 
                   <Field className="audit-field">
-                    <Label htmlFor="feedbackDate">
-                      Feedback Date
-                      {feedbackDateRequired ? (
-                        <span className="audit-required"> *</span>
-                      ) : null}
-                    </Label>
+                    <Label htmlFor="feedbackDate">Feedback Date</Label>
                     <Input
                       id="feedbackDate"
                       className="audit-control"
-                      type="date"
-                      value={formData.feedbackDate}
-                      disabled={formData.feedbackStatus === "Pending"}
-                      required={feedbackDateRequired}
-                      onChange={(e) =>
-                        updateForm({ feedbackDate: e.target.value })
-                      }
+                      value={formData.feedbackDate || "—"}
+                      readOnly
+                      disabled
                     />
-                    <p className="audit-field__hint">
-                      {formData.feedbackStatus === "Pending"
-                        ? "Set when feedback is shared with the agent."
-                        : "Date feedback was shared or acknowledged."}
-                    </p>
                   </Field>
                 </div>
 
                 <div className="audit-details__row audit-details__row--full">
-                  <Field className="audit-field">
-                    <Label htmlFor="agentFeedback">Feedback for the agent</Label>
+                  <Field className={fieldAttentionClass("agentFeedback")}>
+                    <Label htmlFor="agentFeedback">
+                      Feedback for the agent
+                      <span className="audit-required"> *</span>
+                    </Label>
                     <textarea
                       id="agentFeedback"
                       className="audit-control audit-textarea"
                       rows={4}
+                      required
                       placeholder="Write feedback to share with the agent..."
                       value={formData.agentFeedback}
                       onChange={(e) =>

@@ -76,7 +76,9 @@ export type FeedbackStatusSelectConfig = {
   showSelect: boolean;
   editable: boolean;
   options: FeedbackStatusOption[];
-  selectValue: FeedbackStatus;
+  selectValue: FeedbackStatus | "";
+  /** When true, show the workflow status as read-only and use selectValue for the action picker. */
+  awaitingResponse?: boolean;
   hint?: string;
 };
 
@@ -85,8 +87,9 @@ function agentFeedbackConfig(current: FeedbackStatus): FeedbackStatusSelectConfi
     return {
       showSelect: true,
       editable: true,
+      awaitingResponse: true,
       options: statusOptions(AGENT_FEEDBACK_STATUSES),
-      selectValue: current,
+      selectValue: "",
       hint: "Select Acknowledged or Disputed after reviewing shared feedback",
     };
   }

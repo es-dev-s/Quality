@@ -17,6 +17,7 @@ model User {
   approvalStatus     UserApprovalStatus      @default(ACTIVE) @map("approval_status")
   sessionVersion     Int                     @default(0) @map("session_version")
   dateOfJoining      String?                 @map("date_of_joining")
+  teamName           String?                 @map("team_name")
   createdById        String?                 @map("created_by_id")
   role               Role                    @relation(fields: [roleId], references: [id], onDelete: Restrict)
   createdBy          User?                   @relation("UserCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)

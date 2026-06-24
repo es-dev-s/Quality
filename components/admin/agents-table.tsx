@@ -105,7 +105,7 @@ export function AgentsTable({
               <table className="ui-table platform-report-table">
                 <thead>
                   <tr>
-                    <th>Display name</th>
+                    <th>Profile name</th>
                     <th>Email</th>
                     <th>Date of joining</th>
                     <th>Audits</th>

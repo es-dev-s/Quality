@@ -25,10 +25,17 @@ export const auditFormDataSchema = z
     reason: z.string(),
     subReason: z.string(),
     response: z.string(),
-    feedbackSecurity: z.enum(FEEDBACK_SECURITY_OPTIONS),
+    feedbackSecurity: z
+      .enum(FEEDBACK_SECURITY_OPTIONS)
+      .refine((value) => value !== "NA", {
+        message: "Select a severity level.",
+      }),
     feedbackStatus: z.enum(FEEDBACK_STATUS_OPTIONS),
     feedbackDate: z.string(),
-    agentFeedback: z.string(),
+    agentFeedback: z
+      .string()
+      .trim()
+      .min(1, "Feedback for the agent is required."),
   });
 
 export const saveAuditSubmissionSchema = z.object({

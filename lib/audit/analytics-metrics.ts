@@ -459,7 +459,7 @@ function computeTeamStats(records: AnalyticsAuditRecord[]): QmsTeamStat[] {
       avg: round1(avg(scores)),
       count: scores.length,
     }))
-    .sort((a, b) => b.avg - a.avg);
+    .sort((a, b) => b.count - a.count);
 }
 
 function computeAuditorStats(records: AnalyticsAuditRecord[]): QmsAuditorStat[] {
@@ -596,8 +596,8 @@ export function computeQmsAnalytics(
   const weekSplit = computeWeekSplit(records, now);
 
   const teams = computeTeamStats(records);
-  const sortedAgentsAsc = [...agentStats].sort((a, b) => a.avg - b.avg);
-  const sortedAgentsDesc = [...agentStats].sort((a, b) => b.avg - a.avg);
+  const sortedAgentsAsc = [...agentStats].sort((a, b) => a.count - b.count);
+  const sortedAgentsDesc = [...agentStats].sort((a, b) => b.count - a.count);
 
   return {
     kpis: {

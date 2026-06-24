@@ -28,6 +28,7 @@ import {
   rejectProvisioningRequest,
   requestAgentUser,
   requestQualityAnalystUser,
+  createSupervisorUser,
   resetManagedUserPassword,
   type AgentAssignmentRow,
   type AssignableAgentRow,
@@ -45,6 +46,7 @@ import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 type TeamManagementProps = {
   canProvisionAgent: boolean;
   canProvisionAnalyst: boolean;
+  canProvisionSupervisor: boolean;
   canApproveAgent: boolean;
   canApproveAnalyst: boolean;
   canReadManaged: boolean;
@@ -140,7 +142,7 @@ function RequestFormModal({
       <form action={handleSubmit}>
         <FormStack>
           <Field>
-            <Label htmlFor="team-name">Display name</Label>
+            <Label htmlFor="team-name">Profile name</Label>
             <Input id="team-name" name="name" required disabled={pending} />
           </Field>
           <Field>
@@ -194,6 +196,136 @@ function RequestFormModal({
           </Button>
           <Button type="submit" disabled={pending}>
             {pending ? "Submitting…" : "Submit request"}
+          </Button>
+        </ModalActions>
+      </form>
+    </Modal>
+  );
+}
+
+function CreateSupervisorModal({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const router = useRouter();
+  const { toast, toastPasswordReveal } = useToast();
+  const [pending, startTransition] = useTransition();
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      const generated = generateClientPassword(12);
+      setPassword(generated);
+      setConfirmPassword(generated);
+    }
+  }, [open]);
+
+  function handleSubmit(formData: FormData) {
+    if (!isPasswordFormValid(password, confirmPassword, { minLength: 6 })) {
+      toast("Enter a matching password of at least 6 characters.", "error");
+      return;
+    }
+
+    formData.set("password", password);
+
+    startTransition(async () => {
+      const result = await createSupervisorUser(formData);
+      if ("error" in result && result.error) {
+        toast(result.error, "error");
+        return;
+      }
+
+      if ("success" in result && result.success && result.password && result.email) {
+        toastPasswordReveal(result.email, result.password, {
+          note: "Supervisor account created. Share this password securely with the user.",
+        });
+      } else {
+        toast("Supervisor created.", "success");
+      }
+
+      onOpenChange(false);
+      router.refresh();
+    });
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={() => !pending && onOpenChange(false)}
+      title="Create supervisor"
+      size="lg"
+      description="Create a Supervisor account and assign a team name used for reporting and team scope."
+    >
+      <form action={handleSubmit}>
+        <FormStack>
+          <Field>
+            <Label htmlFor="supervisor-name">Profile name</Label>
+            <Input id="supervisor-name" name="name" required disabled={pending} />
+          </Field>
+          <Field>
+            <Label htmlFor="supervisor-team-name">
+              Team name <span aria-hidden>*</span>
+            </Label>
+            <Input
+              id="supervisor-team-name"
+              name="teamName"
+              required
+              disabled={pending}
+              placeholder="Used for team reporting and filters"
+            />
+          </Field>
+          <Field>
+            <Label htmlFor="supervisor-email">Email</Label>
+            <Input
+              id="supervisor-email"
+              name="email"
+              type="email"
+              required
+              disabled={pending}
+            />
+          </Field>
+          <PasswordField
+            id="supervisor-password"
+            label="Temporary password"
+            value={password}
+            onChange={setPassword}
+            required
+            disabled={pending}
+            minLength={6}
+            hint="Minimum 6 characters. Use Generate for a secure temporary password."
+          />
+          <PasswordConfirmField
+            id="supervisor-password-confirm"
+            password={password}
+            value={confirmPassword}
+            onChange={setConfirmPassword}
+            disabled={pending}
+          />
+          <Field>
+            <Label htmlFor="supervisor-doj">Date of joining (optional)</Label>
+            <Input
+              id="supervisor-doj"
+              name="dateOfJoining"
+              type="date"
+              disabled={pending}
+            />
+          </Field>
+        </FormStack>
+        <ModalActions>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={pending}
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={pending}>
+            {pending ? "Creating…" : "Create supervisor"}
           </Button>
         </ModalActions>
       </form>
@@ -928,6 +1060,7 @@ function AgentAssignmentPanel({
 export function TeamManagement({
   canProvisionAgent,
   canProvisionAnalyst,
+  canProvisionSupervisor,
   canApproveAgent,
   canApproveAnalyst,
   canReadManaged,
@@ -948,6 +1081,7 @@ export function TeamManagement({
   const [requestMode, setRequestMode] = useState<"agent" | "analyst" | null>(
     null
   );
+  const [supervisorModalOpen, setSupervisorModalOpen] = useState(false);
   const [passwordUser, setPasswordUser] = useState<ManagedUserRow | null>(null);
   const [liveAgentCount, setLiveAgentCount] = useState<number | null>(null);
   const [subTab, setSubTab] = useState<TeamSubTabId | null>(null);
@@ -1064,6 +1198,12 @@ export function TeamManagement({
 
   const requestActions = (
     <>
+      {canProvisionSupervisor && (
+        <Button onClick={() => setSupervisorModalOpen(true)}>
+          <Plus size={16} />
+          Create supervisor
+        </Button>
+      )}
       {canProvisionAgent && (
         <Button onClick={() => setRequestMode("agent")}>
           <Plus size={16} />
@@ -1280,6 +1420,7 @@ export function TeamManagement({
                           <th>Name</th>
                           <th>Email</th>
                           <th>Role</th>
+                          <th>Team</th>
                           <th>Joined</th>
                           <th>Related audits</th>
                           {canManageManaged ? (
@@ -1293,6 +1434,7 @@ export function TeamManagement({
                             <td style={{ fontWeight: 600 }}>{user.name}</td>
                             <td>{user.email}</td>
                             <td>{user.roleName}</td>
+                            <td>{user.teamName ?? "—"}</td>
                             <td>{user.dateOfJoining ?? "—"}</td>
                             <td>{user.auditCount}</td>
                             {canManageManaged ? (
@@ -1371,6 +1513,11 @@ export function TeamManagement({
           onOpenChange={(open) => !open && setRequestMode(null)}
         />
       )}
+
+      <CreateSupervisorModal
+        open={supervisorModalOpen}
+        onOpenChange={setSupervisorModalOpen}
+      />
 
       <ResetPasswordModal
         user={passwordUser}

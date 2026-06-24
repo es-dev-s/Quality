@@ -42,6 +42,10 @@ const requestUserSchema = z.object({
   dateOfJoining: isoDateSchema.optional(),
 });
 
+const createSupervisorSchema = requestUserSchema.extend({
+  teamName: z.string().trim().min(1, "Team name is required"),
+});
+
 const reviewSchema = z.object({
   id: z.string().min(1),
   note: z.string().trim().max(500).optional(),
@@ -69,6 +73,7 @@ export type ManagedUserRow = {
   email: string;
   roleName: string;
   roleSlug: string;
+  teamName: string | null;
   dateOfJoining: string | null;
   auditCount: number;
   createdAt: string;
@@ -231,6 +236,9 @@ export async function getTeamManagementData() {
     (role.slug === SYSTEM_ROLE_SLUGS.ADMIN || isSuperAdminRole);
   const canReadManaged = canReadManagedUsers(role);
   const canManageManaged = canManageManagedUsers(role);
+  const canProvisionSupervisor =
+    canManageManaged &&
+    (role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER || isSuperAdminRole);
   const canAssign = canAssignAgents(role);
 
   if (
@@ -249,6 +257,7 @@ export async function getTeamManagementData() {
       canApproveAnalyst: false,
       canReadManaged: false,
       canManageManaged: false,
+      canProvisionSupervisor: false,
       canAssignAgents: false,
       myRequests: [] as ProvisioningRequestRow[],
       pendingApprovals: [] as ProvisioningRequestRow[],
@@ -438,6 +447,7 @@ export async function getTeamManagementData() {
         email: user.email,
         roleName: user.role.name,
         roleSlug: user.role.slug,
+        teamName: user.teamName,
         dateOfJoining: user.dateOfJoining,
         auditCount,
         createdAt: user.createdAt.toISOString(),
@@ -452,6 +462,7 @@ export async function getTeamManagementData() {
     canApproveAnalyst,
     canReadManaged,
     canManageManaged,
+    canProvisionSupervisor,
     canAssignAgents: canAssign,
     myRequests: myRequests.map(mapRequest),
     pendingApprovals: pendingApprovals.map(mapRequest),
@@ -578,6 +589,69 @@ export async function requestQualityAnalystUser(formData: FormData) {
   return {
     success: true,
     message: "Quality Analyst request submitted for Admin approval.",
+  };
+}
+
+export async function createSupervisorUser(formData: FormData) {
+  await requirePermission(PERMISSIONS.USERS_MANAGE_MANAGED);
+  const session = await requireAuth();
+  if (
+    session.user.role.slug !== SYSTEM_ROLE_SLUGS.QUALITY_MANAGER &&
+    !isSuperAdmin(session.user.role)
+  ) {
+    return {
+      error: "Only Quality Managers can create Supervisor accounts.",
+    };
+  }
+
+  const parsed = createSupervisorSchema.safeParse({
+    name: formData.get("name"),
+    email: formData.get("email"),
+    password: formData.get("password"),
+    teamName: formData.get("teamName"),
+    dateOfJoining: formData.get("dateOfJoining") || undefined,
+  });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const email = parsed.data.email.toLowerCase();
+  const emailError = await assertEmailAvailableForNewRequest(email);
+  if (emailError) {
+    return { error: emailError };
+  }
+
+  const credentials = await buildPasswordCredentials(parsed.data.password);
+  const supervisorRoleId = await getRoleIdBySlug(SYSTEM_ROLE_SLUGS.SUPERVISOR);
+
+  try {
+    await prisma.user.create({
+      data: {
+        name: parsed.data.name.trim(),
+        email,
+        password: credentials.password,
+        passwordEncrypted: credentials.passwordEncrypted,
+        roleId: supervisorRoleId,
+        teamName: parsed.data.teamName.trim(),
+        dateOfJoining: normalizeJoiningDate(parsed.data.dateOfJoining),
+        createdById: session.user.id,
+        isActive: true,
+        approvalStatus: "ACTIVE",
+      },
+    });
+  } catch (error) {
+    if (isPrismaUniqueViolation(error, "email")) {
+      return { error: "A user with this email already exists." };
+    }
+    throw error;
+  }
+
+  revalidateProvisioningPaths(session.user.id);
+  return {
+    success: true,
+    email,
+    password: parsed.data.password,
   };
 }
 

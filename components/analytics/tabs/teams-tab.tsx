@@ -6,7 +6,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -48,10 +47,19 @@ export function TeamsTab({ data, sortOrder }: TeamsTabProps) {
   const [layout, setLayout] = useState<"chart" | "table">("chart");
 
   const teams = useMemo(
-    () => sortByNumber(data.teams, (team) => team.avg, sortOrder),
+    () => sortByNumber(data.teams, (team) => team.count, sortOrder),
     [data.teams, sortOrder]
   );
   const pagination = usePaginatedRows(teams);
+
+  const topTeam = useMemo(
+    () => sortByNumber(data.teams, (team) => team.count, "desc")[0],
+    [data.teams]
+  );
+  const weakTeam = useMemo(
+    () => sortByNumber(data.teams, (team) => team.count, "asc")[0],
+    [data.teams]
+  );
 
   if (data.teams.length === 0) {
     return (
@@ -93,8 +101,6 @@ export function TeamsTab({ data, sortOrder }: TeamsTabProps) {
 
   const above90 = teams.filter((t) => t.avg >= 90).length;
   const below90 = teams.filter((t) => t.avg < 90).length;
-  const topTeam = sortByNumber(teams, (t) => t.avg, "desc")[0];
-  const weakTeam = sortByNumber(teams, (t) => t.avg, "asc")[0];
 
   return (
     <div className="qms-tab">
@@ -124,14 +130,18 @@ export function TeamsTab({ data, sortOrder }: TeamsTabProps) {
         <QmsKpiTile
           label="Top team"
           value={topTeam?.team ?? "—"}
-          sub={topTeam ? `${topTeam.avg}% avg quality` : undefined}
+          sub={topTeam ? `${topTeam.count} audit${topTeam.count === 1 ? "" : "s"}` : undefined}
           tone="warn"
           compact
         />
         <QmsKpiTile
           label="Weakest team"
           value={weakTeam?.team ?? "—"}
-          sub={weakTeam ? `${weakTeam.avg}% avg quality` : undefined}
+          sub={
+            weakTeam
+              ? `${weakTeam.count} audit${weakTeam.count === 1 ? "" : "s"}`
+              : undefined
+          }
           tone="danger"
           compact
         />
@@ -149,8 +159,8 @@ export function TeamsTab({ data, sortOrder }: TeamsTabProps) {
       {layout === "chart" ? (
         <QmsCard className="qms-card--chart">
           <QmsSectionTitle
-            title="Team performance ranking"
-            sub={`Sorted ${sortOrder === "desc" ? "high to low" : "low to high"}`}
+            title="Team audit volume ranking"
+            sub={`Sorted ${sortOrder === "desc" ? "most to fewest audits" : "fewest to most audits"}`}
           />
           <QmsChartFrame className="qms-chart--xl">
             <ResponsiveContainer width="100%" height="100%">
@@ -169,27 +179,22 @@ export function TeamsTab({ data, sortOrder }: TeamsTabProps) {
                   height={56}
                 />
                 <YAxis
-                  domain={[70, 100]}
+                  domain={[0, "auto"]}
                   tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
-                  tickFormatter={(v) => `${v}%`}
+                  allowDecimals={false}
                 />
                 <Tooltip
                   {...QMS_CHART_TOOLTIP}
-                  content={<QmsChartTooltip suffix="%" />}
-                />
-                <ReferenceLine
-                  y={90}
-                  stroke={CHART_COLORS.accent}
-                  strokeDasharray="5 5"
+                  content={<QmsChartTooltip suffix=" audits" />}
                 />
                 <Bar
-                  dataKey="avg"
-                  name="Avg score"
+                  dataKey="count"
+                  name="Audits"
                   radius={[4, 4, 0, 0]}
                   isAnimationActive={false}
                 >
                   {teams.map((row) => (
-                    <Cell key={row.team} fill={scoreHex(row.avg)} />
+                    <Cell key={row.team} fill={CHART_COLORS.green} />
                   ))}
                 </Bar>
               </BarChart>
@@ -198,14 +203,14 @@ export function TeamsTab({ data, sortOrder }: TeamsTabProps) {
         </QmsCard>
       ) : (
         <QmsCard>
-          <QmsSectionTitle title="Team performance table" />
+          <QmsSectionTitle title="Team audit volume table" />
           <DataTablePanel
             pagination={pagination}
             renderTable={(slice) => (
               <table className="ui-table qms-table platform-report-table platform-report-table--expanded">
                 <thead>
                   <tr>
-                    {["Rank", "Team", "Avg score", "Audits", "Status", "Gap"].map(
+                    {["Rank", "Team", "Audits", "Avg score", "Status", "Gap"].map(
                       (h) => (
                         <th key={h}>{h}</th>
                       )
@@ -227,10 +232,10 @@ export function TeamsTab({ data, sortOrder }: TeamsTabProps) {
                                 : `#${rank + 1}`}
                         </td>
                         <td className="qms-cell-strong">{team.team}</td>
+                        <td>{team.count}</td>
                         <td style={{ color: scoreHex(team.avg), fontWeight: 800 }}>
                           {team.avg}%
                         </td>
-                        <td>{team.count}</td>
                         <td>
                           <QmsBadge
                             label={team.avg >= 90 ? "On target" : "Below target"}

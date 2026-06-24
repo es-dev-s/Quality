@@ -2114,6 +2114,17 @@
   display: inline-block;
 }
 
+.audit-logs__feedback-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 118px;
+}
+
+.audit-logs__feedback--response {
+  width: 100%;
+}
+
 .audit-logs__feedback-select {
   width: 100%;
   min-width: 118px;

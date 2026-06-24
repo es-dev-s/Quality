@@ -84,13 +84,11 @@ export function calculateResults(
       if (val === "Fatal" || isScoringFatal(param, val)) {
         hasFatal = true;
         fatalList.push(param.name);
-        totalScored += param.max;
         totalMax += param.max;
 
         if (!catScores[sec.name]) {
           catScores[sec.name] = { scored: 0, max: 0 };
         }
-        catScores[sec.name].scored += param.max;
         catScores[sec.name].max += param.max;
 
         rows.push({
@@ -99,7 +97,7 @@ export function calculateResults(
           name: param.name,
           max: param.max,
           sel: val === "Fatal" ? "Fatal" : val,
-          score: param.max,
+          score: 0,
           fatal: true,
           isScoringFatal: true,
         });

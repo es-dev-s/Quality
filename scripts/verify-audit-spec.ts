@@ -207,13 +207,17 @@ assert(
   "FATAL forces final score to 0%"
 );
 assert(
-  fatalResolution.ok && fatalResolution.record.qualityPct === 100,
-  "FATAL does not deduct from points total when other params are perfect"
+  fatalResolution.ok && fatalResolution.record.qualityPct < 100,
+  "FATAL deducts points from quality score"
 );
+const fatalRow = fatalResolution.ok
+  ? fatalResolution.record.rows.find((row) => row.id === "call-correct")
+  : undefined;
+assert(fatalRow?.score === 0, "FATAL row score is 0");
 assert(
   fatalResolution.ok &&
-    fatalResolution.record.totalScored === fatalResolution.record.totalMax,
-  "FATAL keeps full points total"
+    fatalResolution.record.totalScored < fatalResolution.record.totalMax,
+  "FATAL keeps max but not scored points"
 );
 
 for (const [template, probingId, preferredId] of [

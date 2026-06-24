@@ -44,6 +44,8 @@ assert(!agentPending.showSelect, "Agent sees readonly Pending");
 
 const agentShared = getFeedbackStatusSelectConfig(agent, "Shared");
 assert(agentShared.editable, "Agent can respond when Shared");
+assert(Boolean(agentShared.awaitingResponse), "Agent keeps Shared visible while responding");
+assert(agentShared.selectValue === "", "Agent response picker starts empty");
 assert(
   agentShared.options.every((option) =>
     AGENT_FEEDBACK_STATUSES.includes(option.value)

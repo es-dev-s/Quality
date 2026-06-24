@@ -216,23 +216,15 @@ export async function saveAuditSubmission(
     return { error: configError };
   }
 
-  const feedbackError = validateFeedbackForSave({
-    feedbackSecurity: validFormData.feedbackSecurity,
-    feedbackStatus: validFormData.feedbackStatus,
-    feedbackDate: validFormData.feedbackDate,
-  });
-  if (feedbackError) {
-    return { error: feedbackError };
-  }
-
   const feedback = normalizeFeedbackForSave({
-    feedbackSecurity: validFormData.feedbackSecurity,
-    feedbackStatus: validFormData.feedbackStatus,
-    feedbackDate: validFormData.feedbackDate,
+    feedbackSecurity: parseFeedbackSecurity(validFormData.feedbackSecurity),
+    feedbackStatus: "Pending",
+    feedbackDate: "",
   });
+  const agentFeedback = validFormData.agentFeedback.trim();
 
   const result = calculateResults(
-    validFormData,
+    { ...validFormData, ...feedback, agentFeedback },
     validScores,
     template,
     feedback
@@ -270,7 +262,7 @@ export async function saveAuditSubmission(
     feedbackSecurity: feedback.feedbackSecurity,
     feedbackDate: feedback.feedbackDate || null,
     feedbackStatusAt: feedback.feedbackStatusAt || null,
-    agentFeedback: validFormData.agentFeedback.trim(),
+    agentFeedback,
     totalScored: record.totalScored,
     totalMax: record.totalMax,
     scores: validScores,
@@ -306,7 +298,7 @@ export async function saveAuditSubmission(
         }
         if (isPrismaUniqueViolation(error, "auditCode") && attempt < 2) {
           const retry = calculateResults(
-            validFormData,
+            { ...validFormData, ...feedback, agentFeedback },
             validScores,
             template,
             feedback
@@ -680,20 +672,6 @@ export async function updateAuditSubmission(
     templateId: validTemplateId,
   } = parsed.data;
 
-  const existing = await prisma.auditSubmission.findFirst({
-    where: await scopedAuditByIdWhere(session, validId),
-    select: {
-      id: true,
-      auditCode: true,
-      hasFatal: true,
-      feedbackStatus: true,
-      submittedById: true,
-    },
-  });
-  if (!existing) {
-    return { error: "Audit not found." };
-  }
-
   const template = await fetchAuditTemplateForEdit(
     validTemplateId,
     validFormData.type
@@ -718,28 +696,44 @@ export async function updateAuditSubmission(
     return { error: configError };
   }
 
-  const feedbackError = validateFeedbackForSave({
-    feedbackSecurity: validFormData.feedbackSecurity,
-    feedbackStatus: validFormData.feedbackStatus,
-    feedbackDate: validFormData.feedbackDate,
+  const existing = await prisma.auditSubmission.findFirst({
+    where: await scopedAuditByIdWhere(session, validId),
+    select: {
+      id: true,
+      auditCode: true,
+      hasFatal: true,
+      feedbackSecurity: true,
+      feedbackStatus: true,
+      feedbackDate: true,
+      feedbackStatusAt: true,
+      agentFeedback: true,
+      submittedById: true,
+    },
   });
-  if (feedbackError) {
-    return { error: feedbackError };
+  if (!existing) {
+    return { error: "Audit not found." };
   }
 
-  const feedback = normalizeFeedbackForSave({
-    feedbackSecurity: validFormData.feedbackSecurity,
-    feedbackStatus: validFormData.feedbackStatus,
-    feedbackDate: validFormData.feedbackDate,
+  const preservedFeedback = normalizeFeedbackForSave({
+    feedbackSecurity: parseFeedbackSecurity(validFormData.feedbackSecurity),
+    feedbackStatus: parseFeedbackStatus(existing.feedbackStatus),
+    feedbackDate: existing.feedbackDate ?? "",
+    feedbackStatusAt: existing.feedbackStatusAt ?? "",
   });
+  const agentFeedback = validFormData.agentFeedback.trim();
 
   const result = calculateResults(
-    validFormData,
+    {
+      ...validFormData,
+      ...preservedFeedback,
+      agentFeedback,
+    },
     validScores,
     template,
     {
       id: existing.auditCode,
-      ...feedback,
+      ...preservedFeedback,
+      agentFeedback,
     }
   );
 
@@ -772,11 +766,11 @@ export async function updateAuditSubmission(
         grade: record.grade,
         hasFatal: record.hasFatal,
         fatalList: record.fatalList,
-        feedbackStatus: feedback.feedbackStatus,
-        feedbackSecurity: feedback.feedbackSecurity,
-        feedbackDate: feedback.feedbackDate || null,
-        feedbackStatusAt: feedback.feedbackStatusAt || null,
-        agentFeedback: validFormData.agentFeedback.trim(),
+        feedbackStatus: preservedFeedback.feedbackStatus,
+        feedbackSecurity: preservedFeedback.feedbackSecurity,
+        feedbackDate: preservedFeedback.feedbackDate || null,
+        feedbackStatusAt: preservedFeedback.feedbackStatusAt || null,
+        agentFeedback,
         totalScored: record.totalScored,
         totalMax: record.totalMax,
         scores: validScores,

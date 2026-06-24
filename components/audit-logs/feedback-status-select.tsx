@@ -45,6 +45,51 @@ export function FeedbackStatusSelect({
     );
   }
 
+  const responseOptions = config.awaitingResponse
+    ? [
+        { value: "", label: "Select response…", disabled: true },
+        ...config.options.map((option) => ({
+          value: option.value,
+          label: option.label,
+          disabled: option.disabled,
+        })),
+      ]
+    : config.options.map((option) => ({
+        value: option.value,
+        label: option.label,
+        disabled: option.disabled,
+      }));
+
+  if (config.awaitingResponse) {
+    return (
+      <div className={cn("audit-logs__feedback-stack", className)}>
+        <span
+          className={cn(
+            "audit-logs__feedback audit-logs__feedback--readonly",
+            feedbackStatusClass(value)
+          )}
+          title={config.hint}
+        >
+          {value}
+        </span>
+        <Select
+          className="audit-logs__feedback audit-logs__feedback--response"
+          value={config.selectValue}
+          disabled={!config.editable}
+          title={config.hint}
+          aria-label={ariaLabel}
+          options={responseOptions}
+          onChange={(event) => {
+            if (!config.editable) return;
+            const next = event.target.value as FeedbackStatus;
+            if (!next || next === value) return;
+            onChange(next);
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <Select
       className={cn("audit-logs__feedback", feedbackStatusClass(value), className)}
@@ -52,11 +97,7 @@ export function FeedbackStatusSelect({
       disabled={!config.editable}
       title={config.hint}
       aria-label={ariaLabel}
-      options={config.options.map((option) => ({
-        value: option.value,
-        label: option.label,
-        disabled: option.disabled,
-      }))}
+      options={responseOptions}
       onChange={(event) => {
         if (!config.editable) return;
         const next = event.target.value as FeedbackStatus;

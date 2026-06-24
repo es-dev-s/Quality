@@ -148,7 +148,7 @@ export function UserFormDialog({
           {isEditing && <input type="hidden" name="id" value={user.id} />}
 
           <Field>
-            <Label htmlFor="name">Display name</Label>
+            <Label htmlFor="name">Profile name</Label>
             <Input
               id="name"
               name="name"

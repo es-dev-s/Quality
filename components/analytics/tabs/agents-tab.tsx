@@ -6,7 +6,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -48,7 +47,7 @@ export function AgentsTab({ data, sortOrder }: AgentsTabProps) {
   const agents = useMemo(() => {
     const source =
       performance === "bottom" ? data.bottom_agents : data.top_agents;
-    return sortByNumber(source, (agent) => agent.avg, sortOrder);
+    return sortByNumber(source, (agent) => agent.count, sortOrder);
   }, [data.bottom_agents, data.top_agents, performance, sortOrder]);
 
   const pagination = usePaginatedRows(agents);
@@ -132,13 +131,13 @@ export function AgentsTab({ data, sortOrder }: AgentsTabProps) {
       >
         <p className="qms-alert__title">
           {performance === "bottom"
-            ? "Immediate coaching required"
-            : "Recognition & best practice sharing"}
+            ? "Lowest audit volume"
+            : "Highest audit volume"}
         </p>
         <p className="qms-alert__text">
           {performance === "bottom"
-            ? `These ${data.bottom_agents.length} agents are below the 90% quality target. Schedule targeted coaching sessions.`
-            : "These agents consistently deliver outstanding quality. Use their techniques as training benchmarks."}
+            ? `These ${data.bottom_agents.length} agents have the fewest completed audits in scope. Review coaching coverage and audit volume.`
+            : "These agents have the highest audit volume in scope. Use their workload patterns as benchmarks."}
         </p>
       </div>
 
@@ -146,10 +145,10 @@ export function AgentsTab({ data, sortOrder }: AgentsTabProps) {
         <QmsSectionTitle
           title={
             performance === "bottom"
-              ? "Bottom agents by quality score"
-              : "Top agents by quality score"
+              ? "Bottom agents by audit volume"
+              : "Top agents by audit volume"
           }
-          sub={`Agents with ≥3 audits · ${sortOrder === "desc" ? "high to low" : "low to high"}`}
+          sub={`Agents with ≥3 audits · ${sortOrder === "desc" ? "most to fewest" : "fewest to most"}`}
         />
         <QmsChartFrame>
           <ResponsiveContainer width="100%" height="100%">
@@ -164,22 +163,15 @@ export function AgentsTab({ data, sortOrder }: AgentsTabProps) {
                 height={60}
               />
               <YAxis
-                domain={performance === "top" ? [88, 100] : [0, 100]}
+                domain={[0, "auto"]}
                 tick={{ fill: CHART_COLORS.text, fontSize: 10 }}
-                tickFormatter={(v) => `${v}%`}
+                allowDecimals={false}
               />
               <Tooltip
                 {...QMS_CHART_TOOLTIP}
-                content={<QmsChartTooltip suffix="%" />}
+                content={<QmsChartTooltip suffix=" audits" />}
               />
-              {performance === "bottom" && (
-                <ReferenceLine
-                  y={90}
-                  stroke={CHART_COLORS.accent}
-                  strokeDasharray="5 5"
-                />
-              )}
-              <Bar dataKey="avg" name="Avg score" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+              <Bar dataKey="count" name="Audits" radius={[4, 4, 0, 0]} isAnimationActive={false}>
                 {chartData.map((row, index) => (
                   <Cell
                     key={row.agent}
@@ -206,8 +198,8 @@ export function AgentsTab({ data, sortOrder }: AgentsTabProps) {
               <thead>
                 <tr>
                   {(performance === "bottom"
-                    ? ["Agent", "Avg score", "Audits", "Gap to target", "Priority"]
-                    : ["Rank", "Agent", "Avg score", "Audits", "Above target", "Award"]
+                    ? ["Agent", "Audits", "Avg score", "Priority"]
+                    : ["Rank", "Agent", "Audits", "Avg score", "Award"]
                   ).map((h) => (
                     <th key={h}>{h}</th>
                   ))}
@@ -230,6 +222,7 @@ export function AgentsTab({ data, sortOrder }: AgentsTabProps) {
                         </td>
                       )}
                       <td className="qms-cell-strong">{agent.agent}</td>
+                      <td>{agent.count}</td>
                       <td
                         className={
                           performance === "bottom"
@@ -239,30 +232,18 @@ export function AgentsTab({ data, sortOrder }: AgentsTabProps) {
                       >
                         {agent.avg}%
                       </td>
-                      <td>{agent.count}</td>
-                      <td
-                        className={
-                          performance === "bottom"
-                            ? "qms-cell-negative"
-                            : "qms-cell-positive"
-                        }
-                      >
-                        {performance === "bottom"
-                          ? `${(agent.avg - 90).toFixed(1)}%`
-                          : `+${(agent.avg - 90).toFixed(1)}%`}
-                      </td>
                       <td>
                         <QmsBadge
                           label={
                             performance === "bottom"
-                              ? agent.avg < 60
-                                ? "Urgent"
-                                : agent.avg < 75
-                                  ? "High"
-                                  : "Medium"
-                              : agent.avg >= 96
-                                ? "Elite"
-                                : "Star"
+                              ? agent.count <= 3
+                                ? "Low volume"
+                                : agent.count <= 5
+                                  ? "Monitor"
+                                  : "Review"
+                              : agent.count >= 20
+                                ? "High volume"
+                                : "Active"
                           }
                           score={agent.avg}
                         />
