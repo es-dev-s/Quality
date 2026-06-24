@@ -10,6 +10,7 @@ export type CachedAgentRow = {
   id: string;
   name: string;
   email: string;
+  profileName: string | null;
   hasProfileName: boolean;
   dateOfJoining: string | null;
   auditCount: number;
@@ -62,6 +63,7 @@ export function getCachedAgentsForManagement(scope: CacheScopeKey) {
           id: row.id,
           name: row.name,
           email: row.email,
+          profileName: row.profileName,
           hasProfileName: row.hasProfileName,
           dateOfJoining: row.dateOfJoining,
           auditCount: auditCountByAgent.get(row.name) ?? 0,

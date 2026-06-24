@@ -18,6 +18,7 @@ export type RoleUserRecord = {
   id: string;
   name: string;
   email: string;
+  profileName: string | null;
   hasProfileName: boolean;
   dateOfJoining: string | null;
   roleSlug: string;
@@ -42,11 +43,13 @@ function mapRoleUser(user: {
   createdAt: Date;
   role: { slug: string; name: string };
 }): RoleUserRecord {
+  const profileName = user.name?.trim() || null;
   return {
     id: user.id,
     name: resolveRoleUserName(user),
     email: user.email,
-    hasProfileName: Boolean(user.name?.trim()),
+    profileName,
+    hasProfileName: Boolean(profileName),
     dateOfJoining: user.dateOfJoining,
     roleSlug: user.role.slug,
     roleName: user.role.name,

@@ -10,7 +10,9 @@ export function ensureAuthEnv(): void {
   }
 
   const appUrl = process.env.APP_URL?.trim();
-  if (appUrl && !process.env.AUTH_URL?.trim()) {
+  // Pin AUTH_URL only when host is not inferred from each request (reverse proxy / fixed domain).
+  // With AUTH_TRUST_HOST=true, NextAuth and redirects should follow the browser URL (localhost vs LAN IP vs domain).
+  if (appUrl && !process.env.AUTH_URL?.trim() && !shouldTrustHost()) {
     process.env.AUTH_URL = appUrl;
   }
 }

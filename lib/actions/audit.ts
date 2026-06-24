@@ -48,6 +48,7 @@ import { ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
 import {
   defaultAuditFeedback,
+  FEEDBACK_STATUS_OPTIONS,
   normalizeFeedbackForSave,
   parseFeedbackSecurity,
   parseFeedbackStatus,
@@ -72,6 +73,34 @@ import type {
 
 function validationError(message: string) {
   return { error: message };
+}
+
+function normalizeFormFeedbackForSave(
+  formData: Pick<AuditFormData, "feedbackSecurity" | "feedbackStatus">,
+  existing?: { feedbackDate: string | null; feedbackStatusAt: string | null }
+): AuditFeedbackFields | { error: string } {
+  const feedbackStatus = parseFeedbackStatus(formData.feedbackStatus);
+  if (!FEEDBACK_STATUS_OPTIONS.includes(feedbackStatus)) {
+    return { error: "Invalid feedback status." };
+  }
+
+  const normalized = normalizeFeedbackForSave({
+    feedbackSecurity: parseFeedbackSecurity(formData.feedbackSecurity),
+    feedbackStatus,
+    feedbackDate:
+      feedbackStatus === "Pending" ? "" : (existing?.feedbackDate ?? ""),
+    feedbackStatusAt:
+      feedbackStatus === "Acknowledged" || feedbackStatus === "Disputed"
+        ? (existing?.feedbackStatusAt ?? "")
+        : "",
+  });
+
+  const validationErrorMessage = validateFeedbackForSave(normalized);
+  if (validationErrorMessage) {
+    return { error: validationErrorMessage };
+  }
+
+  return normalized;
 }
 
 function revalidateAuditPaths() {
@@ -216,11 +245,11 @@ export async function saveAuditSubmission(
     return { error: configError };
   }
 
-  const feedback = normalizeFeedbackForSave({
-    feedbackSecurity: parseFeedbackSecurity(validFormData.feedbackSecurity),
-    feedbackStatus: "Pending",
-    feedbackDate: "",
-  });
+  const feedbackResult = normalizeFormFeedbackForSave(validFormData);
+  if ("error" in feedbackResult) {
+    return { error: feedbackResult.error };
+  }
+  const feedback = feedbackResult;
   const agentFeedback = validFormData.agentFeedback.trim();
 
   const result = calculateResults(
@@ -714,12 +743,14 @@ export async function updateAuditSubmission(
     return { error: "Audit not found." };
   }
 
-  const preservedFeedback = normalizeFeedbackForSave({
-    feedbackSecurity: parseFeedbackSecurity(validFormData.feedbackSecurity),
-    feedbackStatus: parseFeedbackStatus(existing.feedbackStatus),
-    feedbackDate: existing.feedbackDate ?? "",
-    feedbackStatusAt: existing.feedbackStatusAt ?? "",
+  const feedbackResult = normalizeFormFeedbackForSave(validFormData, {
+    feedbackDate: existing.feedbackDate,
+    feedbackStatusAt: existing.feedbackStatusAt,
   });
+  if ("error" in feedbackResult) {
+    return { error: feedbackResult.error };
+  }
+  const preservedFeedback = feedbackResult;
   const agentFeedback = validFormData.agentFeedback.trim();
 
   const result = calculateResults(
@@ -894,12 +925,12 @@ export async function updateAuditFeedback(
         feedbackDate:
           parsed.data.feedbackStatus === "Shared"
             ? parsed.data.feedbackDate
-            : (existing.feedbackDate ?? ""),
+            : "",
         feedbackStatusAt:
           parsed.data.feedbackStatus === "Acknowledged" ||
           parsed.data.feedbackStatus === "Disputed"
             ? (parsed.data.feedbackStatusAt ?? existing.feedbackStatusAt ?? "")
-            : (existing.feedbackStatusAt ?? ""),
+            : "",
       };
 
   const timestamps = resolveStatusTimestamps({

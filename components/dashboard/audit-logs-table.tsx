@@ -339,7 +339,6 @@ export function AuditLogsTable({
           break;
         case "audit:updated":
           if (event.changes) {
-            const rowKnown = rowIdsRef.current.has(event.auditId);
             startTransition(() => {
               applyOptimisticRows({
                 type: "patch",
@@ -347,7 +346,9 @@ export function AuditLogsTable({
                 patch: event.changes as Partial<AuditLogEntry>,
               });
             });
-            if (!rowKnown) {
+            if ("feedbackStatus" in event.changes) {
+              router.refresh();
+            } else {
               scheduleAuditLogsReconcile();
             }
           } else {
@@ -1185,6 +1186,7 @@ export function AuditLogsTable({
                       </Select>
                     ) : (
                       <FeedbackStatusSelect
+                        key={`${row.id}-${row.feedbackStatus}`}
                         role={feedbackStatusRole}
                         value={row.feedbackStatus}
                         onChange={(feedbackStatus) =>

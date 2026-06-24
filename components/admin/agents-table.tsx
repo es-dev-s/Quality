@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { UserPlus } from "lucide-react";
-import { Badge } from "@/components/primitives/badge";
 import { Button } from "@/components/primitives/button";
 import {
   DataTablePanel,
@@ -35,6 +34,7 @@ export function AgentsTable({
     if (!q) return agents;
     return agents.filter(
       (agent) =>
+        (agent.profileName ?? "").toLowerCase().includes(q) ||
         agent.name.toLowerCase().includes(q) ||
         agent.email.toLowerCase().includes(q)
     );
@@ -120,10 +120,8 @@ export function AgentsTable({
                       <td>{agent.dateOfJoining ?? "—"}</td>
                       <td>{agent.auditCount}</td>
                       <td>
-                        {agent.hasProfileName ? (
-                          <Badge tone="accent">Named</Badge>
-                        ) : (
-                          <Badge tone="neutral">Uses email</Badge>
+                        {agent.profileName ?? (
+                          <span className="dash-cell-muted">Unassigned</span>
                         )}
                       </td>
                     </tr>

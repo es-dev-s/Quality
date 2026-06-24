@@ -34,10 +34,12 @@ export function applyFeedbackStatusChange(
   }
 
   if (feedbackStatus === "Shared") {
+    const resetAgentResponse =
+      row.feedbackStatus === "Acknowledged" || row.feedbackStatus === "Disputed";
     return {
       feedbackStatus,
       feedbackDate: row.feedbackDate ?? nowIso,
-      feedbackStatusAt: row.feedbackStatusAt,
+      feedbackStatusAt: resetAgentResponse ? null : row.feedbackStatusAt,
     };
   }
 

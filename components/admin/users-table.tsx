@@ -44,6 +44,7 @@ type User = {
   roleId: string;
   role: Role;
   dateOfJoining?: string | null;
+  teamName?: string | null;
   isActive?: boolean;
   createdAt: Date;
 };

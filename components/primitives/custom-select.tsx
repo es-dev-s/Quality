@@ -121,7 +121,10 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
       return parseOptions(children);
     }, [optionsProp, children]);
     const selected =
-      options.find((option) => option.value === currentValue) ?? options[0];
+      options.find((option) => option.value === currentValue) ?? {
+        value: currentValue,
+        label: currentValue || "Select",
+      };
 
     useEffect(() => {
       if (controlled) {

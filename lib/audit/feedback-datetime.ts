@@ -99,12 +99,16 @@ export function resolveStatusTimestamps(input: {
   let feedbackStatusAt = input.existingFeedbackStatusAt;
 
   if (status === "Shared") {
+    if (previous === "Acknowledged" || previous === "Disputed") {
+      feedbackStatusAt = null;
+    }
     const incoming = input.feedbackDate.trim();
     if (incoming) {
       feedbackDate = localDateTimeToIso(incoming) || incoming;
     } else if (status !== previous || !feedbackDate) {
       feedbackDate = now;
     }
+    return { feedbackDate, feedbackStatusAt };
   }
 
   if (status === "Acknowledged" || status === "Disputed") {
@@ -114,6 +118,7 @@ export function resolveStatusTimestamps(input: {
     } else if (status !== previous || !feedbackStatusAt) {
       feedbackStatusAt = now;
     }
+    return { feedbackDate, feedbackStatusAt };
   }
 
   return { feedbackDate, feedbackStatusAt };

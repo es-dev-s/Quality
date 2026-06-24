@@ -38,6 +38,7 @@ type User = {
   email: string;
   roleId: string;
   dateOfJoining?: string | null;
+  teamName?: string | null;
 };
 
 type UserFormDialogProps = {
@@ -66,6 +67,7 @@ export function UserFormDialog({
     [roles, roleId]
   );
   const isAgentRole = selectedRole?.slug === SYSTEM_ROLE_SLUGS.AGENT;
+  const isSupervisorRole = selectedRole?.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR;
 
   useEffect(() => {
     if (open) {
@@ -140,7 +142,7 @@ export function UserFormDialog({
       description={
         isEditing
           ? "Update profile details and role. Leave password blank to keep the current one."
-          : "Add a platform user with a system role. Agent users require a joining date."
+          : "Add a platform user with a system role. Agent users require a joining date; Supervisors require a team name."
       }
     >
       <form action={handleSubmit}>
@@ -218,6 +220,22 @@ export function UserFormDialog({
               performs audits on forms.
             </p>
           </Field>
+
+          {isSupervisorRole && (
+            <Field>
+              <Label htmlFor="teamName">
+                Team name <span aria-hidden>*</span>
+              </Label>
+              <Input
+                id="teamName"
+                name="teamName"
+                defaultValue={user?.teamName ?? ""}
+                required
+                disabled={isPending}
+                placeholder="Used for team reporting and filters"
+              />
+            </Field>
+          )}
 
           {isAgentRole && (
             <Field>

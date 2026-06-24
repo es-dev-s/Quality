@@ -44,6 +44,7 @@ export type AgentListItem = {
   id: string;
   name: string;
   email: string;
+  profileName: string | null;
   hasProfileName: boolean;
   dateOfJoining: string | null;
   auditCount: number;

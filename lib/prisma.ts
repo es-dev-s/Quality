@@ -57,6 +57,8 @@ function getPgPool(): Pool {
     max: poolMaxConnections(),
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 20_000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
   };
 
   const pool = new Pool(poolConfig);

@@ -24,6 +24,19 @@ function statusOptions(statuses: FeedbackStatus[]): FeedbackStatusOption[] {
   return statuses.map((status) => ({ value: status, label: status }));
 }
 
+/** Current global status plus role-allowed choices in one dropdown list. */
+function feedbackOptionsForRole(
+  allowed: FeedbackStatus[],
+  current: FeedbackStatus
+): FeedbackStatusOption[] {
+  const ordered = [current, ...allowed.filter((status) => status !== current)];
+  return ordered.map((status) => ({
+    value: status,
+    label: status,
+    disabled: !allowed.includes(status),
+  }));
+}
+
 function usesAgentFeedbackWorkflow(role: SessionRole): boolean {
   if (hasScope(role, PERMISSIONS.FEEDBACK_WRITE)) return false;
   if (hasScope(role, PERMISSIONS.AUDIT_FORM_WRITE)) return false;
@@ -37,10 +50,22 @@ function usesAgentFeedbackWorkflow(role: SessionRole): boolean {
 
 function usesQaFeedbackWorkflow(role: SessionRole): boolean {
   if (hasScope(role, PERMISSIONS.FEEDBACK_WRITE)) return false;
-  if (role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) return true;
+  if (
+    role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST ||
+    role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
+  ) {
+    return true;
+  }
   return (
     hasScope(role, PERMISSIONS.FEEDBACK_STATUS) &&
     hasScope(role, PERMISSIONS.AUDIT_FORM_WRITE)
+  );
+}
+
+function isQaFeedbackManagerRole(role: SessionRole): boolean {
+  return (
+    role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST ||
+    role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
   );
 }
 
@@ -49,6 +74,7 @@ export function canChangeFeedbackStatusInAuditLogs(
 ): boolean {
   if (!role) return false;
   if (isSuperAdmin(role)) return true;
+  if (isQaFeedbackManagerRole(role)) return true;
   return (
     hasScope(role, PERMISSIONS.FEEDBACK_WRITE) ||
     hasScope(role, PERMISSIONS.FEEDBACK_STATUS)
@@ -76,20 +102,28 @@ export type FeedbackStatusSelectConfig = {
   showSelect: boolean;
   editable: boolean;
   options: FeedbackStatusOption[];
-  selectValue: FeedbackStatus | "";
-  /** When true, show the workflow status as read-only and use selectValue for the action picker. */
-  awaitingResponse?: boolean;
+  /** Always the global feedback status shown in the dropdown. */
+  selectValue: FeedbackStatus;
   hint?: string;
 };
 
 function agentFeedbackConfig(current: FeedbackStatus): FeedbackStatusSelectConfig {
+  if (current === "Pending") {
+    return {
+      showSelect: true,
+      editable: false,
+      options: [{ value: "Pending", label: "Pending" }],
+      selectValue: current,
+      hint: "Waiting for Quality Analyst to share feedback",
+    };
+  }
+
   if (current === "Shared") {
     return {
       showSelect: true,
       editable: true,
-      awaitingResponse: true,
-      options: statusOptions(AGENT_FEEDBACK_STATUSES),
-      selectValue: "",
+      options: feedbackOptionsForRole(AGENT_FEEDBACK_STATUSES, current),
+      selectValue: current,
       hint: "Select Acknowledged or Disputed after reviewing shared feedback",
     };
   }
@@ -98,20 +132,17 @@ function agentFeedbackConfig(current: FeedbackStatus): FeedbackStatusSelectConfi
     return {
       showSelect: true,
       editable: true,
-      options: statusOptions(AGENT_FEEDBACK_STATUSES),
+      options: feedbackOptionsForRole(AGENT_FEEDBACK_STATUSES, current),
       selectValue: current,
     };
   }
 
   return {
-    showSelect: false,
+    showSelect: true,
     editable: false,
-    options: [],
+    options: [{ value: current, label: current }],
     selectValue: current,
-    hint:
-      current === "Pending"
-        ? "Waiting for Quality Analyst to share feedback"
-        : "Agent can respond only after feedback is shared",
+    hint: "Agent can respond only after feedback is shared",
   };
 }
 
@@ -141,13 +172,12 @@ export function getFeedbackStatusSelectConfig(
   if (usesQaFeedbackWorkflow(role)) {
     return {
       showSelect: true,
-      editable: QA_FEEDBACK_STATUSES.includes(current),
-      options: statusOptions(QA_FEEDBACK_STATUSES),
+      editable: true,
+      options: feedbackOptionsForRole(QA_FEEDBACK_STATUSES, current),
       selectValue: current,
-      hint:
-        current === "Acknowledged" || current === "Disputed"
-          ? "Agent must respond after feedback is shared"
-          : undefined,
+      hint: !QA_FEEDBACK_STATUSES.includes(current)
+        ? `Select Pending or Shared to update from ${current}`
+        : undefined,
     };
   }
 
@@ -193,9 +223,6 @@ export function assertFeedbackStatusChangeAllowed(
   if (role && usesQaFeedbackWorkflow(role)) {
     if (!QA_FEEDBACK_STATUSES.includes(next)) {
       return "Quality Analyst can only set Pending or Shared.";
-    }
-    if (!QA_FEEDBACK_STATUSES.includes(previous)) {
-      return "This feedback status cannot be changed at your role level.";
     }
     return null;
   }

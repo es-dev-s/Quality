@@ -88,11 +88,9 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
           if (isAuditSSEEvent(event)) {
             const currentPath = pathnameRef.current;
-            if (isDataPage(currentPath)) {
-              scheduleDataRefresh();
-            } else if (
-              currentPath.startsWith(AUDIT_LOGS_PATH) &&
-              event.type === "audit:created"
+            if (
+              isDataPage(currentPath) ||
+              currentPath.startsWith(AUDIT_LOGS_PATH)
             ) {
               scheduleDataRefresh();
             }

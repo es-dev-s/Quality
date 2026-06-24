@@ -1,7 +1,14 @@
 import type { AuditFormData } from "@/lib/audit/types";
+import {
+  FEEDBACK_STATUS_OPTIONS,
+  parseFeedbackStatus,
+} from "@/lib/audit/feedback";
 
 export function validateFeedbackSection(
-  formData: Pick<AuditFormData, "feedbackSecurity" | "agentFeedback">
+  formData: Pick<
+    AuditFormData,
+    "feedbackSecurity" | "feedbackStatus" | "agentFeedback"
+  >
 ):
   | { ok: true }
   | { ok: false; fieldIds: string[] } {
@@ -9,6 +16,11 @@ export function validateFeedbackSection(
 
   if (formData.feedbackSecurity === "NA") {
     fieldIds.push("feedbackSecurity");
+  }
+
+  const status = parseFeedbackStatus(formData.feedbackStatus);
+  if (!formData.feedbackStatus.trim() || !FEEDBACK_STATUS_OPTIONS.includes(status)) {
+    fieldIds.push("feedbackStatus");
   }
 
   if (!formData.agentFeedback.trim()) {

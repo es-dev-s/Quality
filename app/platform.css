@@ -2136,6 +2136,11 @@
   cursor: help;
 }
 
+.ui-custom-select[data-disabled="true"] .ui-custom-select__trigger.audit-logs__feedback--locked {
+  cursor: help;
+  opacity: 0.92;
+}
+
 .audit-logs__feedback-select option:disabled {
   color: var(--color-muted-fg);
 }

@@ -14,6 +14,7 @@ import { canManageRoles, canManageUsers, hasScope, isSuperAdmin } from "@/lib/rb
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { SUPERADMIN_ROLE_SLUG } from "@/lib/constants";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
+import { isRetryableDbError, withDbRetry } from "@/lib/db/with-db-retry";
 import {
   invalidateAuditCaches,
   invalidateCacheTags,
@@ -42,6 +43,7 @@ const createUserSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
   roleId: z.string().min(1, "Role is required"),
   dateOfJoining: isoDateSchema,
+  teamName: z.string().optional(),
 });
 
 const updateUserSchema = z.object({
@@ -51,9 +53,15 @@ const updateUserSchema = z.object({
   password: z.string().optional(),
   roleId: z.string().min(1, "Role is required"),
   dateOfJoining: isoDateSchema,
+  teamName: z.string().optional(),
 });
 
 function normalizeJoiningDate(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function normalizeTeamName(value: string | null | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
 }
@@ -211,6 +219,7 @@ export async function createUser(formData: FormData) {
     password: formData.get("password"),
     roleId: formData.get("roleId"),
     dateOfJoining: formData.get("dateOfJoining") || undefined,
+    teamName: formData.get("teamName") || undefined,
   });
 
   if (!parsed.success) {
@@ -252,6 +261,13 @@ export async function createUser(formData: FormData) {
     };
   }
 
+  const teamName = normalizeTeamName(parsed.data.teamName);
+  if (roleCheck.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR && !teamName) {
+    return {
+      error: "Team name is required when creating a Supervisor user.",
+    };
+  }
+
   const credentials = await buildPasswordCredentials(parsed.data.password);
 
   try {
@@ -263,6 +279,8 @@ export async function createUser(formData: FormData) {
         passwordEncrypted: credentials.passwordEncrypted,
         roleId: parsed.data.roleId,
         dateOfJoining,
+        teamName:
+          roleCheck.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR ? teamName : null,
         isActive: true,
         approvalStatus: "ACTIVE",
       },
@@ -289,6 +307,7 @@ export async function updateUser(formData: FormData) {
     password: formData.get("password") || undefined,
     roleId: formData.get("roleId"),
     dateOfJoining: formData.get("dateOfJoining") || undefined,
+    teamName: formData.get("teamName") || undefined,
   });
 
   if (!parsed.success) {
@@ -321,6 +340,13 @@ export async function updateUser(formData: FormData) {
     };
   }
 
+  const teamName = normalizeTeamName(parsed.data.teamName);
+  if (roleCheck.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR && !teamName) {
+    return {
+      error: "Team name is required for Supervisor users.",
+    };
+  }
+
   const existingUser = await prisma.user.findUnique({
     where: { id: parsed.data.id },
     select: {
@@ -340,6 +366,7 @@ export async function updateUser(formData: FormData) {
     email: string;
     roleId: string;
     dateOfJoining: string | null;
+    teamName: string | null;
     password?: string;
     passwordEncrypted?: string;
     sessionVersion?: { increment: number };
@@ -348,6 +375,8 @@ export async function updateUser(formData: FormData) {
     email,
     roleId: parsed.data.roleId,
     dateOfJoining,
+    teamName:
+      roleCheck.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR ? teamName : null,
   };
 
   if (parsed.data.password) {
@@ -847,57 +876,77 @@ export async function setUserActive(userId: string, isActive: boolean) {
 }
 
 export async function revealUserPassword(userId: string) {
-  await requirePermission(PERMISSIONS.USER_READ_SENSITIVE);
-  const session = await requireAuth();
+  const session = await requirePermission(PERMISSIONS.USER_READ_SENSITIVE);
 
-  const target = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, email: true, passwordEncrypted: true },
-  });
-  if (!target) {
-    return { error: "User not found." };
-  }
+  try {
+    const target = await withDbRetry(() =>
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, passwordEncrypted: true },
+      })
+    );
+    if (!target) {
+      return { error: "User not found." };
+    }
 
-  let plainPassword: string;
-  let wasReset = false;
+    let plainPassword: string;
+    let wasReset = false;
 
-  if (target.passwordEncrypted) {
+    if (target.passwordEncrypted) {
+      try {
+        plainPassword = decryptPassword(target.passwordEncrypted);
+      } catch {
+        return {
+          error:
+            "Stored password could not be decrypted. Reset the user's password and try again.",
+        };
+      }
+    } else {
+      plainPassword = generateTemporaryPassword();
+      wasReset = true;
+      const credentials = await buildPasswordCredentials(plainPassword);
+      await withDbRetry(() =>
+        prisma.user.update({
+          where: { id: userId },
+          data: {
+            password: credentials.password,
+            passwordEncrypted: credentials.passwordEncrypted,
+            sessionVersion: { increment: 1 },
+          },
+        })
+      );
+      invalidateUserCaches(session.user.id);
+    }
+
     try {
-      plainPassword = decryptPassword(target.passwordEncrypted);
-    } catch {
+      await withDbRetry(() =>
+        logSecurityAudit({
+          action: SECURITY_AUDIT_ACTIONS.PASSWORD_READ,
+          actorUserId: session.user.id,
+          targetUserId: userId,
+          metadata: { email: target.email, wasReset },
+        })
+      );
+    } catch (auditError) {
+      console.error("[admin] password reveal audit log failed:", auditError);
+    }
+
+    return {
+      success: true as const,
+      email: target.email,
+      password: plainPassword,
+      wasReset,
+    };
+  } catch (error) {
+    console.error("[admin] revealUserPassword failed:", error);
+    if (isRetryableDbError(error)) {
       return {
         error:
-          "Stored password could not be decrypted. Reset the user's password and try again.",
+          "Database connection was interrupted. Wait a moment and try again.",
       };
     }
-  } else {
-    plainPassword = generateTemporaryPassword();
-    wasReset = true;
-    const credentials = await buildPasswordCredentials(plainPassword);
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        password: credentials.password,
-        passwordEncrypted: credentials.passwordEncrypted,
-        sessionVersion: { increment: 1 },
-      },
-    });
-    invalidateUserCaches(session.user.id);
+    return { error: "Could not retrieve password. Please try again." };
   }
-
-  await logSecurityAudit({
-    action: SECURITY_AUDIT_ACTIONS.PASSWORD_READ,
-    actorUserId: session.user.id,
-    targetUserId: userId,
-    metadata: { email: target.email, wasReset },
-  });
-
-  return {
-    success: true as const,
-    email: target.email,
-    password: plainPassword,
-    wasReset,
-  };
 }
 
 /** @deprecated Use revealUserPassword */
