@@ -21,6 +21,7 @@ async function AuditLogsContent() {
   return (
     <AuditLogsTable
       submissions={submissions}
+      roleSlug={session.user.role.slug}
       showSectionHead={false}
       feedbackStatusRole={session.user.role}
       canEditFeedbackFully={canEditFeedbackFully(session.user.role)}

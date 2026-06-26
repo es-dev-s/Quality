@@ -26,6 +26,7 @@ import {
   type AnalyticsIncludeFilters,
   type AnalyticsInteractionFilter,
 } from "@/lib/audit/analytics-filters";
+import { buildAgentFilterSelectOptions } from "@/lib/audit/agent-filter-access";
 import { summaryChipClass } from "@/lib/audit/analytics-metrics";
 import type { DashboardPeriod } from "@/lib/audit/dashboard-metrics";
 import { LoadingZone } from "@/components/primitives/loading-zone";
@@ -206,10 +207,7 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
   const sidebarFilterCount = filterChips.length;
 
   const agentFilterOptions = useMemo(
-    () => [
-      { value: "", label: "All agents" },
-      ...filterOptions.agents.map((name) => ({ value: name, label: name })),
-    ],
+    () => buildAgentFilterSelectOptions(filterOptions.agents),
     [filterOptions.agents]
   );
 

@@ -42,10 +42,15 @@ import {
   type DashboardPeriod,
   type TrendGranularity,
 } from "@/lib/audit/dashboard-metrics";
+import {
+  buildAgentFilterSelectOptions,
+  canFilterByAgent,
+} from "@/lib/audit/agent-filter-access";
 import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
 
 type DashboardAnalyticsProps = {
   data: DashboardAuditData;
+  roleSlug: string;
   canEditAudits?: boolean;
   canEditSupervisorRemarks?: boolean;
 };
@@ -87,6 +92,7 @@ function bucketBarTone(key: string): string {
 
 export function DashboardAnalytics({
   data,
+  roleSlug,
   canEditAudits = false,
   canEditSupervisorRemarks = false,
 }: DashboardAnalyticsProps) {
@@ -115,6 +121,8 @@ export function DashboardAnalytics({
     () => extractFilterOptions(records),
     [records]
   );
+  const showAgentFilter =
+    canFilterByAgent(roleSlug) && filterOptions.agents.length > 0;
 
   const scopedRecords = useMemo(
     () => filterByIncludeFilters(records, includeFilters),
@@ -252,6 +260,13 @@ export function DashboardAnalytics({
         onRemove: () => updateFilter("teamName", ""),
       });
     }
+    if (includeFilters.agent) {
+      chips.push({
+        key: "agent",
+        label: `Agent: ${includeFilters.agent}`,
+        onRemove: () => updateFilter("agent", ""),
+      });
+    }
     if (includeFilters.lob) {
       chips.push({
         key: "lob",
@@ -284,6 +299,11 @@ export function DashboardAnalytics({
   }, [customRange, period, includeFilters, trendGranularity, trendGranularityLabel]);
 
   const sidebarFilterCount = dashboardFilterChips.length;
+
+  const agentFilterOptions = useMemo(
+    () => buildAgentFilterSelectOptions(filterOptions.agents),
+    [filterOptions.agents]
+  );
 
   const teamFilterOptions = useMemo(
     () => [
@@ -430,6 +450,17 @@ export function DashboardAnalytics({
 
         <FilterSidebarSection label="Segment">
           <FilterSidebarGrid>
+            {showAgentFilter ? (
+              <label className="dash-filter">
+                <span>Agent</span>
+                <FilterSelect
+                  value={includeFilters.agent}
+                  onChange={(value) => updateFilter("agent", value)}
+                  options={agentFilterOptions}
+                  ariaLabel="Filter by agent"
+                />
+              </label>
+            ) : null}
             <label className="dash-filter">
               <span>Team name</span>
               <FilterSelect

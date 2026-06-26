@@ -43,6 +43,7 @@ export type TopFatalRow = {
 };
 
 export type DashboardIncludeFilters = {
+  agent: string;
   teamName: string;
   lob: string;
   auditor: string;
@@ -50,6 +51,7 @@ export type DashboardIncludeFilters = {
 };
 
 export const EMPTY_INCLUDE_FILTERS: DashboardIncludeFilters = {
+  agent: "",
   teamName: "",
   lob: "",
   auditor: "",
@@ -57,6 +59,7 @@ export const EMPTY_INCLUDE_FILTERS: DashboardIncludeFilters = {
 };
 
 export type DashboardFilterOptions = {
+  agents: string[];
   teamNames: string[];
   lobs: string[];
   auditors: string[];
@@ -66,12 +69,14 @@ export type DashboardFilterOptions = {
 export function extractFilterOptions(
   records: DashboardAuditRecord[]
 ): DashboardFilterOptions {
+  const agents = new Set<string>();
   const teamNames = new Set<string>();
   const lobs = new Set<string>();
   const auditors = new Set<string>();
   const auditTypes = new Set<string>();
 
   for (const record of records) {
+    if (record.agent) agents.add(record.agent);
     if (record.supervisor) teamNames.add(record.supervisor);
     if (record.lob) lobs.add(record.lob);
     if (record.auditor) auditors.add(record.auditor);
@@ -82,6 +87,7 @@ export function extractFilterOptions(
     Array.from(values).sort((a, b) => a.localeCompare(b));
 
   return {
+    agents: sort(agents),
     teamNames: sort(teamNames),
     lobs: sort(lobs),
     auditors: sort(auditors),
@@ -94,6 +100,9 @@ export function filterByIncludeFilters(
   filters: DashboardIncludeFilters
 ): DashboardAuditRecord[] {
   return records.filter((record) => {
+    if (filters.agent && record.agent !== filters.agent) {
+      return false;
+    }
     if (filters.teamName && record.supervisor !== filters.teamName) {
       return false;
     }
@@ -112,7 +121,8 @@ export function filterByIncludeFilters(
 
 export function hasActiveIncludeFilters(filters: DashboardIncludeFilters): boolean {
   return Boolean(
-    filters.teamName ||
+    filters.agent ||
+      filters.teamName ||
       filters.lob ||
       filters.auditor ||
       filters.auditType

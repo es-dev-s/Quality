@@ -15,6 +15,7 @@ async function DashboardContent() {
   return (
     <DashboardAnalytics
       data={data}
+      roleSlug={session.user.role.slug}
       canEditAudits={canEditAuditSubmissions(session.user.role)}
       canEditSupervisorRemarks={canEditSupervisorRemarks(session.user.role)}
     />

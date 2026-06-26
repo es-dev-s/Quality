@@ -1,3 +1,4 @@
+import { canFilterByAgent } from "@/lib/audit/agent-filter-access";
 import {
   isDefinedSystemRole,
   SYSTEM_ROLE_SLUGS,
@@ -75,5 +76,9 @@ export function analyticsFilterVisibility(roleSlug: string): {
   if (roleSlug === SYSTEM_ROLE_SLUGS.AGENT) {
     return { agent: false, teamName: true, auditor: true };
   }
-  return { agent: true, teamName: true, auditor: true };
+  return {
+    agent: canFilterByAgent(roleSlug),
+    teamName: true,
+    auditor: true,
+  };
 }

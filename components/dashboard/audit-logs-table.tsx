@@ -52,6 +52,11 @@ import {
   feedbackStatusClass,
 } from "@/components/audit-logs/feedback-status-select";
 import { canEditFeedbackDateTimeForStatus } from "@/lib/audit/feedback-status-access";
+import {
+  buildAgentFilterSelectOptions,
+  canFilterByAgent,
+  matchesAgentFilter,
+} from "@/lib/audit/agent-filter-access";
 import { resolveMetricDate } from "@/lib/audit/metric-dates";
 import type { SessionRole } from "@/lib/rbac";
 import { formatSecondsAgo } from "@/lib/format-relative-time";
@@ -76,6 +81,7 @@ function setsEqual(a: Set<string>, b: Set<string>): boolean {
 
 type AuditLogsTableProps = {
   submissions: AuditLogEntry[];
+  roleSlug: string;
   showSectionHead?: boolean;
   enableFilters?: boolean;
   feedbackStatusRole?: SessionRole | null;
@@ -236,6 +242,7 @@ function exportCsv(rows: AuditLogEntry[]) {
 
 export function AuditLogsTable({
   submissions,
+  roleSlug,
   showSectionHead = true,
   enableFilters = true,
   feedbackStatusRole = null,
@@ -258,6 +265,7 @@ export function AuditLogsTable({
   const [type, setType] = useState("");
   const [businessType, setBusinessType] = useState("");
   const [lob, setLob] = useState("");
+  const [agent, setAgent] = useState("");
   const [feedbackStatus, setFeedbackStatus] = useState("");
   const [dateRange, setDateRange] = useState<DateRangeFilter>("all");
   const [customRange, setCustomRange] = useState<DateRangeValue>({ from: "", to: "" });
@@ -395,6 +403,15 @@ export function AuditLogsTable({
     [rows]
   );
 
+  const agentNames = useMemo(
+    () =>
+      [...new Set(rows.map((row) => row.agent).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b)
+      ),
+    [rows]
+  );
+  const showAgentFilter = canFilterByAgent(roleSlug) && agentNames.length > 0;
+
   const businessTypeOptions = useMemo(
     () =>
       [...new Set(rows.map((row) => row.businessType))].sort((a, b) =>
@@ -441,6 +458,11 @@ export function AuditLogsTable({
     [lobs]
   );
 
+  const agentFilterOptions = useMemo(
+    () => buildAgentFilterSelectOptions(agentNames),
+    [agentNames]
+  );
+
   const feedbackFilterOptions = useMemo(
     () => [
       { value: "", label: "All feedback" },
@@ -464,10 +486,11 @@ export function AuditLogsTable({
       if (type && row.type !== type) return false;
       if (businessType && row.businessType !== businessType) return false;
       if (lob && row.lob !== lob) return false;
+      if (!matchesAgentFilter(row.agent, agent)) return false;
       if (feedbackStatus && row.feedbackStatus !== feedbackStatus) return false;
       return true;
     });
-  }, [rows, search, scorePreset, dateRange, customRange, grade, type, businessType, lob, feedbackStatus]);
+  }, [rows, search, scorePreset, dateRange, customRange, grade, type, businessType, lob, agent, feedbackStatus]);
 
   const paginationResetKey = useMemo(
     () =>
@@ -481,6 +504,7 @@ export function AuditLogsTable({
         type,
         businessType,
         lob,
+        agent,
         feedbackStatus,
         filtered.length,
       ].join("|"),
@@ -494,6 +518,7 @@ export function AuditLogsTable({
       type,
       businessType,
       lob,
+      agent,
       feedbackStatus,
       filtered.length,
     ]
@@ -580,6 +605,7 @@ export function AuditLogsTable({
     type !== "" ||
     businessType !== "" ||
     lob !== "" ||
+    agent !== "" ||
     feedbackStatus !== "";
 
   const advancedFilterCount = useMemo(() => {
@@ -591,9 +617,10 @@ export function AuditLogsTable({
     if (type) count++;
     if (businessType) count++;
     if (lob) count++;
+    if (agent) count++;
     if (feedbackStatus) count++;
     return count;
-  }, [dateRange, customRange, scorePreset, grade, type, businessType, lob, feedbackStatus]);
+  }, [dateRange, customRange, scorePreset, grade, type, businessType, lob, agent, feedbackStatus]);
 
   const activeFilterChips = useMemo(() => {
     const chips: { key: string; label: string; onRemove: () => void }[] = [];
@@ -649,6 +676,13 @@ export function AuditLogsTable({
         onRemove: () => setLob(""),
       });
     }
+    if (agent) {
+      chips.push({
+        key: "agent",
+        label: `Agent: ${agent}`,
+        onRemove: () => setAgent(""),
+      });
+    }
     if (feedbackStatus) {
       chips.push({
         key: "feedback",
@@ -658,7 +692,7 @@ export function AuditLogsTable({
     }
 
     return chips;
-  }, [dateRange, customRange, scorePreset, grade, type, businessType, lob, feedbackStatus]);
+  }, [dateRange, customRange, scorePreset, grade, type, businessType, lob, agent, feedbackStatus]);
 
   const clearFilters = () => {
     setSearch("");
@@ -669,6 +703,7 @@ export function AuditLogsTable({
     setType("");
     setBusinessType("");
     setLob("");
+    setAgent("");
     setFeedbackStatus("");
   };
 
@@ -843,7 +878,7 @@ export function AuditLogsTable({
           open={filterSidebar.open}
           onOpenChange={filterSidebar.onOpenChange}
           title="Audit filters"
-          description="Refine by period, score, grade, type, business, LOB, or feedback status."
+          description="Refine by period, score, grade, type, business, LOB, agent, or feedback status."
           activeCount={advancedFilterCount}
           onClearAll={clearFilters}
           clearDisabled={!hasActiveFilters}
@@ -892,6 +927,18 @@ export function AuditLogsTable({
 
           <FilterSidebarSection label="Details">
             <FilterSidebarGrid>
+              {showAgentFilter ? (
+                <label className="dash-filter">
+                  <span>Agent</span>
+                  <FilterSelect
+                    id="audit-logs-agent"
+                    value={agent}
+                    onChange={setAgent}
+                    options={agentFilterOptions}
+                    ariaLabel="Filter by agent"
+                  />
+                </label>
+              ) : null}
               <label className="dash-filter">
                 <span>Score %</span>
                 <FilterSelect
