@@ -26,7 +26,8 @@ export function Modal({
   rootClassName,
   size = "md",
 }: ModalProps) {
-  const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -37,18 +38,17 @@ export function Modal({
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         if (shouldDeferOverlayClose()) return;
-        onClose();
+        onCloseRef.current();
       }
     }
 
     document.addEventListener("keydown", onKey);
-    panelRef.current?.focus();
 
     return () => {
       document.body.style.overflow = prev;
       document.removeEventListener("keydown", onKey);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -61,7 +61,6 @@ export function Modal({
         onClick={onClose}
       />
       <div
-        ref={panelRef}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"

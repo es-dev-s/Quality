@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/primitives/button";
 import { Field, Input, Label, Select } from "@/components/primitives/field";
@@ -68,9 +68,10 @@ export function UserFormDialog({
   );
   const isAgentRole = selectedRole?.slug === SYSTEM_ROLE_SLUGS.AGENT;
   const isSupervisorRole = selectedRole?.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR;
+  const wasOpenRef = useRef(false);
 
   useEffect(() => {
-    if (open) {
+    if (open && !wasOpenRef.current) {
       setRoleId(user?.roleId ?? roles[0]?.id ?? "");
       if (!user) {
         const generated = generateClientPassword(12);
@@ -81,9 +82,12 @@ export function UserFormDialog({
         setConfirmPassword("");
       }
     }
+    wasOpenRef.current = open;
   }, [open, user, roles]);
 
-  function handleSubmit(formData: FormData) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
     const passwordRequired = !isEditing;
     const passwordProvided = password.length > 0;
 
@@ -145,7 +149,7 @@ export function UserFormDialog({
           : "Add a platform user with a system role. Agent users require a joining date; Supervisors require a team name."
       }
     >
-      <form action={handleSubmit}>
+      <form onSubmit={handleSubmit}>
         <FormStack>
           {isEditing && <input type="hidden" name="id" value={user.id} />}
 

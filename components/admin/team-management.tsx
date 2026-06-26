@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Check, KeyRound, Plus, X } from "lucide-react";
 import { Button } from "@/components/primitives/button";
@@ -91,7 +91,10 @@ function RequestFormModal({
     }
   }, [open, mode]);
 
-  function handleSubmit(formData: FormData) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+
     if (!isPasswordFormValid(password, confirmPassword, { minLength: 6 })) {
       toast("Enter a matching password of at least 6 characters.", "error");
       return;
@@ -139,7 +142,7 @@ function RequestFormModal({
           : "Submitted to Admin for approval. The account is created only after approval."
       }
     >
-      <form action={handleSubmit}>
+      <form onSubmit={handleSubmit}>
         <FormStack>
           <Field>
             <Label htmlFor="team-name">Profile name</Label>
@@ -224,7 +227,10 @@ function CreateSupervisorModal({
     }
   }, [open]);
 
-  function handleSubmit(formData: FormData) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+
     if (!isPasswordFormValid(password, confirmPassword, { minLength: 6 })) {
       toast("Enter a matching password of at least 6 characters.", "error");
       return;
@@ -260,7 +266,7 @@ function CreateSupervisorModal({
       size="lg"
       description="Create a Supervisor account and assign a team name used for reporting and team scope."
     >
-      <form action={handleSubmit}>
+      <form onSubmit={handleSubmit}>
         <FormStack>
           <Field>
             <Label htmlFor="supervisor-name">Profile name</Label>
@@ -361,7 +367,10 @@ function ResetPasswordModal({
 
   const userLabel = `${user.name} (${user.email})`;
 
-  function handleSubmit(formData: FormData) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+
     if (!isPasswordFormValid(password, confirmPassword, { minLength: 6 })) {
       toast("Enter a matching password of at least 6 characters.", "error");
       return;
@@ -395,7 +404,7 @@ function ResetPasswordModal({
       title="Reset password"
       description={`Set a new password for ${userLabel}. They will be signed out of existing sessions.`}
     >
-      <form action={handleSubmit}>
+      <form onSubmit={handleSubmit}>
         <FormStack>
           <PasswordField
             id="managed-password"
