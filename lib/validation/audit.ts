@@ -73,5 +73,12 @@ export const deleteAuditSubmissionsSchema = z.object({
   ids: z.array(cuidSchema).min(1, "Select at least one audit.").max(100),
 });
 
+export const exportAuditSubmissionsSchema = z.object({
+  ids: z
+    .array(cuidSchema)
+    .min(1, "Select at least one audit to export.")
+    .max(500),
+});
+
 export type ValidatedAuditFormData = z.infer<typeof auditFormDataSchema>;
 export type ValidatedScoresMap = z.infer<typeof scoresMapSchema>;

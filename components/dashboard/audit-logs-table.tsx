@@ -32,7 +32,7 @@ import { useToast } from "@/components/primitives/toast";
 import { LoadingZone } from "@/components/primitives/loading-zone";
 import { ConfirmModal } from "@/components/primitives/confirm-modal";
 import { cn } from "@/lib/utils";
-import { deleteAuditSubmissions, updateAuditFeedback } from "@/lib/actions/audit";
+import { deleteAuditSubmissions, getAuditExportRows, updateAuditFeedback } from "@/lib/actions/audit";
 import type { AuditLogEntry } from "@/lib/audit/audit-records";
 import {
   FEEDBACK_SECURITY_OPTIONS,
@@ -46,6 +46,7 @@ import {
   matchesCustomDateRange,
   type DateRangeFilter,
 } from "@/lib/audit/date-filters";
+import { exportReportCsv } from "@/lib/reports/export-csv";
 import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
 import {
   FeedbackStatusSelect,
@@ -186,60 +187,6 @@ function matchesScore(row: AuditLogEntry, preset: ScorePreset) {
   return score >= range.min && score <= range.max;
 }
 
-function exportCsv(rows: AuditLogEntry[]) {
-  const headers = [
-    "Audit ID",
-    "Agent",
-    "Supervisor",
-    "Type",
-    "LOB",
-    "Call Date",
-    "Auditor",
-    "Quality %",
-    "Final %",
-    "Grade",
-    FEEDBACK_SEVERITY_LABEL,
-    "Feedback Status",
-    "Feedback Date & Time",
-    "Acknowledged/Disputed Date & Time",
-    "Feedback for the agent",
-    "Number / client name",
-    "Reference",
-  ];
-  const lines = rows.map((r) =>
-    [
-      r.auditCode,
-      r.agent,
-      r.supervisor ?? "",
-      r.type,
-      r.lob,
-      r.callDate,
-      r.auditor ?? "",
-      r.qualityPct,
-      r.hasFatal ? 0 : r.finalPct,
-      r.grade,
-      r.feedbackSecurity,
-      r.feedbackStatus,
-      r.feedbackDate ? formatFeedbackDateTime(r.feedbackDate) : "",
-      r.feedbackStatusAt ? formatFeedbackDateTime(r.feedbackStatusAt) : "",
-      r.agentFeedback,
-      r.mobile ?? "",
-      r.referenceUrl ?? "",
-    ]
-      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-      .join(",")
-  );
-  const blob = new Blob([[headers.join(","), ...lines].join("\n")], {
-    type: "text/csv;charset=utf-8;",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `audit-logs-${Date.now()}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
 export function AuditLogsTable({
   submissions,
   roleSlug,
@@ -327,7 +274,8 @@ export function AuditLogsTable({
   } | null>(null);
   const { busy: deletePending, run: runDelete } = useBusyAction();
   const { busy: feedbackPending, run: runFeedback } = useBusyAction();
-  const tableBusy = deletePending;
+  const { busy: exportPending, run: runExport } = useBusyAction();
+  const tableBusy = deletePending || exportPending;
 
   const columnCount = canDeleteAudits ? 14 : 13;
 
@@ -807,6 +755,23 @@ export function AuditLogsTable({
               filtered.length === 1 ? "" : "s"
             }.`;
 
+  function handleExportCsv() {
+    if (filtered.length === 0) return;
+
+    runExport(async () => {
+      const result = await getAuditExportRows(filtered.map((row) => row.id));
+      if (result.error) {
+        toast(result.error, "error");
+        return;
+      }
+      exportReportCsv(result.rows, "audit-logs");
+      toast(
+        `Exported ${result.rows.length} audit${result.rows.length === 1 ? "" : "s"} with full details.`,
+        "success"
+      );
+    });
+  }
+
   const toolbarActions = (
     <>
       {canDeleteAudits && selectedCount > 0 ? (
@@ -837,7 +802,8 @@ export function AuditLogsTable({
         <button
           type="button"
           className="ui-btn ui-btn--secondary ui-btn--sm"
-          onClick={() => exportCsv(filtered)}
+          disabled={exportPending}
+          onClick={handleExportCsv}
         >
           <Download size={15} aria-hidden />
           Export CSV ({filtered.length})
@@ -1014,9 +980,11 @@ export function AuditLogsTable({
         label={
           deletePending
             ? "Deleting audits…"
-            : feedbackPending
-              ? "Saving feedback…"
-              : "Updating…"
+            : exportPending
+              ? "Exporting audits…"
+              : feedbackPending
+                ? "Saving feedback…"
+                : "Updating…"
         }
         className="audit-logs-page__table-zone loading-zone--fill"
       >

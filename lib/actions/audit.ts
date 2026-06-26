@@ -10,7 +10,13 @@ import {
   requirePermissionResult,
 } from "@/lib/auth-guards";
 import { PERMISSIONS } from "@/lib/permissions";
-import { canEditFeedbackFully, canEditSupervisorRemarks, hasScope, isSuperAdmin } from "@/lib/rbac";
+import {
+  canEditFeedbackFully,
+  canEditSupervisorRemarks,
+  canExportAuditData,
+  hasScope,
+  isSuperAdmin,
+} from "@/lib/rbac";
 import { scopedAuditByIdWhere, scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
 import { resolveStatusTimestamps } from "@/lib/audit/feedback-datetime";
 import {
@@ -28,6 +34,7 @@ import { assertWriteRateLimit } from "@/lib/server/rate-limit";
 import {
   auditIdSchema,
   deleteAuditSubmissionsSchema,
+  exportAuditSubmissionsSchema,
   saveAuditSubmissionSchema,
   updateAuditFeedbackSchema,
   updateAuditSubmissionSchema,
@@ -43,6 +50,11 @@ import {
   parseAuditPageLimit,
 } from "@/lib/cached-queries/audit-submissions";
 import { dispatchFatalAuditNotifications } from "@/lib/notifications/dispatch-fatal-audit";
+import {
+  AUDIT_EXPORT_SELECT,
+  mapSubmissionToExportRow,
+  type AuditExportRow,
+} from "@/lib/reports/audit-export-row";
 import { invalidateAuditCaches } from "@/lib/invalidate-cache";
 import { ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
@@ -471,6 +483,45 @@ export async function getAuditLogs(limit = 500) {
     total: submissions.length,
     submissions: submissions.map(mapAuditSubmission),
   };
+}
+
+export async function getAuditExportRows(ids: string[]) {
+  const session = await requireAuth();
+  if (!canExportAuditData(session.user.role)) {
+    return { error: permissionError().error, rows: [] as AuditExportRow[] };
+  }
+
+  const parsed = exportAuditSubmissionsSchema.safeParse({ ids });
+  if (!parsed.success) {
+    return {
+      error: parsed.error.issues[0]?.message ?? "Invalid export request.",
+      rows: [] as AuditExportRow[],
+    };
+  }
+
+  const uniqueIds = [...new Set(parsed.data.ids)];
+
+  const submissions = await prisma.auditSubmission.findMany({
+    where: await scopedAuditWhere(session, { id: { in: uniqueIds } }),
+    select: AUDIT_EXPORT_SELECT,
+  });
+
+  const byId = new Map(
+    submissions.map((submission) => [
+      submission.id,
+      mapSubmissionToExportRow(submission),
+    ])
+  );
+
+  const rows = parsed.data.ids
+    .map((id) => byId.get(id))
+    .filter((row): row is AuditExportRow => row != null);
+
+  if (rows.length === 0) {
+    return { error: "No matching audits found to export.", rows: [] };
+  }
+
+  return { error: null as string | null, rows };
 }
 
 export async function getAuditSubmissions(input?: {
