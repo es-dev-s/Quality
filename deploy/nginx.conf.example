@@ -1,11 +1,10 @@
 # Example nginx reverse proxy for production (HTTPS).
 # Replace audit.yourcompany.com and upstream port as needed.
 #
-# On the server .env:
-#   APP_URL="https://audit.yourcompany.com"
-#   AUTH_TRUST_HOST="true"
-#   ALLOWED_ORIGINS="audit.yourcompany.com"
-#   PORT="4782"
+# Reverse proxy / custom domain (production)
+# AUTH_TRUST_HOST defaults to true in production — redirects follow the browser Host.
+# Set APP_URL to your public URL (https://yourdomain.com) for cookie secure flag hints.
+# ALLOWED_ORIGINS is optional when AUTH_TRUST_HOST=true.
 #
 # Then: npm run build && npm run start
 

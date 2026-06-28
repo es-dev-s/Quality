@@ -1,5 +1,7 @@
 /** Edge-safe auth cookie settings (direct process.env reads for middleware bundle). */
 
+import { shouldTrustHost } from "@/lib/deployment";
+
 export function resolveUseSecureCookies(): boolean {
   const explicit = process.env.AUTH_SECURE_COOKIES?.trim().toLowerCase();
   if (explicit === "true") return true;
@@ -10,10 +12,7 @@ export function resolveUseSecureCookies(): boolean {
 }
 
 export function resolveTrustHost(): boolean {
-  const flag = process.env.AUTH_TRUST_HOST?.trim().toLowerCase();
-  if (flag === "true") return true;
-  if (flag === "false") return false;
-  return !(process.env.APP_URL ?? process.env.AUTH_URL)?.trim();
+  return shouldTrustHost();
 }
 
 /** Pin non-secure cookie names on HTTP so middleware and login handler stay in sync. */

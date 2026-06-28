@@ -1,5 +1,5 @@
 /**
- * Redirect URL regression — browser host wins over APP_URL when trusted.
+ * Redirect URL regression — browser host wins over stale APP_URL when trusted.
  * Run: npx tsx scripts/verify-request-url.ts
  */
 import { resolveRedirectUrl, resolveRequestOrigin } from "@/lib/request-url";
@@ -30,6 +30,20 @@ assert(
   resolveRedirectUrl("/dashboard", lanRequest).href ===
     "http://10.80.80.221:4782/dashboard",
   "LAN IP redirect stays on LAN IP"
+);
+
+process.env.APP_URL = "http://localhost:4782";
+
+const domainRequest = new URL("https://audit.example.com/login");
+
+assert(
+  resolveRequestOrigin(domainRequest) === "https://audit.example.com",
+  "custom domain origin with trust host"
+);
+assert(
+  resolveRedirectUrl("/dashboard", domainRequest).href ===
+    "https://audit.example.com/dashboard",
+  "custom domain redirect not localhost"
 );
 
 console.log("verify-request-url: OK");

@@ -27,6 +27,11 @@ function main() {
   let failed = 0;
   if (!trustHost) failed += 1;
   if (secureCookies && !appUrl.startsWith("https://")) failed += 1;
+  if (!trustHost && process.env.NODE_ENV === "production") {
+    console.log(
+      "\n  ⚠ AUTH_TRUST_HOST=false in production — custom domains need explicit ALLOWED_ORIGINS + APP_URL"
+    );
+  }
   if (lanHosts.length === 0) {
     console.log("\n  ⚠ No LAN IPv4 detected — phone/tablet access may need ALLOWED_ORIGINS in .env");
   }

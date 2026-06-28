@@ -45,6 +45,8 @@ async function main() {
   console.log("\n=== Production resilience verification ===\n");
 
   runScript("scripts/verify-audit-spec.ts", "Audit rubric spec");
+  runScript("scripts/verify-request-url.ts", "Redirect URL / domain host");
+  runScript("scripts/verify-domain-redirect.ts", "Custom domain redirect");
   runScript("scripts/verify-audit-operations.ts", "Audit routes / RBAC / CRUD");
   runScript("scripts/verify-platform.ts", "Platform / DB integrity");
   runScript("scripts/verify-interaction-config.ts", "Interaction config");
