@@ -45,11 +45,27 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Role | null>(null);
-  const pagination = usePaginatedRows(roles);
+  const [search, setSearch] = useState("");
+
+  const filteredRoles = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return roles;
+    return roles.filter(
+      (role) =>
+        role.name.toLowerCase().includes(q) ||
+        role.slug.toLowerCase().includes(q) ||
+        (role.description ?? "").toLowerCase().includes(q)
+    );
+  }, [roles, search]);
+
+  const pagination = usePaginatedRows(filteredRoles);
 
   const selectionPool = useMemo(
-    () => roles.filter((role) => !role.isSystem).map((role) => ({ id: role.id })),
-    [roles]
+    () =>
+      filteredRoles
+        .filter((role) => !role.isSystem)
+        .map((role) => ({ id: role.id })),
+    [filteredRoles]
   );
 
   const visibleSelection = useMemo(
@@ -178,7 +194,15 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
         <DataTablePanel
           pagination={pagination}
           fillViewport={embedded}
-          summaryLabel={`${roles.length} role${roles.length === 1 ? "" : "s"}`}
+          summaryLabel={`${filteredRoles.length} of ${roles.length} role${
+            roles.length === 1 ? "" : "s"
+          }`}
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: "Search roles…",
+            ariaLabel: "Search roles",
+          }}
           headerActions={
             embedded ? (
               <Button

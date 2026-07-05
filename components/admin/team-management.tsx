@@ -453,7 +453,21 @@ function PendingApprovalsTable({
   pendingId: string | null;
   fillViewport?: boolean;
 }) {
-  const pagination = usePaginatedRows(rows);
+  const [search, setSearch] = useState("");
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (row) =>
+        row.name.toLowerCase().includes(q) ||
+        row.email.toLowerCase().includes(q) ||
+        row.targetRoleLabel.toLowerCase().includes(q) ||
+        row.requestedByName.toLowerCase().includes(q)
+    );
+  }, [rows, search]);
+
+  const pagination = usePaginatedRows(filteredRows);
 
   if (rows.length === 0) {
     return (
@@ -467,6 +481,16 @@ function PendingApprovalsTable({
     <DataTablePanel
       pagination={pagination}
       fillViewport={fillViewport}
+      summaryLabel={`${filteredRows.length} of ${rows.length} request${
+        rows.length === 1 ? "" : "s"
+      }`}
+      search={{
+        value: search,
+        onChange: setSearch,
+        placeholder: "Search requests…",
+        ariaLabel: "Search pending requests",
+      }}
+      emptyState={<p>No requests match your search.</p>}
       renderTable={(slice) => (
         <table className="ui-table platform-report-table settings-table team-approvals-table">
           <colgroup>
@@ -606,8 +630,20 @@ function AgentAssignmentPanel({
   const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
   const [agentSearch, setAgentSearch] = useState("");
   const [assignToId, setAssignToId] = useState(assigneeOptions[0]?.id ?? "");
+  const [assignmentSearch, setAssignmentSearch] = useState("");
   const [, startTransition] = useTransition();
-  const assignmentPagination = usePaginatedRows(agentAssignments);
+
+  const filteredAssignments = useMemo(() => {
+    const q = assignmentSearch.trim().toLowerCase();
+    if (!q) return agentAssignments;
+    return agentAssignments.filter(
+      (row) =>
+        row.agentName.toLowerCase().includes(q) ||
+        row.assignToName.toLowerCase().includes(q)
+    );
+  }, [agentAssignments, assignmentSearch]);
+
+  const assignmentPagination = usePaginatedRows(filteredAssignments);
 
   const alreadyAssignedToTarget = useMemo(() => {
     return new Set(
@@ -1096,6 +1132,16 @@ function AgentAssignmentPanel({
                 pagination={assignmentPagination}
                 fillViewport={fillViewport}
                 className="team-assignments__table-panel"
+                summaryLabel={`${filteredAssignments.length} of ${
+                  agentAssignments.length
+                } link${agentAssignments.length === 1 ? "" : "s"}`}
+                search={{
+                  value: assignmentSearch,
+                  onChange: setAssignmentSearch,
+                  placeholder: "Search assignments…",
+                  ariaLabel: "Search active assignments",
+                }}
+                emptyState={<p>No assignments match your search.</p>}
                 renderTable={(slice) => (
                   <table className="ui-table platform-report-table settings-table team-assignments__table">
                     <colgroup>
@@ -1202,8 +1248,36 @@ export function TeamManagement({
     };
   }, [canReadManaged, canApproveAgent, canAssignAgents]);
 
-  const myRequestsPagination = usePaginatedRows(myRequests);
-  const managedPagination = usePaginatedRows(managedUsers);
+  const [membersSearch, setMembersSearch] = useState("");
+  const [myRequestsSearch, setMyRequestsSearch] = useState("");
+
+  const filteredManagedUsers = useMemo(() => {
+    const q = membersSearch.trim().toLowerCase();
+    if (!q) return managedUsers;
+    return managedUsers.filter(
+      (user) =>
+        user.name.toLowerCase().includes(q) ||
+        user.email.toLowerCase().includes(q) ||
+        user.roleName.toLowerCase().includes(q) ||
+        (user.teamName ?? "").toLowerCase().includes(q)
+    );
+  }, [managedUsers, membersSearch]);
+
+  const filteredMyRequests = useMemo(() => {
+    const q = myRequestsSearch.trim().toLowerCase();
+    if (!q) return myRequests;
+    return myRequests.filter(
+      (row) =>
+        row.name.toLowerCase().includes(q) ||
+        row.email.toLowerCase().includes(q) ||
+        row.targetRoleLabel.toLowerCase().includes(q) ||
+        row.status.toLowerCase().includes(q) ||
+        (row.reviewedByName ?? "").toLowerCase().includes(q)
+    );
+  }, [myRequests, myRequestsSearch]);
+
+  const myRequestsPagination = usePaginatedRows(filteredMyRequests);
+  const managedPagination = usePaginatedRows(filteredManagedUsers);
 
   const pendingAgentApprovals = useMemo(
     () =>
@@ -1501,6 +1575,16 @@ export function TeamManagement({
                 <DataTablePanel
                   pagination={managedPagination}
                   fillViewport={embedded}
+                  summaryLabel={`${filteredManagedUsers.length} of ${
+                    managedUsers.length
+                  } member${managedUsers.length === 1 ? "" : "s"}`}
+                  search={{
+                    value: membersSearch,
+                    onChange: setMembersSearch,
+                    placeholder: "Search team members…",
+                    ariaLabel: "Search team members",
+                  }}
+                  emptyState={<p>No team members match your search.</p>}
                   renderTable={(slice) => (
                     <table className="ui-table platform-report-table settings-table">
                       <thead>
@@ -1557,6 +1641,16 @@ export function TeamManagement({
                 <DataTablePanel
                   pagination={myRequestsPagination}
                   fillViewport={embedded}
+                  summaryLabel={`${filteredMyRequests.length} of ${
+                    myRequests.length
+                  } request${myRequests.length === 1 ? "" : "s"}`}
+                  search={{
+                    value: myRequestsSearch,
+                    onChange: setMyRequestsSearch,
+                    placeholder: "Search your requests…",
+                    ariaLabel: "Search your requests",
+                  }}
+                  emptyState={<p>No requests match your search.</p>}
                   renderTable={(slice) => (
                     <table className="ui-table platform-report-table settings-table">
                       <thead>
