@@ -1022,13 +1022,54 @@
 .team-assignments__picker-meta {
   font-size: 0.8125rem;
   color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.team-assignments__picker-search {
+  margin-bottom: var(--space-2);
+  max-width: none;
+  width: 100%;
+}
+
+.team-assignments__picker-search-clear {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.team-assignments__picker-search-clear:hover {
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+}
+
+.team-assignments__picker-search .platform-settings__search {
+  padding-right: 36px;
+}
+
+.team-assignments__picker-empty {
+  margin: 0;
+  padding: var(--space-4) var(--space-2);
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
 }
 
 .team-assignments__picker-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 240px;
+  max-height: min(360px, 42vh);
   overflow: auto;
   padding: var(--space-2);
   border: 1px solid var(--color-border);

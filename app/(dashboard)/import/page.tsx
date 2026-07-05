@@ -1,22 +1,30 @@
 import { redirect } from "next/navigation";
 import { IMPORT_ENABLED } from "@/lib/constants";
 import { PageFrame } from "@/components/dashboard/page-frame";
-import { DataImportPanel } from "@/components/import/data-import-panel";
+import { ImportHub } from "@/components/import/import-hub";
 import { getRolesForSelect } from "@/lib/actions/admin";
-import { requirePageAccess } from "@/lib/auth-guards";
+import { getAuditImportContext } from "@/lib/actions/import-audits";
+import { requireSuperAdmin } from "@/lib/auth";
 
 export default async function ImportPage() {
   if (!IMPORT_ENABLED) {
     redirect("/dashboard");
   }
 
-  const session = await requirePageAccess("/import");
-  const roles = await getRolesForSelect();
+  await requireSuperAdmin();
+  const [roles, auditContext] = await Promise.all([
+    getRolesForSelect(),
+    getAuditImportContext(),
+  ]);
 
   if (Array.isArray(roles)) {
     return (
       <PageFrame>
-        <DataImportPanel roles={roles} />
+        <ImportHub
+          roles={roles}
+          templates={auditContext.templates}
+          templateBodies={auditContext.templateBodies}
+        />
       </PageFrame>
     );
   }

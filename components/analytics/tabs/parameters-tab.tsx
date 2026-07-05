@@ -13,6 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
+import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
 import {
   sortByNumber,
   type AnalyticsSortOrder,
@@ -69,7 +70,7 @@ export function ParametersTab({ data, sortOrder }: ParametersTabProps) {
           (sorted.reduce((sum, row) => sum + row.score, 0) / sorted.length) * 10
         ) / 10
       : 0;
-  const belowTarget = sorted.filter((row) => row.score < 90).length;
+  const belowTarget = sorted.filter((row) => row.score < PASS_RATE_TARGET_PCT).length;
   const chartBottomMargin = sorted.length > 10 ? 108 : sorted.length > 6 ? 88 : 72;
 
   return (
@@ -80,7 +81,7 @@ export function ParametersTab({ data, sortOrder }: ParametersTabProps) {
         <QmsCard className="qms-card--chart qms-card--radar-featured">
           <QmsSectionTitle
             title="Radar view"
-            sub="Parameter coverage map — actual scores vs 90% target"
+            sub={`Parameter coverage map — actual scores vs ${PASS_RATE_TARGET_PCT}% target`}
           />
           <div className="qms-radar-featured__canvas">
             <ParameterRadarChart params={data.params} />
@@ -92,7 +93,7 @@ export function ParametersTab({ data, sortOrder }: ParametersTabProps) {
         <div className="qms-param-scores__head">
           <QmsSectionTitle
             title={`Quality ${metricLabel.toLowerCase()} scores`}
-            sub={`All ${metricLabel.toLowerCase()}s compared against the 90% quality target`}
+            sub={`All ${metricLabel.toLowerCase()}s compared against the ${PASS_RATE_TARGET_PCT}% quality target`}
           />
           <div className="qms-param-scores__stats" aria-label="Score summary">
             <div className="qms-param-scores__stat">
@@ -110,7 +111,7 @@ export function ParametersTab({ data, sortOrder }: ParametersTabProps) {
               >
                 {belowTarget}
               </span>
-              <span className="qms-param-scores__stat-label">Below 90%</span>
+              <span className="qms-param-scores__stat-label">Below {PASS_RATE_TARGET_PCT}%</span>
             </div>
           </div>
         </div>
@@ -153,12 +154,12 @@ export function ParametersTab({ data, sortOrder }: ParametersTabProps) {
                 content={<QmsChartTooltip suffix="%" />}
               />
               <ReferenceLine
-                y={90}
+                y={PASS_RATE_TARGET_PCT}
                 stroke={CHART_COLORS.accent}
                 strokeWidth={2}
                 strokeDasharray="6 4"
                 label={{
-                  value: "90% target",
+                  value: `${PASS_RATE_TARGET_PCT}% target`,
                   position: "insideTopRight",
                   fill: CHART_COLORS.accent,
                   fontSize: 11,
@@ -214,12 +215,14 @@ export function ParametersTab({ data, sortOrder }: ParametersTabProps) {
                     </td>
                     <td
                       className={
-                        p.score >= 90 ? "qms-cell-positive" : "qms-cell-negative"
+                        p.score >= PASS_RATE_TARGET_PCT
+                          ? "qms-cell-positive"
+                          : "qms-cell-negative"
                       }
                     >
-                      {p.score >= 90
-                        ? `+${(p.score - 90).toFixed(1)}%`
-                        : `${(p.score - 90).toFixed(1)}%`}
+                      {p.score >= PASS_RATE_TARGET_PCT
+                        ? `+${(p.score - PASS_RATE_TARGET_PCT).toFixed(1)}%`
+                        : `${(p.score - PASS_RATE_TARGET_PCT).toFixed(1)}%`}
                     </td>
                   </tr>
                 ))}

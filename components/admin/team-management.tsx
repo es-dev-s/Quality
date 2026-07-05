@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Check, KeyRound, Plus, X } from "lucide-react";
+import { Check, KeyRound, Plus, Search, X } from "lucide-react";
 import { Button } from "@/components/primitives/button";
 import { Field, Input, Label, Select } from "@/components/primitives/field";
 import {
@@ -604,6 +604,7 @@ function AgentAssignmentPanel({
   const [view, setView] = useState<AssignmentView>("single");
   const [agentId, setAgentId] = useState(assignableAgents[0]?.id ?? "");
   const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
+  const [agentSearch, setAgentSearch] = useState("");
   const [assignToId, setAssignToId] = useState(assigneeOptions[0]?.id ?? "");
   const [, startTransition] = useTransition();
   const assignmentPagination = usePaginatedRows(agentAssignments);
@@ -653,12 +654,29 @@ function AgentAssignmentPanel({
     );
   }, [selectableAgents]);
 
-  const allSelectableSelected =
-    selectableAgents.length > 0 &&
-    selectableAgents.every((agent) => selectedAgentIds.includes(agent.id));
-  const someSelectableSelected =
-    selectableAgents.some((agent) => selectedAgentIds.includes(agent.id)) &&
-    !allSelectableSelected;
+  useEffect(() => {
+    setAgentSearch("");
+  }, [view, assignToId]);
+
+  const filteredSelectableAgents = useMemo(() => {
+    const query = agentSearch.trim().toLowerCase();
+    if (!query) return selectableAgents;
+    return selectableAgents.filter(
+      (agent) =>
+        agent.name.toLowerCase().includes(query) ||
+        agent.email.toLowerCase().includes(query)
+    );
+  }, [agentSearch, selectableAgents]);
+
+  const allFilteredSelected =
+    filteredSelectableAgents.length > 0 &&
+    filteredSelectableAgents.every((agent) =>
+      selectedAgentIds.includes(agent.id)
+    );
+  const someFilteredSelected =
+    filteredSelectableAgents.some((agent) =>
+      selectedAgentIds.includes(agent.id)
+    ) && !allFilteredSelected;
 
   const assigneeSelectOptions = useMemo(
     () =>
@@ -687,11 +705,27 @@ function AgentAssignmentPanel({
   }
 
   function toggleAllSelectable() {
-    if (allSelectableSelected) {
-      setSelectedAgentIds([]);
+    const agents = agentSearch.trim()
+      ? filteredSelectableAgents
+      : selectableAgents;
+    const allSelected = agents.every((agent) =>
+      selectedAgentIds.includes(agent.id)
+    );
+
+    if (allSelected) {
+      setSelectedAgentIds((current) =>
+        current.filter((id) => !agents.some((agent) => agent.id === id))
+      );
       return;
     }
-    setSelectedAgentIds(selectableAgents.map((agent) => agent.id));
+
+    setSelectedAgentIds((current) => {
+      const next = new Set(current);
+      for (const agent of agents) {
+        next.add(agent.id);
+      }
+      return [...next];
+    });
   }
 
   function handleAssign() {
@@ -928,9 +962,12 @@ function AgentAssignmentPanel({
             {view === "multiple" ? (
               <Field className="team-assignments__picker">
                 <div className="team-assignments__picker-head">
-                  <Label htmlFor="assign-agent-all">Select agents</Label>
+                  <Label htmlFor="assign-agent-search">Select agents</Label>
                   <span className="team-assignments__picker-meta">
-                    {selectedAgentIds.length} of {selectableAgents.length} selected
+                    {selectedAgentIds.length} selected
+                    {agentSearch.trim()
+                      ? ` · ${filteredSelectableAgents.length} shown`
+                      : ` · ${selectableAgents.length} available`}
                   </span>
                 </div>
                 {selectableAgents.length === 0 ? (
@@ -938,42 +975,84 @@ function AgentAssignmentPanel({
                     All approved agents are already assigned to this analyst.
                   </p>
                 ) : (
-                  <div className="team-assignments__picker-list">
-                    <label className="team-assignments__picker-row team-assignments__picker-row--all">
-                      <input
-                        id="assign-agent-all"
-                        type="checkbox"
-                        checked={allSelectableSelected}
-                        ref={(el) => {
-                          if (el) el.indeterminate = someSelectableSelected;
-                        }}
-                        disabled={pending}
-                        onChange={toggleAllSelectable}
+                  <>
+                    <div className="team-assignments__picker-search platform-settings__search-wrap">
+                      <Search
+                        size={16}
+                        className="platform-settings__search-icon"
+                        aria-hidden
                       />
-                      <span>Select all available</span>
-                    </label>
-                    {selectableAgents.map((agent) => (
-                      <label
-                        key={agent.id}
-                        className="team-assignments__picker-row"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedAgentIds.includes(agent.id)}
+                      <input
+                        id="assign-agent-search"
+                        type="search"
+                        className="platform-settings__search"
+                        placeholder="Search by name or email…"
+                        value={agentSearch}
+                        disabled={pending}
+                        onChange={(event) => setAgentSearch(event.target.value)}
+                        aria-label="Search agents"
+                      />
+                      {agentSearch.trim() ? (
+                        <button
+                          type="button"
+                          className="team-assignments__picker-search-clear"
+                          aria-label="Clear search"
                           disabled={pending}
-                          onChange={() => toggleAgentSelection(agent.id)}
-                        />
-                        <span className="team-assignments__picker-label">
-                          <span className="team-assignments__picker-name">
-                            {agent.name}
-                          </span>
-                          <span className="team-assignments__picker-email">
-                            {agent.email}
-                          </span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
+                          onClick={() => setAgentSearch("")}
+                        >
+                          <X size={14} aria-hidden />
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="team-assignments__picker-list">
+                      {filteredSelectableAgents.length === 0 ? (
+                        <p className="team-assignments__picker-empty">
+                          No agents match &ldquo;{agentSearch.trim()}&rdquo;.
+                        </p>
+                      ) : (
+                        <>
+                          <label className="team-assignments__picker-row team-assignments__picker-row--all">
+                            <input
+                              id="assign-agent-all"
+                              type="checkbox"
+                              checked={allFilteredSelected}
+                              ref={(el) => {
+                                if (el) el.indeterminate = someFilteredSelected;
+                              }}
+                              disabled={pending}
+                              onChange={toggleAllSelectable}
+                            />
+                            <span>
+                              {agentSearch.trim()
+                                ? "Select all shown"
+                                : "Select all available"}
+                            </span>
+                          </label>
+                          {filteredSelectableAgents.map((agent) => (
+                            <label
+                              key={agent.id}
+                              className="team-assignments__picker-row"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedAgentIds.includes(agent.id)}
+                                disabled={pending}
+                                onChange={() => toggleAgentSelection(agent.id)}
+                              />
+                              <span className="team-assignments__picker-label">
+                                <span className="team-assignments__picker-name">
+                                  {agent.name}
+                                </span>
+                                <span className="team-assignments__picker-email">
+                                  {agent.email}
+                                </span>
+                              </span>
+                            </label>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  </>
                 )}
                 {hiddenAssignedCount > 0 ? (
                   <p className="ui-hint team-assignments__field-hint">

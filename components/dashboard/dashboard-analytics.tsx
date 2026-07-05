@@ -555,7 +555,7 @@ export function DashboardAnalytics({
           <p className="dash-kpi__hint">this calendar month</p>
         </article>
         <article className="dash-kpi">
-          <p className="dash-kpi__label">Excellent (≥90%)</p>
+          <p className="dash-kpi__label">Excellent (≥{PASS_RATE_TARGET_PCT}%)</p>
           <p className="dash-kpi__value dash-kpi__value--success">
             {stats.excellentCount}
           </p>

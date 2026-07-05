@@ -12,6 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
+import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
 import {
   sortByNumber,
   type AnalyticsSortOrder,
@@ -99,8 +100,8 @@ export function TeamsTab({ data, sortOrder }: TeamsTabProps) {
     );
   }
 
-  const above90 = teams.filter((t) => t.avg >= 90).length;
-  const below90 = teams.filter((t) => t.avg < 90).length;
+  const aboveTarget = teams.filter((t) => t.avg >= PASS_RATE_TARGET_PCT).length;
+  const belowTarget = teams.filter((t) => t.avg < PASS_RATE_TARGET_PCT).length;
 
   return (
     <div className="qms-tab">
@@ -117,14 +118,14 @@ export function TeamsTab({ data, sortOrder }: TeamsTabProps) {
       <div className="qms-kpi-row">
         <QmsKpiTile
           label="Teams above target"
-          value={above90}
-          sub="≥ 90% quality score"
+          value={aboveTarget}
+          sub={`≥ ${PASS_RATE_TARGET_PCT}% quality score`}
           tone="success"
         />
         <QmsKpiTile
           label="Teams below target"
-          value={below90}
-          sub="< 90% — needs coaching"
+          value={belowTarget}
+          sub={`< ${PASS_RATE_TARGET_PCT}% — needs coaching`}
           tone="danger"
         />
         <QmsKpiTile
@@ -238,20 +239,24 @@ export function TeamsTab({ data, sortOrder }: TeamsTabProps) {
                         </td>
                         <td>
                           <QmsBadge
-                            label={team.avg >= 90 ? "On target" : "Below target"}
+                            label={
+                              team.avg >= PASS_RATE_TARGET_PCT
+                                ? "On target"
+                                : "Below target"
+                            }
                             score={team.avg}
                           />
                         </td>
                         <td
                           className={
-                            team.avg >= 90
+                            team.avg >= PASS_RATE_TARGET_PCT
                               ? "qms-cell-positive"
                               : "qms-cell-negative"
                           }
                         >
-                          {team.avg >= 90
-                            ? `+${(team.avg - 90).toFixed(1)}%`
-                            : `${(team.avg - 90).toFixed(1)}%`}
+                          {team.avg >= PASS_RATE_TARGET_PCT
+                            ? `+${(team.avg - PASS_RATE_TARGET_PCT).toFixed(1)}%`
+                            : `${(team.avg - PASS_RATE_TARGET_PCT).toFixed(1)}%`}
                         </td>
                       </tr>
                     );

@@ -63,11 +63,8 @@ export function canAccessPath(
   role: SessionRole | null | undefined,
   pathname: string
 ): boolean {
-  if (
-    !IMPORT_ENABLED &&
-    (pathname === "/import" || pathname.startsWith("/import/"))
-  ) {
-    return false;
+  if (pathname === "/import" || pathname.startsWith("/import/")) {
+    return IMPORT_ENABLED && isSuperAdmin(role);
   }
 
   const permission = resolveRoutePermission(pathname);
@@ -192,8 +189,7 @@ export function canWriteAuditTemplates(role?: SessionRole | null): boolean {
 }
 
 export function canImportData(role?: SessionRole | null): boolean {
-  if (!IMPORT_ENABLED) return false;
-  return hasScope(role, PERMISSIONS.IMPORT_WRITE);
+  return IMPORT_ENABLED && isSuperAdmin(role);
 }
 
 export function canEditFeedbackStatus(role?: SessionRole | null): boolean {

@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { QmsParameterStat } from "@/lib/audit/analytics-metrics";
+import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
 import { QmsEmpty } from "@/components/analytics/qms-primitives";
 
-const TARGET_SCORE = 90;
+const TARGET_SCORE = PASS_RATE_TARGET_PCT;
 const MIN_RADAR_PARAMS = 3;
 const RINGS = [0.4, 0.6, 0.8, 1.0];
 
@@ -144,7 +145,7 @@ function drawRadarChart(
     }
   }
 
-  // Blue = 90% target (constant); Red = actual score
+  // Blue = quality target (constant); Red = actual score
   const targetVals = params.map(() => TARGET_SCORE / 100);
   const scoreVals = params.map((p) => Math.min(p.score, 100) / 100);
 
@@ -268,7 +269,7 @@ export function ParameterRadarChart({ params }: { params: QmsParameterStat[] }) 
             <line x1="0" y1="6" x2="22" y2="6" stroke="#4a90d9" strokeWidth="1.5" />
             <circle cx="11" cy="6" r="3" fill="#4a90d9" />
           </svg>
-          <span>90% target</span>
+          <span>{TARGET_SCORE}% target</span>
         </div>
         <div className="qms-radar-canvas-legend__item">
           <svg width="22" height="12" aria-hidden>

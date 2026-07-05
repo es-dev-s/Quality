@@ -11,9 +11,11 @@ import {
   Plus,
   ScrollText,
   Settings,
+  Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  canImportData,
   canWriteAuditTemplates,
 } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -135,6 +137,7 @@ export function DashboardSidebar() {
   const { user, collapsed, mobileOpen, closeMobile } = useDashboardShell();
 
   const showTemplateAdmin = canWriteAuditTemplates(user.role);
+  const showImport = canImportData(user.role);
   const visibleMainNav = mainNav.filter((item) =>
     hasScope(user.role, item.permission)
   );
@@ -192,6 +195,16 @@ export function DashboardSidebar() {
                     onNavigate={closeMobile}
                   />
                 ))}
+                {showImport ? (
+                  <NavLink
+                    href="/import"
+                    label="Import"
+                    icon={Upload}
+                    active={pathname === "/import" || pathname.startsWith("/import/")}
+                    collapsed={collapsed}
+                    onNavigate={closeMobile}
+                  />
+                ) : null}
               </div>
             </div>
           )}

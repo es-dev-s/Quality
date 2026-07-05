@@ -332,7 +332,7 @@ export function computePeriodStats(records: DashboardAuditRecord[]) {
   const fatalRate = total > 0 ? Math.round((fatals / total) * 100) : 0;
 
   const excellentCount = records.filter(
-    (r) => !r.hasFatal && r.qualityPct >= 90
+    (r) => !r.hasFatal && r.qualityPct >= PASS_RATE_QUALITY_THRESHOLD
   ).length;
 
   return {

@@ -5,7 +5,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Download,
-  FileJson,
+  FileSpreadsheet,
   FileType,
   Upload,
   Users,
@@ -13,6 +13,8 @@ import {
 import { importUsers } from "@/lib/actions/import-users";
 import {
   buildUserImportTemplateCsv,
+  buildUserImportTemplateXlsx,
+  parseUserImportExcel,
   parseUserImportFile,
 } from "@/lib/import/parse-user-import";
 import type {
@@ -23,11 +25,20 @@ import type {
 import { cn } from "@/lib/utils";
 import { LoadingZone } from "@/components/primitives/loading-zone";
 
-type ImportFormat = "csv" | "json";
+type ImportFormat = "csv" | "xlsx";
 
 type DataImportPanelProps = {
   roles: RoleImportOption[];
 };
+
+function fileExtension(name: string): string {
+  return name.split(".").pop()?.toLowerCase() ?? "";
+}
+
+function isExcelFile(name: string): boolean {
+  const ext = fileExtension(name);
+  return ext === "xlsx" || ext === "xls";
+}
 
 export function DataImportPanel({ roles }: DataImportPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -42,10 +53,7 @@ export function DataImportPanel({ roles }: DataImportPanelProps) {
   const [importError, setImportError] = useState<string | null>(null);
   const [isImporting, startImport] = useTransition();
 
-  const acceptByFormat: Record<ImportFormat, string> = {
-    csv: ".csv,text/csv",
-    json: ".json,application/json",
-  };
+  const acceptTypes = ".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel";
 
   const validRows = useMemo(
     () => rows.filter((row) => row.errors.length === 0),
@@ -71,12 +79,19 @@ export function DataImportPanel({ roles }: DataImportPanelProps) {
     setImportError(null);
     setFileName(file.name);
 
+    const parseOptions = {
+      defaultPassword,
+      requirePassword: !defaultPassword.trim(),
+    };
+
     try {
-      const text = await file.text();
-      const parsed = parseUserImportFile(text, format, {
-        defaultPassword,
-        requirePassword: !defaultPassword.trim(),
-      });
+      const useExcel =
+        isExcelFile(file.name) || (!file.name.endsWith(".csv") && format === "xlsx");
+
+      const parsed = useExcel
+        ? parseUserImportExcel(await file.arrayBuffer(), parseOptions)
+        : parseUserImportFile(await file.text(), "csv", parseOptions);
+
       setRows(parsed);
     } catch (error) {
       setRows([]);
@@ -103,7 +118,18 @@ export function DataImportPanel({ roles }: DataImportPanelProps) {
     }
   }
 
-  function downloadTemplate() {
+  function downloadTemplate(templateFormat: ImportFormat) {
+    if (templateFormat === "xlsx") {
+      const blob = buildUserImportTemplateXlsx();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "user-import-template.xlsx";
+      link.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
     const blob = new Blob([buildUserImportTemplateCsv()], {
       type: "text/csv;charset=utf-8;",
     });
@@ -149,7 +175,7 @@ export function DataImportPanel({ roles }: DataImportPanelProps) {
         <div>
           <p className="import-page__notice-title">Import users with roles</p>
           <p className="import-page__notice-text">
-            Upload a CSV or JSON file with name, email, password, and role. Roles
+            Upload a CSV or Excel file with name, email, password, and role. Roles
             are matched by name or slug from your existing access setup.
           </p>
         </div>
@@ -163,14 +189,24 @@ export function DataImportPanel({ roles }: DataImportPanelProps) {
               Use one of these values in the <strong>role</strong> column.
             </p>
           </div>
-          <button
-            type="button"
-            className="ui-btn ui-btn--secondary ui-btn--sm"
-            onClick={downloadTemplate}
-          >
-            <Download size={15} aria-hidden />
-            Download template
-          </button>
+          <div className="import-actions">
+            <button
+              type="button"
+              className="ui-btn ui-btn--secondary ui-btn--sm"
+              onClick={() => downloadTemplate("csv")}
+            >
+              <Download size={15} aria-hidden />
+              CSV template
+            </button>
+            <button
+              type="button"
+              className="ui-btn ui-btn--secondary ui-btn--sm"
+              onClick={() => downloadTemplate("xlsx")}
+            >
+              <Download size={15} aria-hidden />
+              Excel template
+            </button>
+          </div>
         </div>
         <div className="import-role-chips">
           {roles.map((role) => (
@@ -185,18 +221,17 @@ export function DataImportPanel({ roles }: DataImportPanelProps) {
       <section className="import-card">
         <h2 className="import-card__title">File format</h2>
         <p className="import-card__desc">
-          CSV is recommended. JSON accepts an array or{" "}
-          <code>{'{ "users": [...] }'}</code>.
+          CSV or Excel (.xlsx). The first worksheet is used for Excel files.
         </p>
         <div className="import-formats import-formats--two">
           {(
             [
               { id: "csv" as const, label: "CSV", hint: "Comma-separated", icon: FileType },
               {
-                id: "json" as const,
-                label: "JSON",
-                hint: "Structured list",
-                icon: FileJson,
+                id: "xlsx" as const,
+                label: "Excel",
+                hint: ".xlsx spreadsheet",
+                icon: FileSpreadsheet,
               },
             ] as const
           ).map((item) => {
@@ -250,13 +285,13 @@ export function DataImportPanel({ roles }: DataImportPanelProps) {
       <section className="import-card">
         <h2 className="import-card__title">Upload file</h2>
         <p className="import-card__desc">
-          Drag and drop or browse for a {format.toUpperCase()} file.
+          Drag and drop or browse for a CSV or Excel file.
         </p>
         <input
           ref={inputRef}
           type="file"
           className="import-file-input"
-          accept={acceptByFormat[format]}
+          accept={acceptTypes}
           onChange={handleInputChange}
         />
         <div
@@ -317,7 +352,7 @@ export function DataImportPanel({ roles }: DataImportPanelProps) {
           </div>
           {rows.length === 0 ? (
             <div className="import-preview__empty">
-              No rows loaded yet. Use the template to get started.
+              No rows loaded yet. Use a template to get started.
             </div>
           ) : (
             rows.map((row) => (

@@ -82,6 +82,8 @@ function setsEqual(a: Set<string>, b: Set<string>): boolean {
 
 type AuditLogsTableProps = {
   submissions: AuditLogEntry[];
+  /** Scoped total in DB — may match submissions.length when all rows are loaded. */
+  totalCount?: number;
   roleSlug: string;
   showSectionHead?: boolean;
   enableFilters?: boolean;
@@ -189,6 +191,7 @@ function matchesScore(row: AuditLogEntry, preset: ScorePreset) {
 
 export function AuditLogsTable({
   submissions,
+  totalCount,
   roleSlug,
   showSectionHead = true,
   enableFilters = true,
@@ -240,6 +243,7 @@ export function AuditLogsTable({
     }
   );
   const rows = optimisticRows;
+  const dbTotal = totalCount ?? rows.length;
   const visibleRowIdsKey = rowIdsKey(rows);
   const rowIdsRef = useRef(new Set<string>());
   const reconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -748,11 +752,11 @@ export function AuditLogsTable({
           ? "No audits match your filters."
           : `Showing ${pagination.start}–${pagination.end} of ${filtered.length} filtered audit${
               filtered.length === 1 ? "" : "s"
-            } (${rows.length} total).`
+            } (${dbTotal} saved).`
         : filtered.length === 0
           ? "No audits to display."
-          : `Showing ${pagination.start}–${pagination.end} of ${filtered.length} saved audit${
-              filtered.length === 1 ? "" : "s"
+          : `Showing ${pagination.start}–${pagination.end} of ${dbTotal} saved audit${
+              dbTotal === 1 ? "" : "s"
             }.`;
 
   function handleExportCsv() {
@@ -1007,7 +1011,9 @@ export function AuditLogsTable({
             scrollClassName="audit-logs-page__table-scroll"
             summaryLabel={
               rows.length > 0
-                ? `${filtered.length} audit${filtered.length === 1 ? "" : "s"}`
+                ? hasActiveFilters
+                  ? `${filtered.length} of ${dbTotal} audit${dbTotal === 1 ? "" : "s"}`
+                  : `${dbTotal} audit${dbTotal === 1 ? "" : "s"}`
                 : undefined
             }
             search={

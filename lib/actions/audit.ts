@@ -44,7 +44,6 @@ import { paginationLimitSchema } from "@/lib/validation/common";
 import { toIsoTimestamp } from "@/lib/db/to-iso-timestamp";
 import { cacheScopeFromSession } from "@/lib/cache";
 import {
-  getCachedAuditLogs,
   getCachedAuditSubmissionsPage,
   getCachedDashboardRecords,
   parseAuditPageLimit,
@@ -56,6 +55,7 @@ import {
   type AuditExportRow,
 } from "@/lib/reports/audit-export-row";
 import { invalidateAuditCaches } from "@/lib/invalidate-cache";
+import { AUDIT_LOG_LIST_SELECT } from "@/lib/select-shapes";
 import { ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
 import {
@@ -471,16 +471,21 @@ function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
   };
 }
 
-export async function getAuditLogs(limit = 500) {
+export async function getAuditLogs() {
   const session = await requirePermission(PERMISSIONS.AUDIT_LOGS_READ);
-  const parsedLimit = paginationLimitSchema.safeParse(limit);
-  const take = parsedLimit.success ? parsedLimit.data : 500;
+  const where = await scopedAuditWhere(session);
 
-  const scope = cacheScopeFromSession(session);
-  const submissions = await getCachedAuditLogs(scope, take)();
+  const [totalCount, submissions] = await Promise.all([
+    prisma.auditSubmission.count({ where }),
+    prisma.auditSubmission.findMany({
+      where,
+      select: AUDIT_LOG_LIST_SELECT,
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
 
   return {
-    total: submissions.length,
+    totalCount,
     submissions: submissions.map(mapAuditSubmission),
   };
 }

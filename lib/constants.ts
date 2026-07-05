@@ -1,7 +1,7 @@
 export const SUPERADMIN_ROLE_SLUG = "superadmin";
 
-/** Set to true when bulk user import is ready to ship. */
-export const IMPORT_ENABLED = false;
+/** Superadmin bulk user import (CSV / Excel). */
+export const IMPORT_ENABLED = true;
 
 export const PROTECTED_ROUTES = [
   "/dashboard",

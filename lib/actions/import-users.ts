@@ -6,9 +6,8 @@ import type {
   UserImportPayload,
   UserImportResult,
 } from "@/lib/import/user-import-types";
-import { requirePermission } from "@/lib/auth-guards";
+import { requireSuperAdmin } from "@/lib/auth";
 import { IMPORT_ENABLED } from "@/lib/constants";
-import { PERMISSIONS } from "@/lib/permissions";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { prisma } from "@/lib/prisma";
 import { buildPasswordCredentials } from "@/lib/password-credentials";
@@ -36,7 +35,7 @@ export async function importUsers(
     return { error: "Import is not available." };
   }
 
-  await requirePermission(PERMISSIONS.IMPORT_WRITE);
+  await requireSuperAdmin();
 
   const parsedOptions = importOptionsSchema.safeParse(options);
   if (!parsedOptions.success) {

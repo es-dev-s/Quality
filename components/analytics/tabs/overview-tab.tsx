@@ -1,6 +1,7 @@
 "use client";
 
 import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
+import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
 import {
   CHART_COLORS,
   QmsCard,
@@ -52,9 +53,11 @@ export function OverviewTab({
           label="Overall quality"
           value={`${kpis.overall_avg}%`}
           sub={
-            kpis.overall_avg >= 90 ? "Target met (≥90%)" : "Below 90% target"
+            kpis.overall_avg >= PASS_RATE_TARGET_PCT
+              ? `Target met (≥${PASS_RATE_TARGET_PCT}%)`
+              : `Below ${PASS_RATE_TARGET_PCT}% target`
           }
-          tone={kpis.overall_avg >= 90 ? "success" : "warn"}
+          tone={kpis.overall_avg >= PASS_RATE_TARGET_PCT ? "success" : "warn"}
         />
         <QmsKpiTile
           label="Fatal incidents"

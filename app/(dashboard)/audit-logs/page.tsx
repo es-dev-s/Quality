@@ -17,10 +17,11 @@ import {
 
 async function AuditLogsContent() {
   const session = await requirePageAccess("/audit-logs");
-  const { submissions } = await getAuditLogs();
+  const { submissions, totalCount } = await getAuditLogs();
   return (
     <AuditLogsTable
       submissions={submissions}
+      totalCount={totalCount}
       roleSlug={session.user.role.slug}
       showSectionHead={false}
       feedbackStatusRole={session.user.role}

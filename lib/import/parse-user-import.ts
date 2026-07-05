@@ -1,3 +1,4 @@
+import * as XLSX from "xlsx";
 import type { ParsedUserImportRow, UserImportPayload } from "@/lib/import/user-import-types";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -115,6 +116,50 @@ function toPayload(record: Record<string, string>): UserImportPayload {
   };
 }
 
+function recordsFromExcel(buffer: ArrayBuffer): Record<string, string>[] {
+  const workbook = XLSX.read(buffer, { type: "array" });
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) {
+    return [];
+  }
+
+  const sheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+    defval: "",
+    raw: false,
+  });
+
+  return rows.map((entry) =>
+    Object.fromEntries(
+      Object.entries(entry).map(([key, value]) => [key, String(value ?? "").trim()])
+    )
+  );
+}
+
+function parseImportRecords(
+  records: Record<string, string>[],
+  options: {
+    defaultPassword?: string;
+    requirePassword?: boolean;
+  } = {}
+): ParsedUserImportRow[] {
+  const defaultPassword = options.defaultPassword ?? "";
+  const requirePassword = options.requirePassword ?? !defaultPassword;
+
+  if (records.length === 0) {
+    throw new Error("No user rows found in the file.");
+  }
+
+  return records.map((record, index) =>
+    validateRow(
+      toPayload(record),
+      index + 1,
+      defaultPassword,
+      requirePassword
+    )
+  );
+}
+
 function validateRow(
   row: UserImportPayload,
   rowNumber: number,
@@ -158,30 +203,40 @@ export function parseUserImportFile(
     requirePassword?: boolean;
   } = {}
 ): ParsedUserImportRow[] {
-  const defaultPassword = options.defaultPassword ?? "";
-  const requirePassword = options.requirePassword ?? !defaultPassword;
-
   const records =
     format === "csv" ? recordsFromCsv(text) : recordsFromJson(text);
 
-  if (records.length === 0) {
-    throw new Error("No user rows found in the file.");
-  }
+  return parseImportRecords(records, options);
+}
 
-  return records.map((record, index) =>
-    validateRow(
-      toPayload(record),
-      index + 1,
-      defaultPassword,
-      requirePassword
-    )
-  );
+export function parseUserImportExcel(
+  buffer: ArrayBuffer,
+  options: {
+    defaultPassword?: string;
+    requirePassword?: boolean;
+  } = {}
+): ParsedUserImportRow[] {
+  return parseImportRecords(recordsFromExcel(buffer), options);
 }
 
 export function buildUserImportTemplateCsv(): string {
   return [
     "name,email,password,role",
-    "Jane Auditor,jane.auditor@example.com,ChangeMe123,Super Admin",
-    "John Reviewer,john.reviewer@example.com,ChangeMe123,auditor",
+    "Jane Analyst,jane.analyst@example.com,ChangeMe123,quality-analyst",
+    "John Agent,john.agent@example.com,ChangeMe123,agent",
   ].join("\n");
+}
+
+export function buildUserImportTemplateXlsx(): Blob {
+  const workbook = XLSX.utils.book_new();
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ["name", "email", "password", "role"],
+    ["Jane Analyst", "jane.analyst@example.com", "ChangeMe123", "quality-analyst"],
+    ["John Agent", "john.agent@example.com", "ChangeMe123", "agent"],
+  ]);
+  XLSX.utils.book_append_sheet(workbook, sheet, "Users");
+  const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  return new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
 }

@@ -194,7 +194,7 @@ export async function getRolesForSelect() {
   const session = await requireAuth();
   if (
     !canManageUsers(session.user.role) &&
-    !hasScope(session.user.role, PERMISSIONS.IMPORT_WRITE)
+    !isSuperAdmin(session.user.role)
   ) {
     throw new ForbiddenError();
   }
