@@ -63,10 +63,17 @@ export async function auditSubmissionScopeWhere(
       SYSTEM_ROLE_SLUGS.SUPERVISOR
     );
     const agentFilter = caseInsensitiveIn(agentNames);
-    if (!agentFilter) {
-      return noAccessFilter();
-    }
-    return { agent: agentFilter };
+    const workingClause: Prisma.AuditSubmissionWhereInput | null = agentFilter
+      ? { agent: agentFilter, isHistory: false }
+      : null;
+    const historyClause: Prisma.AuditSubmissionWhereInput = {
+      historyOwnerId: ctx.userId,
+      isHistory: true,
+    };
+    return orClauses([
+      ...(workingClause ? [workingClause] : []),
+      historyClause,
+    ]);
   }
 
   if (roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {

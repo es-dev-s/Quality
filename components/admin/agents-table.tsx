@@ -2,18 +2,21 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { UserPlus } from "lucide-react";
+import { ArrowRightLeft, UserPlus } from "lucide-react";
 import { Button } from "@/components/primitives/button";
 import {
   DataTablePanel,
   usePaginatedRows,
 } from "@/components/primitives/data-table-panel";
+import { AgentTransferModal } from "@/components/admin/agent-transfer-modal";
 import type { AgentListItem } from "@/lib/actions/agents";
 
 type AgentsTableProps = {
   agents: AgentListItem[];
   canManage: boolean;
   canManageUsers?: boolean;
+  canTransferAgents?: boolean;
+  requiresTransferApproval?: boolean;
   onOpenUsersTab?: () => void;
   onOpenTeamTab?: () => void;
   embedded?: boolean;
@@ -23,11 +26,14 @@ export function AgentsTable({
   agents,
   canManage,
   canManageUsers = false,
+  canTransferAgents = false,
+  requiresTransferApproval = true,
   onOpenUsersTab,
   onOpenTeamTab,
   embedded = false,
 }: AgentsTableProps) {
   const [search, setSearch] = useState("");
+  const [transferAgent, setTransferAgent] = useState<AgentListItem | null>(null);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -42,23 +48,34 @@ export function AgentsTable({
 
   const pagination = usePaginatedRows(filtered);
 
-  const manageAgentsAction =
-    canManageUsers && onOpenUsersTab ? (
-      <Button size="sm" onClick={onOpenUsersTab}>
-        <UserPlus size={16} />
-        Manage in Users
-      </Button>
-    ) : !canManageUsers && onOpenTeamTab ? (
-      <Button size="sm" onClick={onOpenTeamTab}>
-        <UserPlus size={16} />
-        Request agent
-      </Button>
-    ) : canManageUsers && !onOpenUsersTab ? (
-      <Link href="/settings?tab=users" className="ui-btn ui-btn--primary ui-btn--sm">
-        <UserPlus size={16} />
-        Manage in Users
-      </Link>
-    ) : null;
+  const manageAgentsAction = (
+    <>
+      {canTransferAgents ? (
+        <Link
+          href="/audit-transfer-history"
+          className="ui-btn ui-btn--secondary ui-btn--sm"
+        >
+          Transfer history
+        </Link>
+      ) : null}
+      {canManageUsers && onOpenUsersTab ? (
+        <Button size="sm" onClick={onOpenUsersTab}>
+          <UserPlus size={16} />
+          Manage in Users
+        </Button>
+      ) : !canManageUsers && onOpenTeamTab ? (
+        <Button size="sm" onClick={onOpenTeamTab}>
+          <UserPlus size={16} />
+          Request agent
+        </Button>
+      ) : canManageUsers && !onOpenUsersTab ? (
+        <Link href="/settings?tab=users" className="ui-btn ui-btn--primary ui-btn--sm">
+          <UserPlus size={16} />
+          Manage in Users
+        </Link>
+      ) : null}
+    </>
+  );
 
   const emptyState =
     agents.length === 0 ? (
@@ -110,6 +127,7 @@ export function AgentsTable({
                     <th>Date of joining</th>
                     <th>Audits</th>
                     <th>Profile</th>
+                    {canTransferAgents ? <th>Actions</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -124,6 +142,18 @@ export function AgentsTable({
                           <span className="dash-cell-muted">Unassigned</span>
                         )}
                       </td>
+                      {canTransferAgents ? (
+                        <td>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setTransferAgent(agent)}
+                          >
+                            <ArrowRightLeft size={14} />
+                            Transfer
+                          </Button>
+                        </td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
@@ -139,6 +169,15 @@ export function AgentsTable({
           )}
         </div>
       </div>
+
+      <AgentTransferModal
+        agent={transferAgent}
+        open={transferAgent !== null}
+        requiresApproval={requiresTransferApproval}
+        onOpenChange={(open) => {
+          if (!open) setTransferAgent(null);
+        }}
+      />
     </div>
   );
 }

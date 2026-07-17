@@ -177,7 +177,7 @@ export function AuditDetailModal({
             </div>
           </div>
           <div className="adi-header__actions">
-            {detail && canEditAudits && (
+            {detail && canEditAudits && !detail.isHistory && (
               <Link
                 href={`/audit-logs/${detail.id}/edit`}
                 className="ui-btn ui-btn--secondary ui-btn--sm"
@@ -210,6 +210,13 @@ export function AuditDetailModal({
           {detail && (
             <LoadingZone loading={remarksPending} label="Saving remarks…">
             <div className="adi-content">
+
+              {detail.isHistory ? (
+                <div className="adi-history-banner" role="status">
+                  This audit is read-only history from an agent transfer. It cannot
+                  be edited.
+                </div>
+              ) : null}
 
               {/* ── KPI bar ──────────────────────────────────────── */}
               <div className="adi-kpis">
@@ -346,7 +353,7 @@ export function AuditDetailModal({
               {(canEditSupervisorRemarks || detail.supervisorRemarks.trim()) && (
                 <section className="adi-section adi-section--remarks">
                   <h3 className="adi-section__title">Supervisor remarks</h3>
-                  {canEditSupervisorRemarks ? (
+                  {canEditSupervisorRemarks && !detail.isHistory ? (
                     <>
                       <textarea
                         className="adi-remarks-input"

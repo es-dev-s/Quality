@@ -18,6 +18,7 @@ import {
   invalidateUserCaches,
 } from "@/lib/invalidate-cache";
 import { buildPasswordCredentials } from "@/lib/password-credentials";
+import { getPendingAgentTransfersForApproval } from "@/lib/actions/agent-transfer";
 import {
   canApproveAgentRequests,
   canApproveAnalystRequests,
@@ -265,6 +266,7 @@ export async function getTeamManagementData() {
       assignableAgents: [] as AssignableAgentRow[],
       assigneeOptions: [] as AssigneeOptionRow[],
       agentAssignments: [] as AgentAssignmentRow[],
+      pendingTransferRequests: [],
     };
   }
 
@@ -306,6 +308,7 @@ export async function getTeamManagementData() {
     assignableAgents,
     assigneeOptions,
     agentAssignments,
+    pendingTransferRequests,
   ] = await Promise.all([
     prisma.userProvisioningRequest.findMany({
       where: { requestedById: session.user.id },
@@ -397,6 +400,7 @@ export async function getTeamManagementData() {
             orderBy: { assignedAt: "desc" },
           })
       : Promise.resolve([]),
+    canApproveAgent ? getPendingAgentTransfersForApproval() : Promise.resolve([]),
   ]);
 
   let managedWithCounts: ManagedUserRow[] = [];
@@ -486,6 +490,7 @@ export async function getTeamManagementData() {
       assignToId: row.assignedTo.id,
       assignToName: resolveRoleUserName(row.assignedTo),
     })),
+    pendingTransferRequests,
   };
 }
 

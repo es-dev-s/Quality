@@ -34,6 +34,7 @@ export type AuditLogEntry = {
   referenceUrl: string | null;
   submittedBy: string;
   createdAt: string;
+  isHistory: boolean;
 };
 
 /** Full audit detail for the view modal. */
@@ -71,6 +72,7 @@ export type AuditDetail = {
   rows: AuditRow[];
   submittedBy: string;
   createdAt: string;
+  isHistory: boolean;
 };
 
 export type AuditEditPayload = {
@@ -95,6 +97,7 @@ export type DashboardAuditRecord = {
   finalPct: number;
   hasFatal: boolean;
   fatalList: string[];
+  isHistory: boolean;
 };
 
 export type DashboardAuditData = {

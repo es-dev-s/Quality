@@ -33,6 +33,13 @@ model User {
   securityAuditTargets SecurityAuditLog[]      @relation("SecurityAuditTarget")
   securityAuditActions SecurityAuditLog[]      @relation("SecurityAuditActor")
   notifications        Notification[]
+  agentTransfersAsAgent     AgentTransfer[] @relation("TransferAgent")
+  agentTransfersFrom        AgentTransfer[] @relation("TransferFromSupervisor")
+  agentTransfersTo          AgentTransfer[] @relation("TransferToSupervisor")
+  agentTransfersPerformed   AgentTransfer[] @relation("TransferPerformedBy")
+  agentTransfersAssignedReview AgentTransfer[] @relation("TransferAssignedReviewer")
+  agentTransfersReviewed    AgentTransfer[] @relation("TransferReviewedBy")
+  historyOwnedAudits        AuditSubmission[] @relation("HistoryOwner")
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
 
@@ -66,6 +73,48 @@ model AgentAssignment {
   @@index([assignedById])
   @@index([agentId])
   @@map("agent_assignments")
+}
+
+enum AgentTransferStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model AgentTransfer {
+  id                  String               @id @default(cuid())
+  agentUserId         String               @map("agent_user_id")
+  agentNameSnapshot   String               @map("agent_name_snapshot")
+  agentEmailSnapshot  String               @map("agent_email_snapshot")
+  fromSupervisorId    String               @map("from_supervisor_id")
+  toSupervisorId      String               @map("to_supervisor_id")
+  transferredById     String               @map("transferred_by_id")
+  assignedReviewerId  String?              @map("assigned_reviewer_id")
+  status              AgentTransferStatus  @default(PENDING)
+  note                String?
+  auditCountAtTransfer Int                 @default(0) @map("audit_count_at_transfer")
+  requestedAt         DateTime             @default(now()) @map("requested_at")
+  transferredAt       DateTime?            @map("transferred_at")
+  reviewedById          String?              @map("reviewed_by_id")
+  reviewedAt            DateTime?            @map("reviewed_at")
+  reviewNote            String?              @map("review_note")
+
+  agentUser         User  @relation("TransferAgent", fields: [agentUserId], references: [id], onDelete: Restrict)
+  fromSupervisor    User  @relation("TransferFromSupervisor", fields: [fromSupervisorId], references: [id], onDelete: Restrict)
+  toSupervisor      User  @relation("TransferToSupervisor", fields: [toSupervisorId], references: [id], onDelete: Restrict)
+  transferredBy     User  @relation("TransferPerformedBy", fields: [transferredById], references: [id], onDelete: Restrict)
+  assignedReviewer  User? @relation("TransferAssignedReviewer", fields: [assignedReviewerId], references: [id], onDelete: SetNull)
+  reviewedBy        User? @relation("TransferReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  historyAudits     AuditSubmission[]
+
+  @@index([fromSupervisorId])
+  @@index([toSupervisorId])
+  @@index([agentUserId])
+  @@index([status])
+  @@index([assignedReviewerId])
+  @@index([requestedAt])
+  @@index([transferredAt])
+  @@map("agent_transfers")
 }
 
 model SecurityAuditLog {
@@ -257,11 +306,19 @@ model AuditSubmission {
   catScores      Json
   rows           Json
   record         Json
+  isHistory         Boolean       @default(false) @map("is_history")
+  historyOwnerId    String?       @map("history_owner_id")
+  historyOwner      User?         @relation("HistoryOwner", fields: [historyOwnerId], references: [id], onDelete: SetNull)
+  historyTransferId String?       @map("history_transfer_id")
+  historyTransfer   AgentTransfer? @relation(fields: [historyTransferId], references: [id], onDelete: SetNull)
   notifications  Notification[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@index([agent])
+  @@index([isHistory])
+  @@index([historyOwnerId])
+  @@index([historyTransferId])
   @@index([lob])
   @@index([grade])
   @@index([createdAt])

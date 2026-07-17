@@ -191,6 +191,7 @@ export const ROUTE_PERMISSIONS: Record<string, Permission> = {
   "/forms/templates": PERMISSIONS.AUDIT_TEMPLATES_READ,
   "/settings": PERMISSIONS.SETTINGS_READ,
   "/import": PERMISSIONS.IMPORT_WRITE,
+  "/audit-transfer-history": PERMISSIONS.USERS_READ_MANAGED,
 };
 
 export function resolveRoutePermission(pathname: string): Permission | null {
@@ -209,6 +210,9 @@ export function resolveRoutePermission(pathname: string): Permission | null {
   }
   if (pathname.startsWith("/forms")) {
     return PERMISSIONS.AUDIT_FORM_READ;
+  }
+  if (pathname.startsWith("/audit-transfer-history")) {
+    return PERMISSIONS.USERS_READ_MANAGED;
   }
 
   return null;

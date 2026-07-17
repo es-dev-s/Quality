@@ -10,11 +10,13 @@ import { getInteractionConfigManagerData } from "@/lib/actions/interaction-confi
 import { requirePageAccess } from "@/lib/auth-guards";
 import {
   canAccessTeamManagement,
+  canManageManagedUsers,
   canManageRoles,
   canManageSettings,
   canManageUsers,
   canViewUserConnections,
 } from "@/lib/rbac";
+import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 
 type SettingsTab =
   | "agents"
@@ -64,6 +66,9 @@ async function SettingsContent({
   const manageUsers = canManageUsers(session.user.role);
   const manageRoles = canManageRoles(session.user.role);
   const showTeam = canAccessTeamManagement(session.user.role);
+  const canTransferAgents = canManageManagedUsers(session.user.role);
+  const requiresTransferApproval =
+    session.user.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR;
   const canManageInteraction = canManageSettings(session.user.role);
   const showConnections = canViewUserConnections(session.user.role);
   const initialTab = resolveInitialTab(
@@ -98,6 +103,8 @@ async function SettingsContent({
       roles={roles}
       agents={agentsData.agents}
       canManageAgents={canManageSettings(session.user.role)}
+      canTransferAgents={canTransferAgents}
+      requiresTransferApproval={requiresTransferApproval}
       interactionConfig={interaction?.config ?? null}
       interactionUpdatedAt={interaction?.updatedAt ?? ""}
       interactionConfigVersion={interaction?.configVersion ?? 0}

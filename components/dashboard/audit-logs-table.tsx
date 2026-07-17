@@ -13,6 +13,8 @@ import { FilterSelect } from "@/components/filters/filter-select";
 import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
 import { useBusyAction } from "@/lib/hooks/use-busy-action";
 import { AuditDetailModal } from "@/components/audit-logs/audit-detail-modal";
+import { HistoryBadge } from "@/components/audit/history-badge";
+import { HistoryFilterSection } from "@/components/audit/history-filter-section";
 import {
   ReferenceAttachmentView,
   referenceAttachmentSearchText,
@@ -34,6 +36,11 @@ import { ConfirmModal } from "@/components/primitives/confirm-modal";
 import { cn } from "@/lib/utils";
 import { deleteAuditSubmissions, getAuditExportRows, updateAuditFeedback } from "@/lib/actions/audit";
 import type { AuditLogEntry } from "@/lib/audit/audit-records";
+import {
+  defaultAuditHistoryFilter,
+  filterByAuditHistory,
+  type AuditHistoryFilter,
+} from "@/lib/audit/history-filter";
 import {
   FEEDBACK_SECURITY_OPTIONS,
   FEEDBACK_SEVERITY_LABEL,
@@ -217,6 +224,9 @@ export function AuditLogsTable({
   const [lob, setLob] = useState("");
   const [agent, setAgent] = useState("");
   const [feedbackStatus, setFeedbackStatus] = useState("");
+  const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
+    defaultAuditHistoryFilter(submissions)
+  );
   const [dateRange, setDateRange] = useState<DateRangeFilter>("all");
   const [customRange, setCustomRange] = useState<DateRangeValue>({ from: "", to: "" });
   const filterSidebar = useFilterSidebar();
@@ -425,7 +435,8 @@ export function AuditLogsTable({
 
   const filtered = useMemo(() => {
     const hasCustom = !!(customRange.from || customRange.to);
-    return rows.filter((row) => {
+    const historyScoped = filterByAuditHistory(rows, historyFilter);
+    return historyScoped.filter((row) => {
       if (!matchesSearch(row, search)) return false;
       if (!matchesScore(row, scorePreset)) return false;
       const metricDate = resolveMetricDate(row.auditDate, row.callDate);
@@ -442,7 +453,7 @@ export function AuditLogsTable({
       if (feedbackStatus && row.feedbackStatus !== feedbackStatus) return false;
       return true;
     });
-  }, [rows, search, scorePreset, dateRange, customRange, grade, type, businessType, lob, agent, feedbackStatus]);
+  }, [rows, historyFilter, search, scorePreset, dateRange, customRange, grade, type, businessType, lob, agent, feedbackStatus]);
 
   const paginationResetKey = useMemo(
     () =>
@@ -458,6 +469,7 @@ export function AuditLogsTable({
         lob,
         agent,
         feedbackStatus,
+        historyFilter,
         filtered.length,
       ].join("|"),
     [
@@ -472,6 +484,7 @@ export function AuditLogsTable({
       lob,
       agent,
       feedbackStatus,
+      historyFilter,
       filtered.length,
     ]
   );
@@ -657,6 +670,7 @@ export function AuditLogsTable({
     setLob("");
     setAgent("");
     setFeedbackStatus("");
+    setHistoryFilter(defaultAuditHistoryFilter(rows));
   };
 
   function patchRowFeedback(
@@ -671,6 +685,9 @@ export function AuditLogsTable({
       >
     >
   ) {
+    const current = rows.find((row) => row.id === id);
+    if (current?.isHistory) return;
+
     let nextRow: AuditLogEntry | undefined;
     let previousRow: AuditLogEntry | undefined;
 
@@ -740,9 +757,10 @@ export function AuditLogsTable({
   }
 
   const canEditRowFeedbackDateTime = (row: AuditLogEntry) =>
-    isSuperAdmin ||
-    canEditFeedbackFully ||
-    canEditFeedbackDateTimeForStatus(feedbackStatusRole, row.feedbackStatus);
+    !row.isHistory &&
+    (isSuperAdmin ||
+      canEditFeedbackFully ||
+      canEditFeedbackDateTimeForStatus(feedbackStatusRole, row.feedbackStatus));
 
   const resultLabel =
     rows.length === 0
@@ -894,6 +912,12 @@ export function AuditLogsTable({
               className="audit-logs__drp"
             />
           </FilterSidebarSection>
+
+          <HistoryFilterSection
+            value={historyFilter}
+            onChange={setHistoryFilter}
+            show={rows.some((row) => row.isHistory)}
+          />
 
           <FilterSidebarSection label="Details">
             <FilterSidebarGrid>
@@ -1101,7 +1125,7 @@ export function AuditLogsTable({
                         onChange={(e) =>
                           toggleRowSelection(row.id, e.target.checked)
                         }
-                        disabled={deletePending}
+                        disabled={deletePending || row.isHistory}
                         aria-label={`Select audit ${row.auditCode}`}
                       />
                     </td>
@@ -1115,6 +1139,12 @@ export function AuditLogsTable({
                         <span className="audit-logs__agent-name">{row.agent}</span>
                         <span className="audit-logs__agent-sub">
                           {row.auditCode}
+                          {row.isHistory ? (
+                            <>
+                              {" "}
+                              <HistoryBadge />
+                            </>
+                          ) : null}
                         </span>
                       </div>
                     </div>
@@ -1153,7 +1183,7 @@ export function AuditLogsTable({
                     <span className={gradeClass(row.grade)}>{row.grade}</span>
                   </td>
                   <td>
-                    {canEditFeedbackFully ? (
+                    {canEditFeedbackFully && !row.isHistory ? (
                       <Select
                         className={cn(
                           "audit-logs__feedback audit-logs__security",
@@ -1185,7 +1215,16 @@ export function AuditLogsTable({
                     )}
                   </td>
                   <td className="col-feedback-status">
-                    {isSuperAdmin || canEditFeedbackFully ? (
+                    {row.isHistory ? (
+                      <span
+                        className={cn(
+                          "audit-logs__feedback",
+                          feedbackClass(row.feedbackStatus)
+                        )}
+                      >
+                        {row.feedbackStatus}
+                      </span>
+                    ) : isSuperAdmin || canEditFeedbackFully ? (
                       <Select
                         className={cn(
                           "audit-logs__feedback",
@@ -1256,7 +1295,7 @@ export function AuditLogsTable({
                       >
                         <Eye size={15} aria-hidden />
                       </button>
-                      {canEditAudits ? (
+                      {canEditAudits && !row.isHistory ? (
                         <Link
                           href={`/audit-logs/${row.id}/edit`}
                           className="audit-logs__icon-action"
@@ -1272,7 +1311,7 @@ export function AuditLogsTable({
                           className="audit-logs__icon-action audit-logs__icon-action--danger"
                           title="Delete audit"
                           aria-label={`Delete audit for ${row.agent}`}
-                          disabled={deletePending}
+                          disabled={deletePending || row.isHistory}
                           onClick={() => openDeleteConfirm([row.id])}
                         >
                           <Trash2 size={15} aria-hidden />

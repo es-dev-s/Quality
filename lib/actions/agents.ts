@@ -34,6 +34,7 @@ function revalidateAgentPaths() {
   revalidatePath("/audit-logs");
   revalidatePath("/analytics");
   revalidatePath("/dashboard");
+  revalidatePath("/audit-transfer-history");
 }
 
 function invalidateAgentsAfterMutation() {

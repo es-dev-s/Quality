@@ -56,6 +56,7 @@ import {
 } from "@/lib/reports/audit-export-row";
 import { invalidateAuditCaches } from "@/lib/invalidate-cache";
 import { AUDIT_LOG_LIST_SELECT } from "@/lib/select-shapes";
+import { assertAuditNotHistory } from "@/lib/audit/history-guard";
 import { ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
 import {
@@ -120,6 +121,8 @@ function revalidateAuditPaths() {
   revalidatePath("/audit-logs");
   revalidatePath("/analytics");
   revalidatePath("/reports");
+  revalidatePath("/audit-transfer-history");
+  revalidatePath("/settings");
 }
 
 function recordFromStoredSubmission(
@@ -433,6 +436,7 @@ type AuditLogRow = {
   mobile: string | null;
   submittedBy: { name: string | null; email: string };
   createdAt: Date | string;
+  isHistory: boolean;
 };
 
 function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
@@ -468,6 +472,7 @@ function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
     referenceUrl: legacy.referenceUrl || null,
     submittedBy: s.submittedBy.name ?? s.submittedBy.email,
     createdAt: toIsoTimestamp(s.createdAt),
+    isHistory: s.isHistory,
   };
 }
 
@@ -625,6 +630,7 @@ export async function getAuditDetail(id: string) {
     submittedBy:
       submission.submittedBy.name ?? submission.submittedBy.email,
     createdAt: submission.createdAt.toISOString(),
+    isHistory: submission.isHistory,
   } satisfies AuditDetail;
 }
 
@@ -699,6 +705,7 @@ export async function getAuditForEdit(id: string): Promise<AuditEditPayload | nu
 
   const submission = await fetchAuditSubmissionById(session, parsedId.data.id);
   if (!submission) return null;
+  if (submission.isHistory) return null;
 
   const templateId = resolveSubmissionTemplateId(
     submission.templateId,
@@ -757,6 +764,11 @@ export async function updateAuditSubmission(
     templateId: validTemplateId,
   } = parsed.data;
 
+  const historyError = await assertAuditNotHistory(validId);
+  if (historyError) {
+    return validationError(historyError);
+  }
+
   const template = await fetchAuditTemplateForEdit(
     validTemplateId,
     validFormData.type
@@ -787,6 +799,7 @@ export async function updateAuditSubmission(
       id: true,
       auditCode: true,
       hasFatal: true,
+      isHistory: true,
       feedbackSecurity: true,
       feedbackStatus: true,
       feedbackDate: true,
@@ -797,6 +810,9 @@ export async function updateAuditSubmission(
   });
   if (!existing) {
     return { error: "Audit not found." };
+  }
+  if (existing.isHistory) {
+    return { error: "History audits cannot be edited." };
   }
 
   const feedbackResult = normalizeFormFeedbackForSave(validFormData, {
@@ -942,6 +958,7 @@ export async function updateAuditFeedback(
     where: await scopedAuditByIdWhere(session, parsed.data.id),
     select: {
       id: true,
+      isHistory: true,
       feedbackSecurity: true,
       feedbackStatus: true,
       feedbackDate: true,
@@ -950,6 +967,9 @@ export async function updateAuditFeedback(
   });
   if (!existing) {
     return { error: "Audit not found." };
+  }
+  if (existing.isHistory) {
+    return { error: "History audits cannot be edited." };
   }
 
   const previousStatus = parseFeedbackStatus(existing.feedbackStatus);
@@ -1075,6 +1095,11 @@ export async function updateSupervisorRemarks(
     );
   }
 
+  const historyError = await assertAuditNotHistory(parsed.data.id);
+  if (historyError) {
+    return validationError(historyError);
+  }
+
   const updated = await prisma.auditSubmission.updateMany({
     where: await scopedAuditByIdWhere(session, parsed.data.id),
     data: { supervisorRemarks: parsed.data.supervisorRemarks },
@@ -1114,6 +1139,13 @@ export async function deleteAuditSubmissions(ids: string[]) {
   }
 
   const uniqueIds = [...new Set(parsed.data.ids)];
+
+  const historyCount = await prisma.auditSubmission.count({
+    where: { id: { in: uniqueIds }, isHistory: true },
+  });
+  if (historyCount > 0) {
+    return { error: "History audits cannot be deleted." };
+  }
 
   try {
     const result = await prisma.auditSubmission.deleteMany({
@@ -1193,6 +1225,7 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
         finalPct: s.finalPct,
         hasFatal: s.hasFatal,
         fatalList: parseFatalList(s.fatalList),
+        isHistory: s.isHistory,
       })),
       fetchedAt: new Date().toISOString(),
       dbError: null as string | null,

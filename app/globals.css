@@ -4363,3 +4363,35 @@ textarea {
   background: var(--color-muted);
   color: var(--color-danger);
 }
+
+.audit-history-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-muted-fg);
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+.audit-logs__code-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.adi-history-banner {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-muted);
+  color: var(--color-muted-fg);
+  font-size: 13px;
+}

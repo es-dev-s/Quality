@@ -38,6 +38,7 @@ async function fetchAnalyticsRecords(
       feedbackSecurity: true,
       reason: true,
       fatalList: true,
+      isHistory: true,
       rows: true,
       catScores: true,
     },
@@ -59,6 +60,7 @@ async function fetchAnalyticsRecords(
     feedbackSecurity: parseFeedbackSecurity(s.feedbackSecurity),
     reason: s.reason,
     fatalList: s.fatalList,
+    isHistory: s.isHistory,
     rows: parseRows(s.rows),
     catScores: parseCatScores(s.catScores),
   }));

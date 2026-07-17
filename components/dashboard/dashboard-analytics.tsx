@@ -18,7 +18,13 @@ import { FilterSelect } from "@/components/filters/filter-select";
 import { LoadingZone } from "@/components/primitives/loading-zone";
 import { cn } from "@/lib/utils";
 import { FatalOccurrencesModal } from "@/components/dashboard/fatal-occurrences-modal";
+import { HistoryFilterSection } from "@/components/audit/history-filter-section";
 import type { DashboardAuditData } from "@/lib/audit/audit-records";
+import {
+  defaultAuditHistoryFilter,
+  filterByAuditHistory,
+  type AuditHistoryFilter,
+} from "@/lib/audit/history-filter";
 import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
 import {
   auditorInitials,
@@ -104,6 +110,9 @@ export function DashboardAnalytics({
     useState<TrendGranularity>("week");
   const [includeFilters, setIncludeFilters] =
     useState<DashboardIncludeFilters>(EMPTY_INCLUDE_FILTERS);
+  const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
+    defaultAuditHistoryFilter(data.records ?? [])
+  );
   const [agentTarget, setAgentTarget] = useState(DEFAULT_AGENT_TARGET);
   const [totalMonthlyTarget, setTotalMonthlyTarget] = useState<number | null>(
     null
@@ -124,9 +133,14 @@ export function DashboardAnalytics({
   const showAgentFilter =
     canFilterByAgent(roleSlug) && filterOptions.agents.length > 0;
 
+  const historyScopedRecords = useMemo(
+    () => filterByAuditHistory(records, historyFilter),
+    [records, historyFilter]
+  );
+
   const scopedRecords = useMemo(
-    () => filterByIncludeFilters(records, includeFilters),
-    [records, includeFilters]
+    () => filterByIncludeFilters(historyScopedRecords, includeFilters),
+    [historyScopedRecords, includeFilters]
   );
 
   const filtered = useMemo(() => {
@@ -427,6 +441,12 @@ export function DashboardAnalytics({
             label="Custom date range"
           />
         </FilterSidebarSection>
+
+        <HistoryFilterSection
+          value={historyFilter}
+          onChange={setHistoryFilter}
+          show={records.some((row) => row.isHistory)}
+        />
 
         <FilterSidebarSection label="Trend view">
           <label className="dash-filter">

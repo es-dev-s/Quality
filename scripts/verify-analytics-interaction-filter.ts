@@ -29,6 +29,7 @@ const callAudit: AnalyticsAuditRecord = {
   qualityPct: 80,
   finalPct: 80,
   hasFatal: false,
+  isHistory: false,
   feedbackStatus: "Pending",
   feedbackSecurity: "NA",
   catScores: {

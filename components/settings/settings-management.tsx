@@ -108,6 +108,10 @@ type SettingsManagementProps = {
 
   canManageAgents: boolean;
 
+  canTransferAgents?: boolean;
+
+  requiresTransferApproval?: boolean;
+
   interactionConfig: InteractionConfig | null;
 
   interactionUpdatedAt: string;
@@ -143,6 +147,10 @@ export function SettingsManagement({
   agents,
 
   canManageAgents,
+
+  canTransferAgents = false,
+
+  requiresTransferApproval = true,
 
   interactionConfig,
 
@@ -466,6 +474,10 @@ export function SettingsManagement({
               canManage={canManageAgents}
 
               canManageUsers={canManageUsers}
+
+              canTransferAgents={canTransferAgents}
+
+              requiresTransferApproval={requiresTransferApproval}
 
               onOpenUsersTab={canManageUsers ? () => setTab("users") : undefined}
 

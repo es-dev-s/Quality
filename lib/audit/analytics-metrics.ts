@@ -31,6 +31,7 @@ export type AnalyticsAuditRecord = {
   hasFatal: boolean;
   feedbackStatus: string;
   feedbackSecurity: FeedbackSecurity;
+  isHistory: boolean;
   rows: AuditRow[];
   catScores: Record<string, CategoryScore>;
 };

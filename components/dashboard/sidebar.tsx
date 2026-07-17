@@ -6,6 +6,7 @@ import {
   BarChart3,
   ClipboardList,
   FileText,
+  History,
   LayoutDashboard,
   PhoneCall,
   Plus,
@@ -40,6 +41,12 @@ const mainNav = [
     href: "/analytics",
     icon: BarChart3,
     permission: PERMISSIONS.ANALYTICS_READ,
+  },
+  {
+    title: "Transfer History",
+    href: "/audit-transfer-history",
+    icon: History,
+    permission: PERMISSIONS.USERS_READ_MANAGED,
   },
   {
     title: "Reports",

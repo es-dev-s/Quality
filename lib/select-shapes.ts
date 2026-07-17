@@ -25,6 +25,7 @@ export const AUDIT_LOG_LIST_SELECT = {
   supervisorRemarks: true,
   referenceUrl: true,
   mobile: true,
+  isHistory: true,
   createdAt: true,
   submittedBy: { select: { name: true, email: true } },
 } satisfies Prisma.AuditSubmissionSelect;
@@ -43,6 +44,7 @@ export const AUDIT_DASHBOARD_SELECT = {
   finalPct: true,
   hasFatal: true,
   fatalList: true,
+  isHistory: true,
 } satisfies Prisma.AuditSubmissionSelect;
 
 export const AUDIT_CURSOR_SELECT = {

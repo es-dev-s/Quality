@@ -41,6 +41,11 @@ import {
   assignAgentsToUser,
   removeAgentFromUser,
 } from "@/lib/actions/agent-assignment";
+import {
+  approveAgentTransferRequest,
+  rejectAgentTransferRequest,
+  type PendingAgentTransferRow,
+} from "@/lib/actions/agent-transfer";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 
 type TeamManagementProps = {
@@ -58,6 +63,7 @@ type TeamManagementProps = {
   assignableAgents: AssignableAgentRow[];
   assigneeOptions: AssigneeOptionRow[];
   agentAssignments: AgentAssignmentRow[];
+  pendingTransferRequests: PendingAgentTransferRow[];
   embedded?: boolean;
 };
 
@@ -549,8 +555,120 @@ function PendingApprovalsTable({
   );
 }
 
+function PendingTransferApprovalsTable({
+  rows,
+  onReview,
+  pendingId,
+  fillViewport = false,
+}: {
+  rows: PendingAgentTransferRow[];
+  onReview: (id: string, action: "approve" | "reject") => void;
+  pendingId: string | null;
+  fillViewport?: boolean;
+}) {
+  const [search, setSearch] = useState("");
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (row) =>
+        row.agentName.toLowerCase().includes(q) ||
+        row.agentEmail.toLowerCase().includes(q) ||
+        row.fromSupervisorName.toLowerCase().includes(q) ||
+        row.toSupervisorName.toLowerCase().includes(q) ||
+        row.requestedByName.toLowerCase().includes(q) ||
+        (row.note ?? "").toLowerCase().includes(q)
+    );
+  }, [rows, search]);
+
+  const pagination = usePaginatedRows(filteredRows);
+
+  if (rows.length === 0) {
+    return (
+      <p className="platform-empty platform-empty--inline">
+        No pending agent transfer requests.
+      </p>
+    );
+  }
+
+  return (
+    <DataTablePanel
+      pagination={pagination}
+      fillViewport={fillViewport}
+      summaryLabel={`${filteredRows.length} of ${rows.length} transfer request${
+        rows.length === 1 ? "" : "s"
+      }`}
+      search={{
+        value: search,
+        onChange: setSearch,
+        placeholder: "Search transfer requests…",
+        ariaLabel: "Search transfer requests",
+      }}
+      emptyState={<p>No transfer requests match your search.</p>}
+      renderTable={(slice) => (
+        <table className="ui-table platform-report-table settings-table team-approvals-table">
+          <colgroup>
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "18%" }} />
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "10%" }} />
+            <col className="col-actions" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Agent</th>
+              <th>Email</th>
+              <th>From</th>
+              <th>To</th>
+              <th>Requested by</th>
+              <th>Audits</th>
+              <th>Submitted</th>
+              <th className="col-actions" aria-label="Actions" />
+            </tr>
+          </thead>
+          <tbody>
+            {slice.map((row) => (
+              <tr key={row.id} className="settings-table__row">
+                <td style={{ fontWeight: 600 }}>{row.agentName}</td>
+                <td>{row.agentEmail}</td>
+                <td>{row.fromSupervisorName}</td>
+                <td>{row.toSupervisorName}</td>
+                <td>{row.requestedByName}</td>
+                <td>{row.pendingAuditCount}</td>
+                <td>{new Date(row.requestedAt).toLocaleDateString()}</td>
+                <TableRowActionsCell ariaLabel={`Review transfer for ${row.agentName}`}>
+                  <TableRowAction
+                    disabled={pendingId === row.id}
+                    onClick={() => onReview(row.id, "approve")}
+                  >
+                    <Check size={14} aria-hidden />
+                    Approve
+                  </TableRowAction>
+                  <TableRowAction
+                    variant="danger"
+                    disabled={pendingId === row.id}
+                    onClick={() => onReview(row.id, "reject")}
+                  >
+                    <X size={14} aria-hidden />
+                    Reject
+                  </TableRowAction>
+                </TableRowActionsCell>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    />
+  );
+}
+
 type TeamSubTabId =
   | "agent-requests"
+  | "transfer-requests"
   | "analyst-requests"
   | "assignments"
   | "members"
@@ -1206,6 +1324,7 @@ export function TeamManagement({
   assignableAgents,
   assigneeOptions,
   agentAssignments,
+  pendingTransferRequests,
   embedded = false,
 }: TeamManagementProps) {
   const router = useRouter();
@@ -1305,6 +1424,11 @@ export function TeamManagement({
         label: "Agent requests",
         count: pendingAgentApprovals.length,
       });
+      tabs.push({
+        id: "transfer-requests",
+        label: "Transfer requests",
+        count: pendingTransferRequests.length,
+      });
     }
     if (canApproveAnalyst) {
       tabs.push({
@@ -1342,6 +1466,7 @@ export function TeamManagement({
     canReadManaged,
     showMyRequests,
     pendingAgentApprovals.length,
+    pendingTransferRequests.length,
     pendingAnalystApprovals.length,
     agentAssignments.length,
     managedUsers.length,
@@ -1380,6 +1505,29 @@ export function TeamManagement({
       )}
     </>
   );
+
+  function handleTransferReview(id: string, action: "approve" | "reject") {
+    startTransition(async () => {
+      setPendingId(id);
+      const result =
+        action === "reject"
+          ? await rejectAgentTransferRequest({ transferId: id })
+          : await approveAgentTransferRequest({ transferId: id });
+
+      setPendingId(null);
+
+      if ("error" in result && result.error) {
+        toast(result.error, "error");
+        return;
+      }
+
+      toast(
+        "message" in result && result.message ? result.message : "Updated",
+        "success"
+      );
+      router.refresh();
+    });
+  }
 
   function handleReview(
     id: string,
@@ -1523,6 +1671,21 @@ export function TeamManagement({
               <PendingApprovalsTable
                 rows={pendingAgentApprovals}
                 onReview={handleReview}
+                pendingId={pending || pendingId ? pendingId : null}
+                fillViewport={embedded}
+              />
+            </TeamTabPanel>
+          ) : null}
+
+          {subTab === "transfer-requests" && canApproveAgent ? (
+            <TeamTabPanel
+              title="Pending agent transfer requests"
+              description="Review supervisor-initiated transfers before an agent moves to a new supervisor."
+              table
+            >
+              <PendingTransferApprovalsTable
+                rows={pendingTransferRequests}
+                onReview={handleTransferReview}
                 pendingId={pending || pendingId ? pendingId : null}
                 fillViewport={embedded}
               />

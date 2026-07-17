@@ -48,6 +48,12 @@ import {
 } from "@/lib/audit/analytics-role-config";
 import type { AnalyticsSortOrder } from "@/lib/audit/analytics-sort";
 import { QmsSortToggle } from "@/components/analytics/analytics-controls";
+import { HistoryFilterSection } from "@/components/audit/history-filter-section";
+import {
+  defaultAuditHistoryFilter,
+  filterByAuditHistory,
+  type AuditHistoryFilter,
+} from "@/lib/audit/history-filter";
 
 type QmsAnalyticsProps = {
   data: AnalyticsPageData;
@@ -74,6 +80,9 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
   );
   const [interactionFilter, setInteractionFilter] =
     useState<AnalyticsInteractionFilter>(DEFAULT_ANALYTICS_INTERACTION_FILTER);
+  const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
+    defaultAuditHistoryFilter(initialData.records)
+  );
   const filterSidebar = useFilterSidebar();
   const { busy: isLoading, run: runBusy } = useBusyAction();
   const [error, setError] = useState<string | null>(null);
@@ -96,16 +105,28 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
     [records]
   );
 
+  const historyScopedRecords = useMemo(
+    () => filterByAuditHistory(records, historyFilter),
+    [records, historyFilter]
+  );
+
   const analyticsView = useMemo(
     () =>
-      applyAnalyticsFilters(records, {
+      applyAnalyticsFilters(historyScopedRecords, {
         period,
         customRange,
         includeFilters,
         interactionFilter,
         referenceNow,
       }),
-    [records, period, customRange, includeFilters, interactionFilter, referenceNow]
+    [
+      historyScopedRecords,
+      period,
+      customRange,
+      includeFilters,
+      interactionFilter,
+      referenceNow,
+    ]
   );
 
   const analytics = useMemo(
@@ -363,6 +384,12 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
             label="Custom date range"
           />
         </FilterSidebarSection>
+
+        <HistoryFilterSection
+          value={historyFilter}
+          onChange={setHistoryFilter}
+          show={records.some((row) => row.isHistory)}
+        />
 
         <FilterSidebarSection label="Interaction type">
           <div

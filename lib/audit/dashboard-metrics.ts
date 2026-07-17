@@ -15,6 +15,7 @@ export type DashboardAuditRecord = {
   finalPct: number;
   hasFatal: boolean;
   fatalList: string[];
+  isHistory?: boolean;
 };
 
 export type FatalOccurrenceRow = {
