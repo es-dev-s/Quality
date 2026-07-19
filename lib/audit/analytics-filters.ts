@@ -60,7 +60,8 @@ function asDashboardRecords(records: AnalyticsAuditRecord[]): DashboardAuditReco
 }
 
 export function extractAnalyticsFilterOptions(
-  records: AnalyticsAuditRecord[]
+  records: AnalyticsAuditRecord[],
+  rosterAgentNames: string[] = []
 ): AnalyticsFilterOptions {
   const agents = new Set<string>();
   const teamNames = new Set<string>();
@@ -70,6 +71,10 @@ export function extractAnalyticsFilterOptions(
     if (record.agent) agents.add(record.agent);
     if (record.supervisor) teamNames.add(record.supervisor);
     if (record.auditor) auditors.add(record.auditor);
+  }
+
+  for (const name of rosterAgentNames) {
+    if (name.trim()) agents.add(name.trim());
   }
 
   const sort = (values: Set<string>) =>

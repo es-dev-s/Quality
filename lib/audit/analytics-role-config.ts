@@ -40,6 +40,14 @@ const ROLE_ANALYTICS_TABS: Record<SystemRoleSlug, AnalyticsTabId[]> = {
     "compliance",
     "leaderboards",
   ],
+  [SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR]: [
+    "overview",
+    "parameters",
+    "teams",
+    "agents",
+    "compliance",
+    "leaderboards",
+  ],
   [SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]: [
     "overview",
     "parameters",

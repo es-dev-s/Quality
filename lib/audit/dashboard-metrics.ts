@@ -96,6 +96,19 @@ export function extractFilterOptions(
   };
 }
 
+/** Include roster agents so newly transferred agents appear before their first audit. */
+export function mergeRosterIntoFilterOptions(
+  options: DashboardFilterOptions,
+  rosterAgentNames: string[]
+): DashboardFilterOptions {
+  if (rosterAgentNames.length === 0) return options;
+  const agents = new Set([...options.agents, ...rosterAgentNames.filter(Boolean)]);
+  return {
+    ...options,
+    agents: Array.from(agents).sort((a, b) => a.localeCompare(b)),
+  };
+}
+
 export function filterByIncludeFilters(
   records: DashboardAuditRecord[],
   filters: DashboardIncludeFilters

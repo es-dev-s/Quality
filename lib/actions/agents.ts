@@ -9,6 +9,7 @@ import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { prisma } from "@/lib/prisma";
 import { cacheScopeFromSession } from "@/lib/cache";
 import { getCachedAgentsForManagement } from "@/lib/cached-queries/agents";
+import { getPendingTransferAgentIdsForSession } from "@/lib/actions/agent-transfer";
 import { invalidateAgentCaches } from "@/lib/invalidate-cache";
 
 const isoDateSchema = z
@@ -50,6 +51,7 @@ export type AgentListItem = {
   dateOfJoining: string | null;
   auditCount: number;
   createdAt: string;
+  pendingTransfer?: boolean;
 };
 
 export type AgentMutationResult =
@@ -80,7 +82,18 @@ export async function getAgentsForManagement(): Promise<{
 }> {
   const session = await requireAuth();
   const scope = cacheScopeFromSession(session);
-  return getCachedAgentsForManagement(scope)();
+  const [result, pendingIds] = await Promise.all([
+    getCachedAgentsForManagement(scope)(),
+    getPendingTransferAgentIdsForSession().catch(() => [] as string[]),
+  ]);
+  const pendingSet = new Set(pendingIds);
+  return {
+    canManage: result.canManage,
+    agents: result.agents.map((agent) => ({
+      ...agent,
+      pendingTransfer: pendingSet.has(agent.id),
+    })),
+  };
 }
 
 export async function createAgent(input: {

@@ -133,7 +133,17 @@ export function AgentsTable({
                 <tbody>
                   {slice.map((agent) => (
                     <tr key={agent.id}>
-                      <td style={{ fontWeight: 500 }}>{agent.name}</td>
+                      <td style={{ fontWeight: 500 }}>
+                        <span>{agent.name}</span>
+                        {agent.pendingTransfer ? (
+                          <span
+                            className="platform-tag platform-tag--warning"
+                            style={{ marginLeft: 8 }}
+                          >
+                            Pending transfer
+                          </span>
+                        ) : null}
+                      </td>
                       <td>{agent.email}</td>
                       <td>{agent.dateOfJoining ?? "—"}</td>
                       <td>{agent.auditCount}</td>
@@ -147,6 +157,7 @@ export function AgentsTable({
                           <Button
                             size="sm"
                             variant="secondary"
+                            disabled={agent.pendingTransfer}
                             onClick={() => setTransferAgent(agent)}
                           >
                             <ArrowRightLeft size={14} />

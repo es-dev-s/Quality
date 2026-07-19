@@ -46,6 +46,8 @@ export const DATA_VISIBILITY: Record<SystemRoleSlug, string> = {
   [SYSTEM_ROLE_SLUGS.AGENT]: "Own audit records only",
   [SYSTEM_ROLE_SLUGS.SUPERVISOR]:
     "Agents created or assigned to this supervisor (after QM approval)",
+  [SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR]:
+    "Same as Supervisor — can also submit call/chat audits for their team",
   [SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]:
     "Audits for aligned agents and records where this user is the analyst",
   [SYSTEM_ROLE_SLUGS.QUALITY_MANAGER]:
@@ -57,6 +59,7 @@ export const DATA_VISIBILITY: Record<SystemRoleSlug, string> = {
 export const ACCESS_SCOPE_LABEL: Record<SystemRoleSlug, string> = {
   [SYSTEM_ROLE_SLUGS.AGENT]: "Read",
   [SYSTEM_ROLE_SLUGS.SUPERVISOR]: "Read",
+  [SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR]: "Read",
   [SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]: "Read",
   [SYSTEM_ROLE_SLUGS.QUALITY_MANAGER]: "Partial",
   [SYSTEM_ROLE_SLUGS.ADMIN]: "Partial",
@@ -172,6 +175,7 @@ export function getModuleAccessMatrix(
 export const SYSTEM_ROLE_ORDER: SystemRoleSlug[] = [
   SYSTEM_ROLE_SLUGS.AGENT,
   SYSTEM_ROLE_SLUGS.SUPERVISOR,
+  SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR,
   SYSTEM_ROLE_SLUGS.QUALITY_ANALYST,
   SYSTEM_ROLE_SLUGS.QUALITY_MANAGER,
   SYSTEM_ROLE_SLUGS.ADMIN,
@@ -193,6 +197,15 @@ export const EXPECTED_SYSTEM_ROLE_MATRIX: Record<
     overview: "Read",
     auditLogs: "Read",
     analytics: "Read",
+    settings: "Partial",
+    team: "Read/Write",
+    feedback: "Read",
+  },
+  [SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR]: {
+    overview: "Read",
+    auditLogs: "Read",
+    analytics: "Read",
+    auditForm: "Read/Write",
     settings: "Partial",
     team: "Read/Write",
     feedback: "Read",

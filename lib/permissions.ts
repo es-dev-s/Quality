@@ -61,6 +61,13 @@ export const SUPERVISOR_TIER_PERMISSIONS: Permission[] = [
   PERMISSIONS.USERS_MANAGE_MANAGED,
 ];
 
+/** Learn Lab / Training Unit — supervisor tier + audit forms (self as auditor). */
+export const TRAINING_SUPERVISOR_TIER_PERMISSIONS: Permission[] = [
+  ...SUPERVISOR_TIER_PERMISSIONS,
+  PERMISSIONS.AUDIT_FORM_READ,
+  PERMISSIONS.AUDIT_FORM_WRITE,
+];
+
 /** Quality Analyst: supervisor tier + audit forms + feedback status changes. */
 export const QUALITY_ANALYST_TIER_PERMISSIONS: Permission[] = [
   ...SUPERVISOR_TIER_PERMISSIONS,
@@ -72,6 +79,7 @@ export const QUALITY_ANALYST_TIER_PERMISSIONS: Permission[] = [
 export const SYSTEM_ROLE_SLUGS = {
   AGENT: "agent",
   SUPERVISOR: "supervisor",
+  TRAINING_SUPERVISOR: "training-supervisor",
   QUALITY_ANALYST: "quality-analyst",
   QUALITY_MANAGER: "quality-manager",
   ADMIN: LEGACY_ADMIN_ROLE_SLUG,
@@ -105,6 +113,12 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleSlug, RoleDefinition> = {
     description:
       "Team-management tier: onboard agents (QM approval), view scoped audits.",
     permissions: [...SUPERVISOR_TIER_PERMISSIONS],
+  },
+  [SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR]: {
+    name: "Training Supervisor",
+    description:
+      "Learn Lab / Training Unit supervisor who can audit call and chat interactions for their team.",
+    permissions: [...TRAINING_SUPERVISOR_TIER_PERMISSIONS],
   },
   [SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]: {
     name: "Quality Analyst",

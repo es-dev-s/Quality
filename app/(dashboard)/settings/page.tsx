@@ -17,6 +17,7 @@ import {
   canViewUserConnections,
 } from "@/lib/rbac";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { isSupervisorTierRole } from "@/lib/audit/supervisor-tier";
 
 type SettingsTab =
   | "agents"
@@ -67,8 +68,7 @@ async function SettingsContent({
   const manageRoles = canManageRoles(session.user.role);
   const showTeam = canAccessTeamManagement(session.user.role);
   const canTransferAgents = canManageManagedUsers(session.user.role);
-  const requiresTransferApproval =
-    session.user.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR;
+  const requiresTransferApproval = isSupervisorTierRole(session.user.role.slug);
   const canManageInteraction = canManageSettings(session.user.role);
   const showConnections = canViewUserConnections(session.user.role);
   const initialTab = resolveInitialTab(

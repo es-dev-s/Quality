@@ -102,6 +102,7 @@ export type DashboardAuditRecord = {
 
 export type DashboardAuditData = {
   records: DashboardAuditRecord[];
+  rosterAgentNames: string[];
   fetchedAt: string;
   dbError: string | null;
 };

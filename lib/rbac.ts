@@ -9,6 +9,7 @@ import {
   type Permission,
   type SystemRoleSlug,
 } from "@/lib/permissions";
+import { isSupervisorTierRole } from "@/lib/audit/supervisor-tier";
 
 export type SessionRole = {
   id: string;
@@ -213,7 +214,7 @@ export function canEditSupervisorRemarks(role?: SessionRole | null): boolean {
   if (!role) return false;
   if (isSuperAdmin(role)) return true;
   return (
-    role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR ||
+    isSupervisorTierRole(role.slug) ||
     role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
   );
 }

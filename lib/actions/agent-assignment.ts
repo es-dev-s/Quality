@@ -12,6 +12,7 @@ import {
 } from "@/lib/audit/agent-roster";
 import { prisma } from "@/lib/prisma";
 import { PERMISSIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { isSupervisorTierRole } from "@/lib/audit/supervisor-tier";
 import { isSuperAdmin, type SessionRole } from "@/lib/rbac";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { invalidateAgentAssignmentCaches } from "@/lib/invalidate-cache";
@@ -283,7 +284,7 @@ export async function getMyVisibleAgents(): Promise<MyAgentRow[]> {
   const slug = session.user.role.slug;
 
   if (
-    slug === SYSTEM_ROLE_SLUGS.SUPERVISOR ||
+    isSupervisorTierRole(slug) ||
     slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST ||
     slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
   ) {

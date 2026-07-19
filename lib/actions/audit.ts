@@ -57,6 +57,9 @@ import {
 import { invalidateAuditCaches } from "@/lib/invalidate-cache";
 import { AUDIT_LOG_LIST_SELECT } from "@/lib/select-shapes";
 import { assertAuditNotHistory } from "@/lib/audit/history-guard";
+import { fetchAgentRosterNames } from "@/lib/audit/agent-roster";
+import { canFilterByAgent } from "@/lib/audit/agent-filter-access";
+import { dataScopeFromSession } from "@/lib/audit/data-scope";
 import { ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
 import {
@@ -1206,9 +1209,13 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
 
   try {
     const cacheScope = cacheScopeFromSession(session);
-    const submissions = await withDbRetry(() =>
-      getCachedDashboardRecords(cacheScope)()
-    );
+    const ctx = dataScopeFromSession(session);
+    const [submissions, rosterAgentNames] = await Promise.all([
+      withDbRetry(() => getCachedDashboardRecords(cacheScope)()),
+      canFilterByAgent(session.user.role.slug)
+        ? fetchAgentRosterNames(ctx.userId, ctx.role.slug)
+        : Promise.resolve([] as string[]),
+    ]);
 
     return {
       records: submissions.map((s) => ({
@@ -1227,6 +1234,7 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
         fatalList: parseFatalList(s.fatalList),
         isHistory: s.isHistory,
       })),
+      rosterAgentNames,
       fetchedAt: new Date().toISOString(),
       dbError: null as string | null,
     };
@@ -1234,6 +1242,7 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
     console.error("getDashboardAuditData failed:", error);
     return {
       records: [],
+      rosterAgentNames: [],
       fetchedAt: new Date().toISOString(),
       dbError:
         "Unable to reach the database. Use the Supabase session pooler (pooler.supabase.com:5432) in DATABASE_URL or DATABASE_URL_SESSION — not db.*.supabase.co.",

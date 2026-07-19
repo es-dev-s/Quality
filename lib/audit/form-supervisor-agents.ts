@@ -1,10 +1,14 @@
 import {
-  fetchProvisionedAgentNamesBySupervisorUserIds,
+  fetchProvisionedAgentEntriesBySupervisorUserIds,
   filterAgentNamesToVisibleSet,
 } from "@/lib/audit/agent-roster";
+import { fetchVisibleAgentUserIds } from "@/lib/audit/agent-assignment-scope";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
 import { SYSTEM_ROLE_SLUGS, type SystemRoleSlug } from "@/lib/permissions";
 import { isSuperAdmin, type SessionRole } from "@/lib/rbac";
+import {
+  SUPERVISOR_TIER_ROLE_SLUG_FILTER,
+} from "@/lib/audit/supervisor-tier";
 import { withActiveUserFilter } from "@/lib/user-active-filter";
 import { prisma } from "@/lib/prisma";
 
@@ -61,7 +65,7 @@ export async function buildSupervisorAgentMap(
 
   const supervisorUsers = await prisma.user.findMany({
     where: withActiveUserFilter({
-      role: { slug: SYSTEM_ROLE_SLUGS.SUPERVISOR },
+      role: { slug: SUPERVISOR_TIER_ROLE_SLUG_FILTER },
     }),
     select: { id: true, name: true, email: true },
   });
@@ -76,17 +80,29 @@ export async function buildSupervisorAgentMap(
     .filter((id): id is string => Boolean(id));
 
   const provisionedBySupervisor =
-    await fetchProvisionedAgentNamesBySupervisorUserIds(supervisorIds);
+    await fetchProvisionedAgentEntriesBySupervisorUserIds(supervisorIds);
+
+  const visibleAgentIds = restrictToViewer
+    ? new Set(
+        await fetchVisibleAgentUserIds(session.user.id, roleSlug)
+      )
+    : null;
 
   for (const supervisorName of supervisors) {
     const userId = idByDisplayName.get(supervisorName.trim());
     if (!userId) continue;
 
-    const provisioned = provisionedBySupervisor.get(userId) ?? [];
+    const provisionedEntries = provisionedBySupervisor.get(userId) ?? [];
+    const provisionedNames = provisionedEntries.map((entry) => entry.name);
+
     map[supervisorName] = sortUnique(
-      restrictToViewer
-        ? filterAgentNamesToVisibleSet(provisioned, viewerVisibleAgents)
-        : provisioned
+      restrictToViewer && visibleAgentIds
+        ? provisionedEntries
+            .filter((entry) => visibleAgentIds.has(entry.id))
+            .map((entry) => entry.name)
+        : restrictToViewer
+          ? filterAgentNamesToVisibleSet(provisionedNames, viewerVisibleAgents)
+          : provisionedNames
     );
   }
 
@@ -95,6 +111,7 @@ export async function buildSupervisorAgentMap(
 
 /** Roles that can open /forms/audit (audit-form:read). */
 export const AUDIT_FORM_ACCESS_ROLES: SystemRoleSlug[] = [
+  SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR,
   SYSTEM_ROLE_SLUGS.QUALITY_ANALYST,
   SYSTEM_ROLE_SLUGS.QUALITY_MANAGER,
   SYSTEM_ROLE_SLUGS.ADMIN,
@@ -115,6 +132,11 @@ export const FORM_SUPERVISOR_AGENT_RULES: Record<
     canAccessForm: false,
     supervisorScope: "—",
     agentScope: "—",
+  },
+  [SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR]: {
+    canAccessForm: true,
+    supervisorScope: "Self only",
+    agentScope: "Active agents provisioned by this supervisor",
   },
   [SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]: {
     canAccessForm: true,

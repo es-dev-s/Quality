@@ -12,6 +12,7 @@ import { resolveRoleUserName } from "@/lib/audit/role-users";
 import { fetchUserAuditMatchNames } from "@/lib/audit/user-audit-match";
 import { canManageRoles, canManageUsers, hasScope, isSuperAdmin } from "@/lib/rbac";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { isSupervisorRoleSlug } from "@/lib/audit/supervisor-tier";
 import { SUPERADMIN_ROLE_SLUG } from "@/lib/constants";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { isRetryableDbError, withDbRetry } from "@/lib/db/with-db-retry";
@@ -262,7 +263,7 @@ export async function createUser(formData: FormData) {
   }
 
   const teamName = normalizeTeamName(parsed.data.teamName);
-  if (roleCheck.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR && !teamName) {
+  if (isSupervisorRoleSlug(roleCheck.role.slug) && !teamName) {
     return {
       error: "Team name is required when creating a Supervisor user.",
     };
@@ -280,7 +281,7 @@ export async function createUser(formData: FormData) {
         roleId: parsed.data.roleId,
         dateOfJoining,
         teamName:
-          roleCheck.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR ? teamName : null,
+          isSupervisorRoleSlug(roleCheck.role.slug) ? teamName : null,
         isActive: true,
         approvalStatus: "ACTIVE",
       },
@@ -341,7 +342,7 @@ export async function updateUser(formData: FormData) {
   }
 
   const teamName = normalizeTeamName(parsed.data.teamName);
-  if (roleCheck.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR && !teamName) {
+  if (isSupervisorRoleSlug(roleCheck.role.slug) && !teamName) {
     return {
       error: "Team name is required for Supervisor users.",
     };
@@ -376,7 +377,7 @@ export async function updateUser(formData: FormData) {
     roleId: parsed.data.roleId,
     dateOfJoining,
     teamName:
-      roleCheck.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR ? teamName : null,
+      isSupervisorRoleSlug(roleCheck.role.slug) ? teamName : null,
   };
 
   if (parsed.data.password) {

@@ -10,12 +10,14 @@ import {
   effectiveScopeName,
 } from "@/lib/audit/data-scope";
 import { fetchAgentRosterNames } from "@/lib/audit/agent-roster";
+import { isSupervisorTierRole } from "@/lib/audit/supervisor-tier";
 import {
   fetchSupervisorNamesForAgentUserIds,
   fetchVisibleAgentUserIds,
 } from "@/lib/audit/agent-assignment-scope";
-import { isSuperAdmin } from "@/lib/rbac";
+import { isSuperAdmin, hasScope } from "@/lib/rbac";
 import {
+  PERMISSIONS,
   SYSTEM_ROLE_SLUGS,
   type SystemRoleSlug,
 } from "@/lib/permissions";
@@ -32,8 +34,8 @@ async function resolveVisibleAgentNames(ctx: DataScopeContext): Promise<string[]
 
   const slug = ctx.role.slug as SystemRoleSlug;
 
-  if (slug === SYSTEM_ROLE_SLUGS.SUPERVISOR) {
-    return fetchAgentRosterNames(ctx.userId, SYSTEM_ROLE_SLUGS.SUPERVISOR);
+  if (isSupervisorTierRole(slug)) {
+    return fetchAgentRosterNames(ctx.userId, slug);
   }
 
   if (slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
@@ -61,7 +63,7 @@ async function resolveVisibleSupervisorNames(
 
   const slug = ctx.role.slug as SystemRoleSlug;
 
-  if (slug === SYSTEM_ROLE_SLUGS.SUPERVISOR) {
+  if (isSupervisorTierRole(slug)) {
     const self = effectiveScopeName(ctx);
     return self ? [self] : [];
   }
@@ -94,6 +96,17 @@ async function resolveVisibleAuditorNames(ctx: DataScopeContext): Promise<string
   if (ctx.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
     const self = effectiveScopeName(ctx);
     return self ? [self] : [];
+  }
+
+  if (
+    isSupervisorTierRole(ctx.role.slug) &&
+    hasScope(ctx.role, PERMISSIONS.AUDIT_FORM_WRITE)
+  ) {
+    const self = effectiveScopeName(ctx);
+    const analysts = await fetchActiveQualityAnalystUserNames();
+    const merged = new Set<string>(analysts);
+    if (self) merged.add(self);
+    return [...merged].sort((a, b) => a.localeCompare(b));
   }
 
   return fetchActiveQualityAnalystUserNames();

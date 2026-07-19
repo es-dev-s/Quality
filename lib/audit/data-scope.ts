@@ -7,6 +7,7 @@ import {
 import { isSuperAdmin } from "@/lib/rbac";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
 import { fetchAgentRosterNames } from "@/lib/audit/agent-roster";
+import { isSupervisorTierRole } from "@/lib/audit/supervisor-tier";
 import { caseInsensitiveIn } from "@/lib/audit/prisma-string-filters";
 import {
   fetchAgentUserAuditMatchNames,
@@ -57,11 +58,8 @@ export async function auditSubmissionScopeWhere(
 
   const roleSlug = ctx.role.slug as SystemRoleSlug;
 
-  if (roleSlug === SYSTEM_ROLE_SLUGS.SUPERVISOR) {
-    const agentNames = await fetchAgentRosterNames(
-      ctx.userId,
-      SYSTEM_ROLE_SLUGS.SUPERVISOR
-    );
+  if (isSupervisorTierRole(roleSlug)) {
+    const agentNames = await fetchAgentRosterNames(ctx.userId, roleSlug);
     const agentFilter = caseInsensitiveIn(agentNames);
     const workingClause: Prisma.AuditSubmissionWhereInput | null = agentFilter
       ? { agent: agentFilter, isHistory: false }

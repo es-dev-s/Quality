@@ -101,8 +101,9 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
   );
 
   const filterOptions = useMemo(
-    () => extractAnalyticsFilterOptions(records),
-    [records]
+    () =>
+      extractAnalyticsFilterOptions(records, baseData.rosterAgentNames ?? []),
+    [records, baseData.rosterAgentNames]
   );
 
   const historyScopedRecords = useMemo(

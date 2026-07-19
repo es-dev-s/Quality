@@ -15,6 +15,7 @@ import { useBusyAction } from "@/lib/hooks/use-busy-action";
 import { createUser, updateUser } from "@/lib/actions/admin";
 import { generateClientPassword } from "@/lib/password-client";
 import { isLegacySystemRole, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { isSupervisorRoleSlug } from "@/lib/audit/supervisor-tier";
 
 type Role = {
   id: string;
@@ -67,7 +68,7 @@ export function UserFormDialog({
     [roles, roleId]
   );
   const isAgentRole = selectedRole?.slug === SYSTEM_ROLE_SLUGS.AGENT;
-  const isSupervisorRole = selectedRole?.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR;
+  const isSupervisorRole = isSupervisorRoleSlug(selectedRole?.slug);
   const wasOpenRef = useRef(false);
 
   useEffect(() => {
@@ -220,8 +221,8 @@ export function UserFormDialog({
               ))}
             </Select>
             <p className="ui-hint">
-              Agent → audit subject · Supervisor → team view · Quality Analyst →
-              performs audits on forms.
+              Agent → audit subject · Supervisor → team view · Training Supervisor
+              → team view + audits · Quality Analyst → performs audits on forms.
             </p>
           </Field>
 

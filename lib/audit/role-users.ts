@@ -4,6 +4,7 @@ import {
   SYSTEM_ROLE_SLUGS,
   type SystemRoleSlug,
 } from "@/lib/permissions";
+import { SUPERVISOR_TIER_ROLE_SLUGS } from "@/lib/audit/supervisor-tier";
 import { withActiveUserFilter } from "@/lib/user-active-filter";
 
 export function resolveRoleUserName(user: {
@@ -93,7 +94,10 @@ export async function fetchAgentRoleUsers(
 export async function fetchSupervisorRoleUsers(
   options: FetchRoleUsersOptions = {}
 ): Promise<RoleUserRecord[]> {
-  return fetchUsersByRoleSlugs([SYSTEM_ROLE_SLUGS.SUPERVISOR], options);
+  return fetchUsersByRoleSlugs(
+    [...SUPERVISOR_TIER_ROLE_SLUGS] as SystemRoleSlug[],
+    options
+  );
 }
 
 export async function fetchQualityAnalystRoleUsers(
@@ -121,7 +125,9 @@ export async function fetchActiveAgentUserNames(): Promise<string[]> {
 }
 
 export async function fetchActiveSupervisorUserNames(): Promise<string[]> {
-  return fetchRoleUserNames([SYSTEM_ROLE_SLUGS.SUPERVISOR]);
+  return fetchRoleUserNames(
+    [...SUPERVISOR_TIER_ROLE_SLUGS] as SystemRoleSlug[]
+  );
 }
 
 export async function fetchActiveQualityAnalystUserNames(): Promise<string[]> {

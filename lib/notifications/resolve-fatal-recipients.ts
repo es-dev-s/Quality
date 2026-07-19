@@ -1,6 +1,7 @@
 import { normalizeAgentName } from "@/lib/audit/agent-name";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { SUPERVISOR_TIER_ROLE_SLUGS } from "@/lib/audit/supervisor-tier";
 import { prisma } from "@/lib/prisma";
 import { withActiveUserFilter } from "@/lib/user-active-filter";
 import type { FatalRecipientRole } from "@/lib/notifications/types";
@@ -121,10 +122,13 @@ export async function resolveFatalAuditRecipients(
     recipients.set(agentUserId, "agent");
   }
 
-  const supervisorUserId = await findActiveUserIdByRoleAndName(
-    SYSTEM_ROLE_SLUGS.SUPERVISOR,
-    ctx.supervisor
-  );
+  const supervisorUserId = await (async () => {
+    for (const roleSlug of SUPERVISOR_TIER_ROLE_SLUGS) {
+      const id = await findActiveUserIdByRoleAndName(roleSlug, ctx.supervisor);
+      if (id) return id;
+    }
+    return null;
+  })();
   if (supervisorUserId && supervisorUserId !== ctx.excludeUserId) {
     recipients.set(supervisorUserId, "supervisor");
   }

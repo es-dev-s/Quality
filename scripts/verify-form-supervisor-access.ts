@@ -43,7 +43,7 @@ async function main() {
   );
   console.log(
     "Roles without form access:",
-    "Agent, Supervisor (custom roles need audit-form:read scope)"
+    "Agent, Supervisor (assign Training Supervisor or Quality Analyst for audits)"
   );
 
   if (errors > 0) {

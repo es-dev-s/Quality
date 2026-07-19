@@ -5,6 +5,7 @@ import {
   fetchVisibleAgentUserIds,
 } from "@/lib/audit/agent-assignment-scope";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { isSupervisorTierRole } from "@/lib/audit/supervisor-tier";
 import type { SessionRole } from "@/lib/rbac";
 import { isSuperAdmin } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
@@ -45,7 +46,7 @@ export async function buildManagedUsersWhere(
   }
 
   if (
-    role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR ||
+    isSupervisorTierRole(role.slug) ||
     role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
   ) {
     const scopedAgentIds = await fetchVisibleAgentUserIds(userId, role.slug);

@@ -3,6 +3,9 @@
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth-guards";
 import { PERMISSIONS } from "@/lib/permissions";
+import { fetchAgentRosterNames } from "@/lib/audit/agent-roster";
+import { canFilterByAgent } from "@/lib/audit/agent-filter-access";
+import { dataScopeFromSession } from "@/lib/audit/data-scope";
 import { scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
 import type { AuditRow, CategoryScore } from "@/lib/audit/types";
 import type { AnalyticsAuditRecord } from "@/lib/audit/analytics-metrics";
@@ -69,10 +72,17 @@ async function fetchAnalyticsRecords(
 /** Loads scoped audit rows for client-side analytics filtering (period + segment). */
 export async function getAnalyticsData() {
   const session = await requirePermission(PERMISSIONS.ANALYTICS_READ);
-  const records = await fetchAnalyticsRecords(await scopedAuditWhere(session));
+  const ctx = dataScopeFromSession(session);
+  const [records, rosterAgentNames] = await Promise.all([
+    fetchAnalyticsRecords(await scopedAuditWhere(session)),
+    canFilterByAgent(session.user.role.slug)
+      ? fetchAgentRosterNames(ctx.userId, ctx.role.slug)
+      : Promise.resolve([] as string[]),
+  ]);
 
   return {
     records,
+    rosterAgentNames,
     fetchedAt: new Date().toISOString(),
     recordCount: records.length,
   };

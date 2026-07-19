@@ -38,6 +38,7 @@ import {
   computeTrendData,
   EMPTY_INCLUDE_FILTERS,
   extractFilterOptions,
+  mergeRosterIntoFilterOptions,
   filterByIncludeFilters,
   filterByPeriod,
   filterByCustomRange,
@@ -127,11 +128,16 @@ export function DashboardAnalytics({
   );
 
   const filterOptions = useMemo(
-    () => extractFilterOptions(records),
-    [records]
+    () =>
+      mergeRosterIntoFilterOptions(
+        extractFilterOptions(records),
+        data.rosterAgentNames ?? []
+      ),
+    [records, data.rosterAgentNames]
   );
   const showAgentFilter =
-    canFilterByAgent(roleSlug) && filterOptions.agents.length > 0;
+    canFilterByAgent(roleSlug) &&
+    (filterOptions.agents.length > 0 || (data.rosterAgentNames?.length ?? 0) > 0);
 
   const historyScopedRecords = useMemo(
     () => filterByAuditHistory(records, historyFilter),

@@ -41,6 +41,7 @@ import { AuditScorePanel } from "@/components/forms/audit-score-panel";
 import { QmsEmpty } from "@/components/analytics/qms-primitives";
 import { ReferenceUrlField } from "@/components/forms/reference-url-field";
 import { resolveAuditorNameForSession } from "@/lib/audit/auditor-name";
+import { agentNameInVisibleSet } from "@/lib/audit/agent-name-match";
 import { normalizeFatalYnScoreValue } from "@/lib/audit/fatal-yn-params";
 import { normalizeProbingPreferredModeScoreValue } from "@/lib/audit/probing-preferred-mode-swap";
 import { createRandomUUID } from "@/lib/random-id";
@@ -368,7 +369,8 @@ export function AuditForm({
   const handleSupervisorChange = (supervisor: string) => {
     const linked = supervisorAgentMap[supervisor] ?? [];
     const currentAgent = formData.agent.trim();
-    const agentStillValid = !currentAgent || linked.includes(currentAgent);
+    const agentStillValid =
+      !currentAgent || agentNameInVisibleSet(currentAgent, linked);
     updateForm({
       supervisor,
       agent: agentStillValid ? formData.agent : "",

@@ -16,9 +16,22 @@ import {
   invalidateAgentAssignmentCaches,
   invalidateAgentCaches,
   invalidateAuditCaches,
+  invalidateInteractionConfigCaches,
   invalidateUserCaches,
 } from "@/lib/invalidate-cache";
+import { isSupervisorTierRole, SUPERVISOR_TIER_ROLE_SLUG_FILTER } from "@/lib/audit/supervisor-tier";
+import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { withActiveUserFilter, ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
+
+class TransferExecutionError extends Error {
+  constructor(
+    readonly code: "ALREADY_REVIEWED" | "SUPERVISOR_CHANGED" | "PENDING_EXISTS",
+    message: string
+  ) {
+    super(message);
+    this.name = "TransferExecutionError";
+  }
+}
 
 const transferSchema = z.object({
   agentUserId: z.string().min(1),
@@ -87,6 +100,9 @@ function revalidateTransferPaths(userIds: string[]) {
   revalidatePath("/audit-logs");
   revalidatePath("/analytics");
   revalidatePath("/audit-transfer-history");
+  revalidatePath("/forms");
+  revalidatePath("/forms/audit");
+  invalidateInteractionConfigCaches();
   for (const userId of userIds) {
     invalidateAuditCaches(userId);
     invalidateUserCaches(userId);
@@ -96,7 +112,7 @@ function revalidateTransferPaths(userIds: string[]) {
 
 function canPerformTransfer(roleSlug: string): boolean {
   return (
-    roleSlug === SYSTEM_ROLE_SLUGS.SUPERVISOR ||
+    isSupervisorTierRole(roleSlug) ||
     roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER ||
     roleSlug === SYSTEM_ROLE_SLUGS.SUPERADMIN
   );
@@ -178,10 +194,20 @@ async function executeAgentTransfer(
     where: { agentId: agentUserId },
   });
 
-  await tx.user.update({
-    where: { id: agentUserId },
+  const ownershipUpdate = await tx.user.updateMany({
+    where: {
+      id: agentUserId,
+      createdById: fromSupervisorId,
+    },
     data: { createdById: toSupervisorId },
   });
+
+  if (ownershipUpdate.count === 0) {
+    throw new TransferExecutionError(
+      "SUPERVISOR_CHANGED",
+      "Agent supervisor changed before transfer could complete."
+    );
+  }
 
   return tagResult.count;
 }
@@ -220,13 +246,13 @@ export async function listTransferTargetSupervisors(
   if (excludeSupervisorId) {
     excludeIds.add(excludeSupervisorId);
   }
-  if (session.user.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR) {
+  if (isSupervisorTierRole(session.user.role.slug)) {
     excludeIds.add(session.user.id);
   }
 
   const supervisors = await prisma.user.findMany({
     where: withActiveUserFilter({
-      role: { slug: SYSTEM_ROLE_SLUGS.SUPERVISOR },
+      role: { slug: SUPERVISOR_TIER_ROLE_SLUG_FILTER },
       ...(excludeIds.size > 0 ? { id: { notIn: [...excludeIds] } } : {}),
     }),
     select: {
@@ -314,7 +340,7 @@ export async function transferAgentToSupervisor(input: {
     prisma.user.findFirst({
       where: withActiveUserFilter({
         id: parsed.data.toSupervisorId,
-        role: { slug: SYSTEM_ROLE_SLUGS.SUPERVISOR },
+        role: { slug: SUPERVISOR_TIER_ROLE_SLUG_FILTER },
       }),
       select: { id: true, name: true, email: true },
     }),
@@ -335,7 +361,7 @@ export async function transferAgentToSupervisor(input: {
     return { error: "Agent is already assigned to this supervisor." };
   }
 
-  if (session.user.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR) {
+  if (isSupervisorTierRole(session.user.role.slug)) {
     if (session.user.id !== fromSupervisorId) {
       return { error: "You can only transfer agents you manage." };
     }
@@ -348,8 +374,115 @@ export async function transferAgentToSupervisor(input: {
     : await resolveRespectiveQmId(fromSupervisorId);
 
   if (autoApprove) {
-    const result = await prisma.$transaction(async (tx) => {
-      const transfer = await tx.agentTransfer.create({
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const pending = await tx.agentTransfer.findFirst({
+          where: { agentUserId: agentUser.id, status: "PENDING" },
+          select: { id: true },
+        });
+        if (pending) {
+          throw new TransferExecutionError(
+            "PENDING_EXISTS",
+            "A pending transfer already exists for this agent."
+          );
+        }
+
+        const currentAgent = await tx.user.findUnique({
+          where: { id: agentUser.id },
+          select: { createdById: true },
+        });
+        if (currentAgent?.createdById !== fromSupervisorId) {
+          throw new TransferExecutionError(
+            "SUPERVISOR_CHANGED",
+            "Agent supervisor changed before transfer could complete."
+          );
+        }
+
+        const transfer = await tx.agentTransfer.create({
+          data: {
+            agentUserId: agentUser.id,
+            agentNameSnapshot: agentDisplayName,
+            agentEmailSnapshot: agentUser.email,
+            fromSupervisorId,
+            toSupervisorId: targetSupervisor.id,
+            transferredById: session.user.id,
+            assignedReviewerId: session.user.id,
+            status: "PENDING",
+            note: parsed.data.note?.trim() || null,
+            reviewedById: session.user.id,
+            reviewedAt: new Date(),
+          },
+        });
+
+        const auditCount = await executeAgentTransfer(tx, {
+          transferId: transfer.id,
+          agentUserId: agentUser.id,
+          agentDisplayName,
+          fromSupervisorId,
+          toSupervisorId: targetSupervisor.id,
+        });
+
+        return {
+          transferId: transfer.id,
+          auditCount,
+        };
+      });
+
+      invalidateAgentAssignmentCaches(session.user.id, targetSupervisor.id);
+      revalidateTransferPaths([
+        session.user.id,
+        fromSupervisorId,
+        targetSupervisor.id,
+      ]);
+
+      return {
+        success: true as const,
+        pending: false as const,
+        transferId: result.transferId,
+        auditCount: result.auditCount,
+        message: `Agent transferred. ${result.auditCount} audit(s) marked as history for the previous supervisor.`,
+      };
+    } catch (error) {
+      if (error instanceof TransferExecutionError) {
+        return { error: error.message };
+      }
+      if (isPrismaUniqueViolation(error)) {
+        return {
+          error:
+            "This agent already has a pending transfer awaiting quality manager approval.",
+        };
+      }
+      throw error;
+    }
+  }
+
+  const pendingAuditCount = await countWorkingAuditsForAgentName(agentDisplayName);
+
+  try {
+    const transfer = await prisma.$transaction(async (tx) => {
+      const pending = await tx.agentTransfer.findFirst({
+        where: { agentUserId: agentUser.id, status: "PENDING" },
+        select: { id: true },
+      });
+      if (pending) {
+        throw new TransferExecutionError(
+          "PENDING_EXISTS",
+          "This agent already has a pending transfer awaiting quality manager approval."
+        );
+      }
+
+      const currentAgent = await tx.user.findUnique({
+        where: { id: agentUser.id },
+        select: { createdById: true },
+      });
+      if (currentAgent?.createdById !== fromSupervisorId) {
+        throw new TransferExecutionError(
+          "SUPERVISOR_CHANGED",
+          "This agent's supervisor changed before the transfer request could be submitted."
+        );
+      }
+
+      return tx.agentTransfer.create({
         data: {
           agentUserId: agentUser.id,
           agentNameSnapshot: agentDisplayName,
@@ -357,69 +490,34 @@ export async function transferAgentToSupervisor(input: {
           fromSupervisorId,
           toSupervisorId: targetSupervisor.id,
           transferredById: session.user.id,
-          assignedReviewerId: session.user.id,
+          assignedReviewerId,
           status: "PENDING",
           note: parsed.data.note?.trim() || null,
-          reviewedById: session.user.id,
-          reviewedAt: new Date(),
         },
       });
-
-      const auditCount = await executeAgentTransfer(tx, {
-        transferId: transfer.id,
-        agentUserId: agentUser.id,
-        agentDisplayName,
-        fromSupervisorId,
-        toSupervisorId: targetSupervisor.id,
-      });
-
-      return {
-        transferId: transfer.id,
-        auditCount,
-      };
     });
 
-    invalidateAgentAssignmentCaches(session.user.id, targetSupervisor.id);
-    revalidateTransferPaths([
-      session.user.id,
-      fromSupervisorId,
-      targetSupervisor.id,
-    ]);
+    revalidateTransferPaths([session.user.id, fromSupervisorId, targetSupervisor.id]);
 
     return {
       success: true as const,
-      pending: false as const,
-      transferId: result.transferId,
-      auditCount: result.auditCount,
-      message: `Agent transferred. ${result.auditCount} audit(s) marked as history for the previous supervisor.`,
+      pending: true as const,
+      transferId: transfer.id,
+      auditCount: pendingAuditCount,
+      message: `Transfer request submitted for quality manager approval. ${pendingAuditCount} audit(s) will be marked as history once approved.`,
     };
+  } catch (error) {
+    if (error instanceof TransferExecutionError) {
+      return { error: error.message };
+    }
+    if (isPrismaUniqueViolation(error)) {
+      return {
+        error:
+          "This agent already has a pending transfer awaiting quality manager approval.",
+      };
+    }
+    throw error;
   }
-
-  const pendingAuditCount = await countWorkingAuditsForAgentName(agentDisplayName);
-
-  const transfer = await prisma.agentTransfer.create({
-    data: {
-      agentUserId: agentUser.id,
-      agentNameSnapshot: agentDisplayName,
-      agentEmailSnapshot: agentUser.email,
-      fromSupervisorId,
-      toSupervisorId: targetSupervisor.id,
-      transferredById: session.user.id,
-      assignedReviewerId,
-      status: "PENDING",
-      note: parsed.data.note?.trim() || null,
-    },
-  });
-
-  revalidateTransferPaths([session.user.id, fromSupervisorId, targetSupervisor.id]);
-
-  return {
-    success: true as const,
-    pending: true as const,
-    transferId: transfer.id,
-    auditCount: pendingAuditCount,
-    message: `Transfer request submitted for quality manager approval. ${pendingAuditCount} audit(s) will be marked as history once approved.`,
-  };
 }
 
 export async function approveAgentTransferRequest(input: {
@@ -478,40 +576,81 @@ export async function approveAgentTransferRequest(input: {
 
   const agentDisplayName = resolveRoleUserName(transfer.agentUser);
 
-  const auditCount = await prisma.$transaction(async (tx) => {
-    await tx.agentTransfer.update({
-      where: { id: transfer.id },
-      data: {
-        reviewedById: session.user.id,
-        reviewedAt: new Date(),
-        reviewNote: parsed.data.reviewNote?.trim() || null,
-      },
+  try {
+    const auditCount = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.agentTransfer.updateMany({
+        where: { id: transfer.id, status: "PENDING" },
+        data: {
+          reviewedById: session.user.id,
+          reviewedAt: new Date(),
+          reviewNote: parsed.data.reviewNote?.trim() || null,
+        },
+      });
+      if (claimed.count === 0) {
+        throw new TransferExecutionError(
+          "ALREADY_REVIEWED",
+          "Transfer request not found or already reviewed."
+        );
+      }
+
+      const currentAgent = await tx.user.findUnique({
+        where: { id: transfer.agentUserId },
+        select: { createdById: true },
+      });
+      if (currentAgent?.createdById !== transfer.fromSupervisorId) {
+        await tx.agentTransfer.update({
+          where: { id: transfer.id },
+          data: {
+            status: "REJECTED",
+            reviewNote:
+              parsed.data.reviewNote?.trim() ||
+              "Rejected automatically: agent supervisor changed since request was submitted.",
+          },
+        });
+        throw new TransferExecutionError(
+          "SUPERVISOR_CHANGED",
+          "This agent's supervisor changed since the request was submitted. Reject and submit a new transfer."
+        );
+      }
+
+      return executeAgentTransfer(tx, {
+        transferId: transfer.id,
+        agentUserId: transfer.agentUserId,
+        agentDisplayName,
+        fromSupervisorId: transfer.fromSupervisorId,
+        toSupervisorId: transfer.toSupervisorId,
+      });
     });
 
-    return executeAgentTransfer(tx, {
-      transferId: transfer.id,
-      agentUserId: transfer.agentUserId,
-      agentDisplayName,
-      fromSupervisorId: transfer.fromSupervisorId,
-      toSupervisorId: transfer.toSupervisorId,
-    });
-  });
+    invalidateAgentAssignmentCaches(
+      transfer.fromSupervisorId,
+      transfer.toSupervisorId
+    );
+    revalidateTransferPaths([
+      session.user.id,
+      transfer.fromSupervisorId,
+      transfer.toSupervisorId,
+      transfer.transferredById,
+    ]);
 
-  invalidateAgentAssignmentCaches(
-    transfer.fromSupervisorId,
-    transfer.toSupervisorId
-  );
-  revalidateTransferPaths([
-    session.user.id,
-    transfer.fromSupervisorId,
-    transfer.toSupervisorId,
-    transfer.transferredById,
-  ]);
-
-  return {
-    success: true as const,
-    message: `Transfer approved. ${auditCount} audit(s) marked as history for the previous supervisor.`,
-  };
+    return {
+      success: true as const,
+      message: `Transfer approved. ${auditCount} audit(s) marked as history for the previous supervisor.`,
+    };
+  } catch (error) {
+    if (error instanceof TransferExecutionError) {
+      if (error.code === "SUPERVISOR_CHANGED") {
+        revalidateTransferPaths([
+          session.user.id,
+          transfer.fromSupervisorId,
+          transfer.toSupervisorId,
+          transfer.transferredById,
+        ]);
+      }
+      return { error: error.message };
+    }
+    throw error;
+  }
 }
 
 export async function rejectAgentTransferRequest(input: {
@@ -566,8 +705,8 @@ export async function rejectAgentTransferRequest(input: {
     return { error: "You are not assigned to review this transfer request." };
   }
 
-  await prisma.agentTransfer.update({
-    where: { id: transfer.id },
+  const rejected = await prisma.agentTransfer.updateMany({
+    where: { id: transfer.id, status: "PENDING" },
     data: {
       status: "REJECTED",
       reviewedById: session.user.id,
@@ -575,6 +714,10 @@ export async function rejectAgentTransferRequest(input: {
       reviewNote: parsed.data.reviewNote?.trim() || null,
     },
   });
+
+  if (rejected.count === 0) {
+    return { error: "Transfer request not found or already reviewed." };
+  }
 
   revalidateTransferPaths([
     session.user.id,
@@ -698,7 +841,7 @@ export async function getAgentTransferHistory(): Promise<{
 
   if (isSuperAdmin(session.user.role) || session.user.role.slug === SYSTEM_ROLE_SLUGS.ADMIN) {
     transferWhere = undefined;
-  } else if (session.user.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR) {
+  } else if (isSupervisorTierRole(session.user.role.slug)) {
     transferWhere = {
       OR: [
         { fromSupervisorId: session.user.id },
@@ -790,4 +933,38 @@ export async function countPendingHistoryAuditsForAgent(
   if (!agent) return 0;
 
   return countWorkingAuditsForAgentName(resolveRoleUserName(agent));
+}
+
+/** Agent user IDs with a pending supervisor transfer (scoped to viewer when applicable). */
+export async function getPendingTransferAgentIdsForSession(): Promise<string[]> {
+  await requirePermission(PERMISSIONS.USERS_READ_MANAGED);
+  const session = await requireAuth();
+
+  const where: Prisma.AgentTransferWhereInput = { status: "PENDING" };
+
+  if (isSuperAdmin(session.user.role)) {
+    // all pending
+  } else if (isSupervisorTierRole(session.user.role.slug)) {
+    where.OR = [
+      { fromSupervisorId: session.user.id },
+      { toSupervisorId: session.user.id },
+      { transferredById: session.user.id },
+    ];
+  } else if (session.user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
+    where.OR = [
+      { assignedReviewerId: session.user.id },
+      { assignedReviewerId: null },
+    ];
+  } else if (session.user.role.slug === SYSTEM_ROLE_SLUGS.ADMIN) {
+    // all pending for admin read scope
+  } else {
+    return [];
+  }
+
+  const rows = await prisma.agentTransfer.findMany({
+    where,
+    select: { agentUserId: true },
+  });
+
+  return [...new Set(rows.map((row) => row.agentUserId))];
 }

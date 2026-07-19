@@ -7,7 +7,14 @@
  */
 import { prisma } from "@/lib/prisma";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
+import { isSupervisorRoleSlug } from "@/lib/audit/supervisor-tier";
+export {
+  agentNameInVisibleSet,
+  filterAgentNamesToVisibleSet,
+  normalizeAgentDisplayName,
+} from "@/lib/audit/agent-name-match";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { isSupervisorTierRole } from "@/lib/audit/supervisor-tier";
 import {
   ACTIVE_USER_WHERE,
   isLoginEligibleUser,
@@ -164,6 +171,7 @@ export async function fetchAgentRosterEntries(
 ): Promise<AgentRosterEntry[]> {
   switch (roleSlug) {
     case SYSTEM_ROLE_SLUGS.SUPERVISOR:
+    case SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR:
       return fetchProvisionedAgentEntries(userId);
 
     case SYSTEM_ROLE_SLUGS.QUALITY_ANALYST:
@@ -233,25 +241,36 @@ export async function fetchProvisionedAgentNamesBySupervisorUserIds(
   return map;
 }
 
-export function normalizeAgentDisplayName(name: string): string {
-  return name.trim().toLowerCase();
-}
+/** Batch: supervisor user id → active provisioned agent entries (with ids). */
+export async function fetchProvisionedAgentEntriesBySupervisorUserIds(
+  supervisorUserIds: string[]
+): Promise<Map<string, AgentRosterEntry[]>> {
+  const map = new Map<string, AgentRosterEntry[]>();
+  for (const id of supervisorUserIds) {
+    map.set(id, []);
+  }
+  if (supervisorUserIds.length === 0) return map;
 
-export function agentNameInVisibleSet(
-  agentName: string,
-  visibleNames: string[]
-): boolean {
-  const key = normalizeAgentDisplayName(agentName);
-  return visibleNames.some(
-    (visible) => normalizeAgentDisplayName(visible) === key
-  );
-}
+  const agents = await prisma.user.findMany({
+    where: withActiveUserFilter({
+      createdById: { in: supervisorUserIds },
+      role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
+    }),
+    select: { id: true, name: true, email: true, createdById: true },
+    orderBy: [{ name: "asc" }, { email: "asc" }],
+  });
 
-export function filterAgentNamesToVisibleSet(
-  agentNames: string[],
-  visibleNames: string[]
-): string[] {
-  return agentNames.filter((name) => agentNameInVisibleSet(name, visibleNames));
+  for (const agent of agents) {
+    if (!agent.createdById) continue;
+    const list = map.get(agent.createdById) ?? [];
+    list.push({
+      ...mapAgentUser(agent),
+      source: "provisioned",
+    });
+    map.set(agent.createdById, list);
+  }
+
+  return map;
 }
 
 export async function fetchAgentAssigneeEntries(
@@ -332,7 +351,8 @@ export async function fetchSupervisorNamesForAgentUserIds(
   for (const agent of agents) {
     const supervisor = agent.createdBy;
     if (
-      supervisor?.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR &&
+      supervisor &&
+      isSupervisorRoleSlug(supervisor.role.slug) &&
       isLoginEligibleUser(supervisor)
     ) {
       names.add(resolveRoleUserName(supervisor));
