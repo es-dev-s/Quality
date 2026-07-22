@@ -21,6 +21,8 @@ import type {
   AuditImportResult,
   ParsedAuditImportRow,
 } from "@/lib/import/audit-import-types";
+import { AUDIT_SHEET_PREVIEW_COLUMNS } from "@/lib/import/audit-sheet-columns";
+import type { ImportEntityCatalog } from "@/lib/import/import-entity-catalog";
 import type { AuditTemplate } from "@/lib/audit/types";
 import { cn } from "@/lib/utils";
 import { LoadingZone } from "@/components/primitives/loading-zone";
@@ -30,16 +32,17 @@ type ImportFormat = "csv" | "xlsx";
 type AuditImportPanelProps = {
   templates: AuditImportTemplateOption[];
   templateBodies: Record<string, AuditTemplate>;
+  entityCatalog: ImportEntityCatalog;
 };
 
-function isExcelFile(name: string): boolean {
-  const ext = name.split(".").pop()?.toLowerCase() ?? "";
-  return ext === "xlsx" || ext === "xls";
+function hasEntityLookupError(row: ParsedAuditImportRow): boolean {
+  return row.errors.some((message) => /not found in the database/i.test(message));
 }
 
 export function AuditImportPanel({
   templates,
   templateBodies,
+  entityCatalog,
 }: AuditImportPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [format, setFormat] = useState<ImportFormat>("csv");
@@ -60,6 +63,17 @@ export function AuditImportPanel({
     [rows]
   );
   const invalidCount = rows.length - validRows.length;
+  const entityBlocked = useMemo(
+    () => rows.some((row) => hasEntityLookupError(row)),
+    [rows]
+  );
+  const previewFilledCount = useMemo(() => {
+    if (rows.length === 0) return 0;
+    const preview = rows[0]?.sheetPreview ?? {};
+    return AUDIT_SHEET_PREVIEW_COLUMNS.filter((column) =>
+      Boolean(preview[column]?.trim())
+    ).length;
+  }, [rows]);
 
   function resetPreview() {
     setFileName(null);
@@ -76,20 +90,29 @@ export function AuditImportPanel({
     setFileName(file.name);
 
     try {
+      const lower = file.name.toLowerCase();
       const useExcel =
-        isExcelFile(file.name) || (!file.name.endsWith(".csv") && format === "xlsx");
+        lower.endsWith(".xlsx") ||
+        lower.endsWith(".xls") ||
+        (format === "xlsx" &&
+          !lower.endsWith(".csv") &&
+          !lower.endsWith(".tsv") &&
+          !lower.endsWith(".txt"));
+      const parseOptions = { entityCatalog };
       const parsed = useExcel
         ? parseAuditImportSpreadsheet(
             await file.arrayBuffer(),
             "xlsx",
             templates,
-            templateBodies
+            templateBodies,
+            parseOptions
           )
         : parseAuditImportSpreadsheet(
             await file.text(),
             "csv",
             templates,
-            templateBodies
+            templateBodies,
+            parseOptions
           );
       setRows(parsed);
     } catch (error) {
@@ -124,8 +147,22 @@ export function AuditImportPanel({
   }
 
   function handleImport() {
+    if (entityBlocked) {
+      setImportError(
+        "Import blocked — every row’s Agent Name and Quality Auditor must already exist in the database. Create missing users in Settings, then re-upload."
+      );
+      return;
+    }
+
+    if (invalidCount > 0) {
+      setImportError(
+        "Import blocked — fix every invalid row first. Incomplete or corrupted rows are never imported."
+      );
+      return;
+    }
+
     if (validRows.length === 0) {
-      setImportError("Fix validation errors before importing.");
+      setImportError("No valid audits to import.");
       return;
     }
 
@@ -147,9 +184,13 @@ export function AuditImportPanel({
         <div>
           <p className="import-page__notice-title">Import audit form records</p>
           <p className="import-page__notice-text">
-            Upload a CSV or Excel export from your Google Sheet. The file should
-            include audit form fields (agent, dates, LOB, scores) — the same layout
-            as Reports export or the template below.
+            Upload your Google Sheet CSV/Excel. The importer auto-detects{" "}
+            <strong>Quality Auditor</strong> and <strong>Agent Name</strong>, then
+            assigns them to matching users in the database. If either is missing
+            in the DB, the whole import is blocked.{" "}
+            <strong>Team Name</strong> is imported as-is (not validated). Fully
+            empty rows are ignored. Incomplete or unmatched rows are never
+            written to the database.
           </p>
         </div>
       </div>
@@ -194,9 +235,9 @@ export function AuditImportPanel({
       <section className="import-card">
         <h2 className="import-card__title">File format</h2>
         <p className="import-card__desc">
-          Export your Google Sheet as CSV or Excel (.xlsx). Parameter columns use
-          the format <code>Category › Parameter</code> or a single parameter summary
-          column.
+          Upload CSV with these columns: Call Date, Audit Date, Quality Auditor,
+          Call/Chat, Agent Name, Team Name, LOB… through Call Length. Preview shows
+          every column exactly as detected from your file.
         </p>
         <div className="import-formats import-formats--two">
           {(
@@ -301,54 +342,85 @@ export function AuditImportPanel({
         <section className="import-card">
           <div className="import-card__head">
             <div>
-              <h2 className="import-card__title">Review preview</h2>
+              <h2 className="import-card__title">CSV preview</h2>
               <p className="import-card__desc">
                 {rows.length > 0
-                  ? `${validRows.length} ready · ${invalidCount} with issues`
-                  : "Upload a file to validate rows before import."}
+                  ? entityBlocked
+                    ? `Import blocked — fix missing Agent / Quality Auditor matches (${invalidCount} issue row${invalidCount === 1 ? "" : "s"}).`
+                    : `${rows.length} row${rows.length === 1 ? "" : "s"} · ${previewFilledCount}/${AUDIT_SHEET_PREVIEW_COLUMNS.length} columns detected · ${validRows.length} ready`
+                  : "Upload a CSV to preview every column below."}
               </p>
             </div>
           </div>
 
-          <div className="import-preview import-preview--users ui-scrollbar">
-            <div className="import-preview__row import-preview__row--head import-preview__row--users">
-              <span>#</span>
-              <span>Audit ID</span>
-              <span>Agent</span>
-              <span>Date</span>
-              <span>Grade</span>
-              <span>Status</span>
-            </div>
+          <div className="import-preview import-preview--audits">
             {rows.length === 0 ? (
               <div className="import-preview__empty">
-                No rows loaded yet. Export your Google Sheet and upload it here.
+                No rows loaded yet. Upload your sheet to see column-wise data.
               </div>
             ) : (
-              rows.map((row) => (
-                <div
-                  key={`${row.rowNumber}-${row.auditCode}`}
-                  className={cn(
-                    "import-preview__row import-preview__row--users",
-                    row.errors.length > 0 && "import-preview__row--invalid"
-                  )}
-                >
-                  <span>{row.rowNumber}</span>
-                  <span>{row.auditCode || "—"}</span>
-                  <span>{row.formData.agent || "—"}</span>
-                  <span>{row.formData.auditDate || row.formData.callDate || "—"}</span>
-                  <span>{row.grade || "—"}</span>
-                  <span className="import-preview__status">
-                    {row.errors.length === 0 ? (
-                      <>
-                        <CheckCircle2 size={14} aria-hidden />
-                        Ready
-                      </>
-                    ) : (
-                      row.errors.join(" ")
-                    )}
-                  </span>
-                </div>
-              ))
+              <div className="import-preview__scroll ui-scrollbar">
+                <table className="import-preview-table">
+                  <thead>
+                    <tr>
+                      <th className="import-preview-table__sticky-col">#</th>
+                      {AUDIT_SHEET_PREVIEW_COLUMNS.map((column) => (
+                        <th key={column}>{column}</th>
+                      ))}
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => {
+                      const ready = row.errors.length === 0;
+                      const preview = row.sheetPreview ?? {};
+                      return (
+                        <tr
+                          key={`${row.rowNumber}-${row.auditCode}`}
+                          className={cn(
+                            !ready && "import-preview-table__row--invalid"
+                          )}
+                        >
+                          <td className="import-preview-table__sticky-col">
+                            {row.rowNumber}
+                          </td>
+                          {AUDIT_SHEET_PREVIEW_COLUMNS.map((column) => {
+                            const value = preview[column] ?? "";
+                            return (
+                              <td
+                                key={column}
+                                title={value || undefined}
+                                className={
+                                  value.length > 28
+                                    ? "import-preview-table__clamp"
+                                    : undefined
+                                }
+                              >
+                                {value || "—"}
+                              </td>
+                            );
+                          })}
+                          <td className="import-preview__status">
+                            {ready ? (
+                              <>
+                                <CheckCircle2 size={14} aria-hidden />
+                                Ready
+                              </>
+                            ) : (
+                              <span
+                                className="import-preview-table__error"
+                                title={row.errors.join(" ")}
+                              >
+                                {row.errors.join(" · ")}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
 
@@ -392,7 +464,12 @@ export function AuditImportPanel({
             <button
               type="button"
               className="ui-btn ui-btn--primary ui-btn--sm"
-              disabled={validRows.length === 0 || isImporting}
+              disabled={
+                validRows.length === 0 ||
+                isImporting ||
+                entityBlocked ||
+                invalidCount > 0
+              }
               onClick={handleImport}
             >
               {isImporting

@@ -287,11 +287,11 @@ export function DashboardAnalytics({
         onRemove: () => updateFilter("agent", ""),
       });
     }
-    if (includeFilters.lob) {
+    if (includeFilters.businessType) {
       chips.push({
-        key: "lob",
-        label: `LOB: ${includeFilters.lob}`,
-        onRemove: () => updateFilter("lob", ""),
+        key: "business",
+        label: `Business: ${includeFilters.businessType}`,
+        onRemove: () => updateFilter("businessType", ""),
       });
     }
     if (includeFilters.auditor) {
@@ -318,7 +318,10 @@ export function DashboardAnalytics({
     return chips;
   }, [customRange, period, includeFilters, trendGranularity, trendGranularityLabel]);
 
-  const sidebarFilterCount = dashboardFilterChips.length;
+  const sidebarFilterCount = dashboardFilterChips.filter(
+    (chip) => chip.key !== "business"
+  ).length;
+  const hasAnyDashboardFilters = dashboardFilterChips.length > 0;
 
   const agentFilterOptions = useMemo(
     () => buildAgentFilterSelectOptions(filterOptions.agents),
@@ -333,12 +336,15 @@ export function DashboardAnalytics({
     [filterOptions.teamNames]
   );
 
-  const lobFilterOptions = useMemo(
+  const businessTypeFilterOptions = useMemo(
     () => [
-      { value: "", label: "All LOBs" },
-      ...filterOptions.lobs.map((lob) => ({ value: lob, label: lob })),
+      { value: "", label: "All business types" },
+      ...filterOptions.businessTypes.map((value) => ({
+        value,
+        label: value,
+      })),
     ],
-    [filterOptions.lobs]
+    [filterOptions.businessTypes]
   );
 
   const auditorFilterOptions = useMemo(
@@ -380,8 +386,17 @@ export function DashboardAnalytics({
             </div>
           </div>
           <div className="pf-bar__right">
+            <label className="pf-inline-filter">
+              <span className="pf-inline-filter__label">Business type</span>
+              <FilterSelect
+                value={includeFilters.businessType}
+                onChange={(value) => updateFilter("businessType", value)}
+                options={businessTypeFilterOptions}
+                ariaLabel="Filter by business type"
+              />
+            </label>
             <div className="pf-bar__filter-actions">
-              {sidebarFilterCount > 0 ? (
+              {hasAnyDashboardFilters ? (
                 <FilterClearButton onClick={clearFilters} />
               ) : null}
               <FilterTriggerButton
@@ -413,7 +428,7 @@ export function DashboardAnalytics({
         description="Set the time period, trend view, and segment filters for KPIs and charts."
         activeCount={sidebarFilterCount}
         onClearAll={clearFilters}
-        clearDisabled={sidebarFilterCount === 0}
+        clearDisabled={!hasAnyDashboardFilters}
       >
         <FilterSidebarSection label="Period">
           <div className="filter-sidebar-periods pf-periods" role="tablist" aria-label="Time period">
@@ -494,15 +509,6 @@ export function DashboardAnalytics({
                 onChange={(value) => updateFilter("teamName", value)}
                 options={teamFilterOptions}
                 ariaLabel="Filter by team"
-              />
-            </label>
-            <label className="dash-filter">
-              <span>LOB</span>
-              <FilterSelect
-                value={includeFilters.lob}
-                onChange={(value) => updateFilter("lob", value)}
-                options={lobFilterOptions}
-                ariaLabel="Filter by LOB"
               />
             </label>
             <label className="dash-filter">

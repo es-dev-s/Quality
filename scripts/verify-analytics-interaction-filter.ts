@@ -24,6 +24,7 @@ const callAudit: AnalyticsAuditRecord = {
   supervisor: "Team 1",
   auditor: "QA 1",
   type: "Call",
+  businessType: "Sales",
   callDate: "2026-06-01",
   auditDate: "2026-06-01",
   qualityPct: 80,
@@ -109,7 +110,7 @@ assert(
 const combined = applyAnalyticsFilters(records, {
   period: "overall",
   customRange: { from: "", to: "" },
-  includeFilters: { agent: "", teamName: "", auditor: "" },
+  includeFilters: { agent: "", teamName: "", auditor: "", businessType: "" },
   interactionFilter: "both",
   referenceNow: new Date("2026-06-15"),
 });
@@ -136,7 +137,7 @@ assert(
 const callOnly = applyAnalyticsFilters(records, {
   period: "overall",
   customRange: { from: "", to: "" },
-  includeFilters: { agent: "", teamName: "", auditor: "" },
+  includeFilters: { agent: "", teamName: "", auditor: "", businessType: "" },
   interactionFilter: "call",
   referenceNow: new Date("2026-06-15"),
 });

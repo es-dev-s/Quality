@@ -35,6 +35,8 @@ type DataTablePanelProps<T> = {
   filterControl?: TableFilterControl;
   filterChips?: FilterChip[];
   onClearFilters?: () => void;
+  /** Inline filters shown outside the filter sidebar (e.g. business type). */
+  toolbarFilters?: React.ReactNode;
   headerActions?: React.ReactNode;
   /** Shown inside the table shell when the filtered set is empty (search/filters stay visible). */
   emptyState?: React.ReactNode;
@@ -53,6 +55,7 @@ export function DataTablePanel<T>({
   filterControl,
   filterChips,
   onClearFilters,
+  toolbarFilters,
   headerActions,
   emptyState,
   summaryLabel,
@@ -60,7 +63,11 @@ export function DataTablePanel<T>({
   const { total, start, end, pageSize, page, totalPages, slice } = pg;
 
   const hasHeaderControls = Boolean(
-    search || filterControl || headerActions || summaryLabel
+    search ||
+      filterControl ||
+      headerActions ||
+      summaryLabel ||
+      toolbarFilters
   );
   const showFilterChipSlot = Boolean(filterControl || filterChips !== undefined);
   const showShell =
@@ -72,7 +79,8 @@ export function DataTablePanel<T>({
 
   const isEmpty = total === 0;
   const activeFilterCount = filterControl?.activeCount ?? 0;
-  const hasActiveFilters = activeFilterCount > 0;
+  const hasActiveFilters =
+    activeFilterCount > 0 || (filterChips?.length ?? 0) > 0;
 
   return (
     <div
@@ -116,6 +124,11 @@ export function DataTablePanel<T>({
             </div>
           ) : null}
           <div className="platform-report-table-header__actions">
+            {toolbarFilters ? (
+              <div className="platform-report-table-header__toolbar-filters">
+                {toolbarFilters}
+              </div>
+            ) : null}
             {filterControl ? (
               <div className="platform-report-table-header__filter-actions">
                 <FilterTriggerButton

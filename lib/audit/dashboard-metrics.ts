@@ -9,6 +9,7 @@ export type DashboardAuditRecord = {
   auditor: string | null;
   lob: string;
   type: string;
+  businessType: string;
   callDate: string;
   auditDate: string;
   qualityPct: number;
@@ -46,7 +47,7 @@ export type TopFatalRow = {
 export type DashboardIncludeFilters = {
   agent: string;
   teamName: string;
-  lob: string;
+  businessType: string;
   auditor: string;
   auditType: string;
 };
@@ -54,7 +55,7 @@ export type DashboardIncludeFilters = {
 export const EMPTY_INCLUDE_FILTERS: DashboardIncludeFilters = {
   agent: "",
   teamName: "",
-  lob: "",
+  businessType: "",
   auditor: "",
   auditType: "",
 };
@@ -62,7 +63,7 @@ export const EMPTY_INCLUDE_FILTERS: DashboardIncludeFilters = {
 export type DashboardFilterOptions = {
   agents: string[];
   teamNames: string[];
-  lobs: string[];
+  businessTypes: string[];
   auditors: string[];
   auditTypes: string[];
 };
@@ -72,14 +73,14 @@ export function extractFilterOptions(
 ): DashboardFilterOptions {
   const agents = new Set<string>();
   const teamNames = new Set<string>();
-  const lobs = new Set<string>();
+  const businessTypes = new Set<string>();
   const auditors = new Set<string>();
   const auditTypes = new Set<string>();
 
   for (const record of records) {
     if (record.agent) agents.add(record.agent);
     if (record.supervisor) teamNames.add(record.supervisor);
-    if (record.lob) lobs.add(record.lob);
+    if (record.businessType) businessTypes.add(record.businessType);
     if (record.auditor) auditors.add(record.auditor);
     if (record.type) auditTypes.add(record.type);
   }
@@ -90,7 +91,7 @@ export function extractFilterOptions(
   return {
     agents: sort(agents),
     teamNames: sort(teamNames),
-    lobs: sort(lobs),
+    businessTypes: sort(businessTypes),
     auditors: sort(auditors),
     auditTypes: sort(auditTypes),
   };
@@ -120,7 +121,7 @@ export function filterByIncludeFilters(
     if (filters.teamName && record.supervisor !== filters.teamName) {
       return false;
     }
-    if (filters.lob && record.lob !== filters.lob) {
+    if (filters.businessType && record.businessType !== filters.businessType) {
       return false;
     }
     if (filters.auditor && record.auditor !== filters.auditor) {
@@ -137,7 +138,7 @@ export function hasActiveIncludeFilters(filters: DashboardIncludeFilters): boole
   return Boolean(
     filters.agent ||
       filters.teamName ||
-      filters.lob ||
+      filters.businessType ||
       filters.auditor ||
       filters.auditType
   );

@@ -1243,6 +1243,7 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
         auditor: s.auditor,
         lob: s.lob,
         type: s.type,
+        businessType: s.businessType,
         callDate: s.callDate,
         auditDate: s.auditDate,
         qualityPct: s.qualityPct,

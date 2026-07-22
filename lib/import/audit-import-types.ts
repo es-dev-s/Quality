@@ -28,6 +28,8 @@ export type ParsedAuditImportRow = {
     supervisorRemarks: string;
   };
   submittedAt: string | null;
+  /** Column-wise values matching the upload CSV contract for UI preview. */
+  sheetPreview: Record<string, string>;
   errors: string[];
 };
 

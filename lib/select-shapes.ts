@@ -44,6 +44,7 @@ export const AUDIT_DASHBOARD_SELECT = {
   auditor: true,
   lob: true,
   type: true,
+  businessType: true,
   callDate: true,
   auditDate: true,
   qualityPct: true,

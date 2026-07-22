@@ -20,8 +20,15 @@ import type {
   AuditImportTemplateOption,
   ParsedAuditImportRow,
 } from "@/lib/import/audit-import-types";
-import { recordsFromSpreadsheet } from "@/lib/import/spreadsheet-records";
+import { recordsFromSpreadsheetWithMeta } from "@/lib/import/spreadsheet-records";
 import { FIXED_EXPORT_HEADERS } from "@/lib/import/audit-export-headers";
+import { buildScoresFromFlatParamColumns } from "@/lib/import/sheet-param-map";
+import { buildAuditSheetPreviewStrict } from "@/lib/import/audit-sheet-columns";
+import {
+  entityErrorsForRow,
+  type ImportEntityCatalog,
+} from "@/lib/import/import-entity-catalog";
+import { isBlankAuditSheetRow } from "@/lib/import/import-row-guards";
 
 const PARAM_CELL_RE =
   /^(.+?)\s*\(([\d.]+)\/([\d.]+)\)(?:\s*\[FATAL\])?$/i;
@@ -29,7 +36,27 @@ const PARAM_SUMMARY_SEGMENT_RE =
   /^([^|]+)\|([^|]+)\|([^|]+)\|([^|[]+)(?:\s*\[FATAL\])?$/;
 
 function normalizeHeader(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  return value
+    .replace(/\r\n|\n|\r/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/__\d+$/i, "")
+    .replace(/[\s_-]+/g, "")
+    .replace(/[()/<%.>]+/g, "");
+}
+
+function findHeaderKeys(
+  row: Record<string, string>,
+  alias: string
+): string[] {
+  const target = normalizeHeader(alias);
+  return Object.keys(row)
+    .filter((candidate) => normalizeHeader(candidate) === target)
+    .sort((a, b) => {
+      const aDup = /__\d+$/i.test(a) ? 1 : 0;
+      const bDup = /__\d+$/i.test(b) ? 1 : 0;
+      return aDup - bDup;
+    });
 }
 
 function pickField(
@@ -37,11 +64,10 @@ function pickField(
   aliases: string[]
 ): string {
   for (const alias of aliases) {
-    const key = Object.keys(row).find(
-      (candidate) => normalizeHeader(candidate) === normalizeHeader(alias)
-    );
-    if (key && row[key]?.trim()) {
-      return row[key].trim();
+    for (const key of findHeaderKeys(row, alias)) {
+      if (row[key]?.trim()) {
+        return row[key].trim();
+      }
     }
   }
   return "";
@@ -59,7 +85,7 @@ function parseBoolean(value: string): boolean {
 
 function parseInteractionType(value: string): InteractionType {
   const normalized = value.trim().toLowerCase();
-  if (normalized === "chat") return "Chat";
+  if (normalized.includes("chat")) return "Chat";
   return "Call";
 }
 
@@ -262,33 +288,63 @@ function generateAuditCode(rowNumber: number, existing?: string): string {
 
 function buildFormData(row: Record<string, string>): AuditFormData {
   const type = parseInteractionType(
-    pickField(row, ["interaction type", "type", "interactiontype"])
+    pickField(row, [
+      "call/chat",
+      "call chat",
+      "interaction type",
+      "type",
+      "interactiontype",
+    ])
   );
 
+  const teamName = pickField(row, ["team name", "teamname", "team"]);
+
   return {
-    agent: pickField(row, ["agent", "agent name"]),
-    supervisor: pickField(row, ["supervisor", "supervisor name"]),
+    agent: pickField(row, ["agent name", "agent", "agentname"]),
+    // Analytics "Team name" filters use the supervisor field.
+    supervisor:
+      teamName ||
+      pickField(row, ["supervisor", "supervisor name"]),
     auditor: pickField(row, [
+      "quality auditor",
       "quality analyst",
       "auditor",
       "quality analyst name",
+      "qa",
     ]),
     type,
     businessType: pickField(row, ["business type", "businesstype"]),
     callDate: pickField(row, ["call date", "calldate", "interaction date"]),
     auditDate: pickField(row, ["audit date", "auditdate"]),
     lob: pickField(row, ["lob", "line of business"]),
-    sublob: pickField(row, ["sub-lob", "sublob", "reason"]),
+    sublob: pickField(row, ["sub-lob", "sublob", "sub lob"]),
     mobile: pickField(row, [
+      "mobile number",
+      "mobilenumber",
       "contact (number / name)",
       "contact",
       "mobile",
       "phone",
     ]),
     referenceUrl: pickField(row, ["reference", "reference url", "referenceurl"]),
-    reason: pickField(row, ["reason", "sub-reason"]),
-    subReason: pickField(row, ["sub-reason (dff)", "sub-reason", "dff", "subreason"]),
-    response: pickField(row, ["response"]),
+    reason: pickField(row, [
+      "reason for call",
+      "reasonforcall",
+      "reason",
+      "sub-reason",
+    ]),
+    subReason: pickField(row, [
+      "sub-reason (dff)",
+      "sub-reason",
+      "dff",
+      "subreason",
+    ]),
+    response: pickField(row, [
+      "agent's response",
+      "agents response",
+      "agent response",
+      "response",
+    ]),
     feedbackSecurity: parseFeedbackSecurity(
       pickField(row, [FEEDBACK_SEVERITY_LABEL, "severity", "feedback security"])
     ),
@@ -297,6 +353,7 @@ function buildFormData(row: Record<string, string>): AuditFormData {
     ),
     feedbackDate: pickField(row, ["feedback date", "feedbackdate"]),
     agentFeedback: pickField(row, [
+      "feedback for the agent",
       "feedback for agent",
       "agent feedback",
       "agentfeedback",
@@ -304,23 +361,52 @@ function buildFormData(row: Record<string, string>): AuditFormData {
   };
 }
 
+export type ParseAuditImportOptions = {
+  entityCatalog?: ImportEntityCatalog;
+};
+
 export function parseAuditImportSpreadsheet(
   input: string | ArrayBuffer,
   kind: "csv" | "xlsx",
   templates: AuditImportTemplateOption[],
-  templateBodies: Record<string, AuditTemplate> | Map<string, AuditTemplate>
+  templateBodies: Record<string, AuditTemplate> | Map<string, AuditTemplate>,
+  options: ParseAuditImportOptions = {}
 ): ParsedAuditImportRow[] {
   const templateBodyMap =
     templateBodies instanceof Map
       ? templateBodies
       : new Map(Object.entries(templateBodies));
-  const records = recordsFromSpreadsheet(input, kind);
-  if (records.length === 0) {
+  const { records: rawRecords } = recordsFromSpreadsheetWithMeta(input, kind);
+  if (rawRecords.length === 0) {
     throw new Error("No audit rows found in the file.");
   }
 
-  return records.map((record, index) => {
-    const rowNumber = index + 1;
+  // Ensure contract column names exist on every row (name match + position fallback).
+  // Fully empty / serial-only rows are dropped — never imported or flagged as errors.
+  const records = rawRecords
+    .map((raw, index) => {
+      const preview = buildAuditSheetPreviewStrict(raw);
+      const enriched: Record<string, string> = { ...raw };
+      for (const [column, value] of Object.entries(preview)) {
+        if (value) {
+          enriched[column] = value;
+        }
+      }
+      return { raw, enriched, preview, sheetRowNumber: index + 1 };
+    })
+    .filter(
+      ({ raw, enriched }) =>
+        !isBlankAuditSheetRow(raw) && !isBlankAuditSheetRow(enriched)
+    );
+
+  if (records.length === 0) {
+    throw new Error(
+      "No audit rows found in the file (empty rows were ignored)."
+    );
+  }
+
+  return records.map(({ enriched: record, preview, sheetRowNumber }) => {
+    const rowNumber = sheetRowNumber;
     const errors: string[] = [];
     const formData = buildFormData(record);
     const auditCode = generateAuditCode(
@@ -335,10 +421,27 @@ export function parseAuditImportSpreadsheet(
     );
 
     if (!formData.agent.trim()) {
-      errors.push("Agent is required.");
+      errors.push("Agent Name is required.");
+    }
+    if (!formData.auditor.trim()) {
+      errors.push("Quality Auditor is required.");
     }
     if (!formData.auditDate.trim() && !formData.callDate.trim()) {
       errors.push("Audit date or call date is required.");
+    }
+
+    if (options.entityCatalog) {
+      for (const message of entityErrorsForRow(
+        {
+          agent: formData.agent,
+          auditor: formData.auditor,
+        },
+        options.entityCatalog
+      )) {
+        if (message.includes("not found")) {
+          errors.push(message);
+        }
+      }
     }
 
     const templateBody = templateOption
@@ -355,16 +458,37 @@ export function parseAuditImportSpreadsheet(
       if (fromColumns.auditRows.length > 0) {
         scores = fromColumns.scores;
         auditRows = fromColumns.auditRows;
+      } else {
+        const fromFlat = buildScoresFromFlatParamColumns(record, templateBody);
+        if (fromFlat.auditRows.length > 0) {
+          scores = fromFlat.scores;
+          auditRows = fromFlat.auditRows;
+        }
       }
     }
 
-    const sheetQualityPct = parseNumber(
-      pickField(record, ["quality %", "quality pct", "qualitypct"])
-    );
-    const sheetFinalPct = parseNumber(
-      pickField(record, ["final %", "final pct", "finalpct"]),
-      sheetQualityPct
-    );
+    const sheetQualityRaw = pickField(record, [
+      "overall score (with fatal)",
+      "ova_all_score (with fatal)",
+      "ova all score (with fatal)",
+      "ova_all_score",
+      "ova all score",
+      "quality %",
+      "quality pct",
+      "qualitypct",
+    ]);
+    const sheetFinalRaw = pickField(record, [
+      "final %",
+      "final pct",
+      "finalpct",
+    ]);
+    const sheetGradeRaw = pickField(record, ["grade"]);
+    const sheetQualityPct = sheetQualityRaw ? parseNumber(sheetQualityRaw) : 0;
+    const sheetFinalPct = sheetFinalRaw
+      ? parseNumber(sheetFinalRaw)
+      : sheetQualityRaw
+        ? sheetQualityPct
+        : 0;
     const sheetHasFatal = parseBoolean(
       pickField(record, ["has fatal", "hasfatal"])
     );
@@ -380,24 +504,23 @@ export function parseAuditImportSpreadsheet(
     const sheetTotalMax = parseNumber(
       pickField(record, ["points max", "total max", "totalmax"])
     );
-    const sheetGrade =
-      pickField(record, ["grade"]) ||
-      (sheetHasFatal ? "Failed" : "Needs Improvement");
 
     let qualityPct = sheetQualityPct;
     let finalPct = sheetHasFatal ? 0 : sheetFinalPct;
-    let grade = sheetGrade;
+    let grade = sheetGradeRaw;
     let hasFatal = sheetHasFatal;
     let fatalList = sheetFatalList;
     let totalScored = sheetTotalScored;
     let totalMax = sheetTotalMax;
     let catScores = sheetCatScores;
+    let calculatedFromTemplate = false;
 
     if (templateBody && Object.keys(scores).length > 0) {
       const calculated = calculateResults(formData, scores, templateBody, {
         id: auditCode,
       });
       if (calculated.ok) {
+        calculatedFromTemplate = true;
         qualityPct = calculated.record.qualityPct;
         finalPct = calculated.record.finalPct;
         grade = calculated.record.grade;
@@ -407,18 +530,43 @@ export function parseAuditImportSpreadsheet(
         totalMax = calculated.record.totalMax;
         catScores = calculated.record.catScores;
         auditRows = calculated.record.rows;
+      } else if (!sheetQualityRaw.trim() && sheetTotalMax === 0) {
+        // Mapped params but neither calculator nor sheet aggregates can score it.
+        errors.push(
+          calculated.error ||
+            "Could not calculate scores from the mapped parameters."
+        );
+      }
+    }
+
+    const hasMappedScores = Object.keys(scores).some(
+      (key) => String(scores[key] ?? "").trim().length > 0
+    );
+    const hasAuditRowValues = auditRows.some((entry) => entry.sel.trim());
+    const hasSheetScore = Boolean(sheetQualityRaw.trim());
+
+    if (!hasMappedScores && !hasAuditRowValues && !hasSheetScore && totalMax === 0) {
+      errors.push(
+        "Missing scoring data — add parameter columns, a parameter summary, or an overall score."
+      );
+    }
+
+    // Never invent a grade for incomplete rows (that used to create fake DB data).
+    if (!grade.trim()) {
+      if (hasFatal) {
+        grade = "Failed";
+      } else if (calculatedFromTemplate || hasSheetScore || totalMax > 0) {
+        grade = "Needs Improvement";
+      } else {
+        errors.push("Grade is required when overall score is missing.");
       }
     }
 
     if (
-      auditRows.length === 0 &&
-      totalMax === 0 &&
-      qualityPct === 0 &&
-      !pickField(record, ["grade"]).trim()
+      (hasSheetScore || calculatedFromTemplate) &&
+      (!Number.isFinite(qualityPct) || qualityPct < 0 || qualityPct > 100)
     ) {
-      errors.push(
-        "Add parameter columns, a parameter summary, or quality scores."
-      );
+      errors.push("Overall score must be a number between 0 and 100.");
     }
 
     if (!templateOption) {
@@ -456,8 +604,13 @@ export function parseAuditImportSpreadsheet(
           "supervisorremarks",
         ]),
       },
-      submittedAt: pickField(record, ["submitted at", "submittedat", "created at"]),
-      errors,
+      submittedAt: pickField(record, [
+        "submitted at",
+        "submittedat",
+        "created at",
+      ]),
+      sheetPreview: preview,
+      errors: [...new Set(errors)],
     };
   });
 }

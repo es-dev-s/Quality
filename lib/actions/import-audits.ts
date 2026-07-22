@@ -12,6 +12,9 @@ import type {
   AuditImportResult,
   ParsedAuditImportRow,
 } from "@/lib/import/audit-import-types";
+import { loadImportEntityCatalog } from "@/lib/import/resolve-import-entities";
+import { validateImportEntities } from "@/lib/import/import-entity-catalog";
+import { importRowIntegrityError } from "@/lib/import/import-row-guards";
 import { prisma } from "@/lib/prisma";
 
 const importOptionsSchema = z.object({
@@ -25,8 +28,8 @@ const importRowSchema = z.object({
   formData: z.object({
     agent: z.string().min(1),
     supervisor: z.string(),
-    auditor: z.string(),
-    type: z.string().min(1),
+    auditor: z.string().min(1),
+    type: z.enum(["Call", "Chat"]),
     businessType: z.string(),
     callDate: z.string(),
     auditDate: z.string(),
@@ -42,13 +45,13 @@ const importRowSchema = z.object({
     feedbackDate: z.string(),
     agentFeedback: z.string(),
   }),
-  qualityPct: z.number(),
-  finalPct: z.number(),
-  grade: z.string(),
+  qualityPct: z.number().finite().min(0).max(100),
+  finalPct: z.number().finite().min(0).max(100),
+  grade: z.string().min(1),
   hasFatal: z.boolean(),
   fatalList: z.array(z.string()),
-  totalScored: z.number(),
-  totalMax: z.number(),
+  totalScored: z.number().finite().min(0),
+  totalMax: z.number().finite().min(0),
   catScores: z.record(
     z.string(),
     z.object({
@@ -125,6 +128,66 @@ export async function importAuditSubmissions(
     return { error: "Import up to 500 audits at a time." };
   }
 
+  // Drop anything that somehow arrived blank; never write fabricated rows.
+  const nonEmptyRows = rows.filter((row) => {
+    const agent = row.formData?.agent?.trim() ?? "";
+    const auditor = row.formData?.auditor?.trim() ?? "";
+    const hasDates =
+      Boolean(row.formData?.callDate?.trim()) ||
+      Boolean(row.formData?.auditDate?.trim());
+    const hasScores =
+      Object.keys(row.scores ?? {}).length > 0 ||
+      (row.auditRows ?? []).some((entry) => entry.sel?.trim()) ||
+      (row.totalMax ?? 0) > 0;
+    return Boolean(agent || auditor || hasDates || hasScores);
+  });
+
+  if (nonEmptyRows.length === 0) {
+    return { error: "No audits to import (empty rows were ignored)." };
+  }
+
+  // Structural + integrity validation — reject the whole batch if any row is bad.
+  const structurallyValid: ParsedAuditImportRow[] = [];
+  for (const row of nonEmptyRows) {
+    const integrityError = importRowIntegrityError(row);
+    if (integrityError) {
+      return {
+        error: `Import blocked — row ${row.rowNumber}: ${integrityError}`,
+      };
+    }
+
+    const parsedRow = importRowSchema.safeParse(row);
+    if (!parsedRow.success) {
+      return {
+        error: `Import blocked — row ${row.rowNumber} is invalid (${
+          parsedRow.error.issues[0]?.message ?? "schema error"
+        }).`,
+      };
+    }
+    if (!row.templateId) {
+      return {
+        error: `Import blocked — row ${row.rowNumber} has no matched audit template.`,
+      };
+    }
+    structurallyValid.push(row);
+  }
+
+  // Entity integrity — Agent + Quality Auditor must exist in DB (Team Name is free text).
+  const catalog = await loadImportEntityCatalog();
+  const entityValidation = validateImportEntities(
+    structurallyValid.map((row) => ({
+      rowNumber: row.rowNumber,
+      agent: row.formData.agent,
+      auditor: row.formData.auditor,
+      teamName: row.formData.supervisor,
+    })),
+    catalog
+  );
+
+  if (!entityValidation.ok) {
+    return { error: entityValidation.summary };
+  }
+
   const skipExisting = parsedOptions.data.skipExisting ?? true;
   const result: AuditImportResult = {
     created: 0,
@@ -132,28 +195,31 @@ export async function importAuditSubmissions(
     errors: [],
   };
 
-  for (const row of rows) {
-    const parsedRow = importRowSchema.safeParse(row);
-    if (!parsedRow.success) {
-      result.errors.push({
-        row: row.rowNumber,
-        auditCode: row.auditCode || `Row ${row.rowNumber}`,
-        message: parsedRow.error.issues[0]?.message ?? "Invalid row",
-      });
-      continue;
+  for (const row of structurallyValid) {
+    const resolved = entityValidation.resolved.get(row.rowNumber);
+    if (!resolved) {
+      return {
+        error: `Import blocked — could not resolve entities for row ${row.rowNumber}.`,
+      };
     }
 
-    if (row.errors.length > 0) {
-      result.errors.push({
-        row: row.rowNumber,
-        auditCode: row.auditCode,
-        message: row.errors.join(" "),
-      });
-      continue;
-    }
+    // Canonical names from DB so tables/analytics match live form data.
+    const normalizedRow: ParsedAuditImportRow = {
+      ...row,
+      formData: {
+        ...row.formData,
+        agent: resolved.agentName,
+        auditor: resolved.auditorName,
+        supervisor: resolved.teamName,
+      },
+      feedback: {
+        ...row.feedback,
+        agentFeedback: row.feedback.agentFeedback,
+      },
+    };
 
     const existing = await prisma.auditSubmission.findUnique({
-      where: { auditCode: row.auditCode },
+      where: { auditCode: normalizedRow.auditCode },
       select: { id: true },
     });
 
@@ -161,52 +227,56 @@ export async function importAuditSubmissions(
       if (skipExisting) {
         result.skipped += 1;
         result.errors.push({
-          row: row.rowNumber,
-          auditCode: row.auditCode,
+          row: normalizedRow.rowNumber,
+          auditCode: normalizedRow.auditCode,
           message: "Audit ID already exists.",
         });
         continue;
       }
     }
 
-    const record = buildAuditRecord(row);
-    const createdAt = row.submittedAt ? new Date(row.submittedAt) : undefined;
+    const record = buildAuditRecord(normalizedRow);
+    const createdAt = normalizedRow.submittedAt
+      ? new Date(normalizedRow.submittedAt)
+      : undefined;
 
     try {
       await prisma.auditSubmission.create({
         data: {
-          auditCode: row.auditCode,
-          templateId: row.templateId,
+          auditCode: normalizedRow.auditCode,
+          templateId: normalizedRow.templateId,
           submittedById: session.user.id,
-          agent: row.formData.agent,
-          supervisor: row.formData.supervisor || null,
-          auditor: row.formData.auditor || null,
-          type: row.formData.type,
-          businessType: row.formData.businessType || "",
-          callDate: row.formData.callDate || row.formData.auditDate,
-          auditDate: row.formData.auditDate || row.formData.callDate,
-          lob: row.formData.lob || "",
-          sublob: row.formData.sublob || null,
-          reason: row.formData.reason || null,
-          mobile: row.formData.mobile || null,
-          referenceUrl: row.formData.referenceUrl || null,
-          response: row.formData.response || null,
-          qualityPct: row.qualityPct,
-          finalPct: row.finalPct,
-          grade: row.grade,
-          hasFatal: row.hasFatal,
-          fatalList: row.fatalList,
-          feedbackStatus: row.feedback.feedbackStatus,
-          feedbackSecurity: row.feedback.feedbackSecurity,
-          feedbackDate: row.feedback.feedbackDate || null,
-          feedbackStatusAt: row.feedback.feedbackStatusAt || null,
-          agentFeedback: row.feedback.agentFeedback,
-          supervisorRemarks: row.feedback.supervisorRemarks,
-          totalScored: row.totalScored,
-          totalMax: row.totalMax,
-          scores: row.scores,
-          catScores: row.catScores,
-          rows: row.auditRows,
+          agent: normalizedRow.formData.agent,
+          supervisor: normalizedRow.formData.supervisor || null,
+          auditor: normalizedRow.formData.auditor || null,
+          type: normalizedRow.formData.type,
+          businessType: normalizedRow.formData.businessType || "",
+          callDate:
+            normalizedRow.formData.callDate || normalizedRow.formData.auditDate,
+          auditDate:
+            normalizedRow.formData.auditDate || normalizedRow.formData.callDate,
+          lob: normalizedRow.formData.lob || "",
+          sublob: normalizedRow.formData.sublob || null,
+          reason: normalizedRow.formData.reason || null,
+          mobile: normalizedRow.formData.mobile || null,
+          referenceUrl: normalizedRow.formData.referenceUrl || null,
+          response: normalizedRow.formData.response || null,
+          qualityPct: normalizedRow.qualityPct,
+          finalPct: normalizedRow.finalPct,
+          grade: normalizedRow.grade,
+          hasFatal: normalizedRow.hasFatal,
+          fatalList: normalizedRow.fatalList,
+          feedbackStatus: normalizedRow.feedback.feedbackStatus,
+          feedbackSecurity: normalizedRow.feedback.feedbackSecurity,
+          feedbackDate: normalizedRow.feedback.feedbackDate || null,
+          feedbackStatusAt: normalizedRow.feedback.feedbackStatusAt || null,
+          agentFeedback: normalizedRow.feedback.agentFeedback,
+          supervisorRemarks: normalizedRow.feedback.supervisorRemarks,
+          totalScored: normalizedRow.totalScored,
+          totalMax: normalizedRow.totalMax,
+          scores: normalizedRow.scores,
+          catScores: normalizedRow.catScores,
+          rows: normalizedRow.auditRows,
           record: record as unknown as object,
           ...(createdAt && !Number.isNaN(createdAt.getTime())
             ? { createdAt }
@@ -218,19 +288,19 @@ export async function importAuditSubmissions(
       if (isPrismaUniqueViolation(error, "auditCode")) {
         result.skipped += 1;
         result.errors.push({
-          row: row.rowNumber,
-          auditCode: row.auditCode,
+          row: normalizedRow.rowNumber,
+          auditCode: normalizedRow.auditCode,
           message: "Audit ID already exists.",
         });
         continue;
       }
 
-      result.errors.push({
-        row: row.rowNumber,
-        auditCode: row.auditCode,
-        message:
-          error instanceof Error ? error.message : "Could not create audit.",
-      });
+      // Hard stop on unexpected write failures so partial bad state is visible.
+      return {
+        error: `Import stopped at row ${normalizedRow.rowNumber}: ${
+          error instanceof Error ? error.message : "Could not create audit."
+        }. ${result.created} row(s) were created before this failure.`,
+      };
     }
   }
 
@@ -252,9 +322,12 @@ export async function importAuditSubmissions(
 
 export async function getAuditImportContext() {
   await requireSuperAdmin();
-  const rows = await prisma.formTemplate.findMany({
-    orderBy: [{ isDefault: "desc" }, { name: "asc" }],
-  });
+  const [rows, entityCatalog] = await Promise.all([
+    prisma.formTemplate.findMany({
+      orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+    }),
+    loadImportEntityCatalog(),
+  ]);
 
   return {
     templates: rows.map((row) => ({
@@ -265,5 +338,6 @@ export async function getAuditImportContext() {
     templateBodies: Object.fromEntries(
       rows.map((row) => [row.id, rowToAuditTemplate(row)])
     ),
+    entityCatalog,
   };
 }

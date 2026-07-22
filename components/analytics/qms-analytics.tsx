@@ -211,6 +211,13 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
         onRemove: () => updateFilter("auditor", ""),
       });
     }
+    if (includeFilters.businessType) {
+      chips.push({
+        key: "business",
+        label: `Business: ${includeFilters.businessType}`,
+        onRemove: () => updateFilter("businessType", ""),
+      });
+    }
     if (hasActiveAnalyticsInteractionFilter(interactionFilter)) {
       const preset = ANALYTICS_INTERACTION_PRESETS.find(
         (entry) => entry.id === interactionFilter
@@ -226,7 +233,10 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
     return chips;
   }, [customRange, period, includeFilters, interactionFilter, hasCustomRange]);
 
-  const sidebarFilterCount = filterChips.length;
+  const sidebarFilterCount = filterChips.filter(
+    (chip) => chip.key !== "business"
+  ).length;
+  const hasAnyAnalyticsFilters = filterChips.length > 0;
 
   const agentFilterOptions = useMemo(
     () => buildAgentFilterSelectOptions(filterOptions.agents),
@@ -247,6 +257,17 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
       ...filterOptions.auditors.map((name) => ({ value: name, label: name })),
     ],
     [filterOptions.auditors]
+  );
+
+  const businessTypeFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All business types" },
+      ...filterOptions.businessTypes.map((value) => ({
+        value,
+        label: value,
+      })),
+    ],
+    [filterOptions.businessTypes]
   );
 
   function handleRefresh() {
@@ -297,8 +318,17 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
           </div>
 
           <div className="pf-bar__right">
+            <label className="pf-inline-filter">
+              <span className="pf-inline-filter__label">Business type</span>
+              <FilterSelect
+                value={includeFilters.businessType}
+                onChange={(value) => updateFilter("businessType", value)}
+                options={businessTypeFilterOptions}
+                ariaLabel="Filter by business type"
+              />
+            </label>
             <div className="pf-bar__filter-actions">
-              {sidebarFilterCount > 0 ? (
+              {hasAnyAnalyticsFilters ? (
                 <FilterClearButton onClick={clearFilters} />
               ) : null}
               <FilterTriggerButton
@@ -336,7 +366,7 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
         description="Set the timeline and segment filters for all analytics tabs."
         activeCount={sidebarFilterCount}
         onClearAll={clearFilters}
-        clearDisabled={sidebarFilterCount === 0}
+        clearDisabled={!hasAnyAnalyticsFilters}
         footer={
           <button
             type="button"

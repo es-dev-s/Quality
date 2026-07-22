@@ -281,6 +281,62 @@
   flex: 0 0 auto;
 }
 
+.platform-report-table-header__toolbar-filters {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.pf-inline-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.pf-inline-filter__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-muted-fg);
+  white-space: nowrap;
+}
+
+.pf-inline-filter .dash-select,
+.pf-inline-filter .dash-select--filter,
+.platform-report-table-header__toolbar-filters .dash-select,
+.platform-report-table-header__toolbar-filters .dash-select--filter {
+  min-width: 10.5rem;
+  max-width: 14rem;
+  height: 32px;
+}
+
+.audit-logs__date-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.audit-logs__date-sort:hover {
+  color: var(--color-accent);
+}
+
+.audit-logs__date-sort-icon {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
 .platform-report-table-header__chips,
 .table-filter-bar__chips,
 .pf-bar__chips {

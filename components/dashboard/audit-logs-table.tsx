@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState, useEffect, useOptimistic, useCallback, useRef, startTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Eye, Pencil, Trash2 } from "lucide-react";
+import { Download, Eye, Pencil, Trash2, ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react";
 import {
   FilterSidebar,
   FilterSidebarGrid,
@@ -227,10 +227,10 @@ export function AuditLogsTable({
   const [grade, setGrade] = useState("");
   const [type, setType] = useState("");
   const [businessType, setBusinessType] = useState("");
-  const [lob, setLob] = useState("");
   const [agent, setAgent] = useState("");
   const [feedbackStatus, setFeedbackStatus] = useState("");
   const [auditSource, setAuditSource] = useState<AuditSourceKind | "">("");
+  const [dateSort, setDateSort] = useState<"asc" | "desc">("desc");
   const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
     defaultAuditHistoryFilter(submissions)
   );
@@ -367,11 +367,6 @@ export function AuditLogsTable({
     });
   }, [visibleRowIdsKey]);
 
-  const lobs = useMemo(
-    () => [...new Set(rows.map((s) => s.lob))].sort(),
-    [rows]
-  );
-
   const agentNames = useMemo(
     () =>
       [...new Set(rows.map((row) => row.agent).filter(Boolean))].sort((a, b) =>
@@ -383,8 +378,8 @@ export function AuditLogsTable({
 
   const businessTypeOptions = useMemo(
     () =>
-      [...new Set(rows.map((row) => row.businessType))].sort((a, b) =>
-        a.localeCompare(b)
+      [...new Set(rows.map((row) => row.businessType).filter(Boolean))].sort(
+        (a, b) => a.localeCompare(b)
       ),
     [rows]
   );
@@ -413,18 +408,10 @@ export function AuditLogsTable({
 
   const businessFilterOptions = useMemo(
     () => [
-      { value: "", label: "All business" },
+      { value: "", label: "All business types" },
       ...businessTypeOptions.map((value) => ({ value, label: value })),
     ],
     [businessTypeOptions]
-  );
-
-  const lobFilterOptions = useMemo(
-    () => [
-      { value: "", label: "All LOBs" },
-      ...lobs.map((name) => ({ value: name, label: name })),
-    ],
-    [lobs]
   );
 
   const agentFilterOptions = useMemo(
@@ -453,7 +440,7 @@ export function AuditLogsTable({
   const filtered = useMemo(() => {
     const hasCustom = !!(customRange.from || customRange.to);
     const historyScoped = filterByAuditHistory(rows, historyFilter);
-    return historyScoped.filter((row) => {
+    const matched = historyScoped.filter((row) => {
       if (!matchesSearch(row, search)) return false;
       if (!matchesScore(row, scorePreset)) return false;
       const metricDate = resolveMetricDate(row.auditDate, row.callDate);
@@ -465,13 +452,25 @@ export function AuditLogsTable({
       if (grade && row.grade !== grade) return false;
       if (type && row.type !== type) return false;
       if (businessType && row.businessType !== businessType) return false;
-      if (lob && row.lob !== lob) return false;
       if (!matchesAgentFilter(row.agent, agent)) return false;
       if (feedbackStatus && row.feedbackStatus !== feedbackStatus) return false;
       if (auditSource && row.auditSource !== auditSource) return false;
       return true;
     });
-  }, [rows, historyFilter, search, scorePreset, dateRange, customRange, grade, type, businessType, lob, agent, feedbackStatus, auditSource]);
+
+    const direction = dateSort === "asc" ? 1 : -1;
+    return [...matched].sort((a, b) => {
+      const aDate = resolveMetricDate(a.auditDate, a.callDate);
+      const bDate = resolveMetricDate(b.auditDate, b.callDate);
+      if (aDate !== bDate) {
+        return aDate.localeCompare(bDate) * direction;
+      }
+      // Tie-break with createdAt so same-day rows stay stable.
+      const createdCmp = a.createdAt.localeCompare(b.createdAt);
+      if (createdCmp !== 0) return createdCmp * direction;
+      return a.auditCode.localeCompare(b.auditCode) * direction;
+    });
+  }, [rows, historyFilter, search, scorePreset, dateRange, customRange, grade, type, businessType, agent, feedbackStatus, auditSource, dateSort]);
 
   const paginationResetKey = useMemo(
     () =>
@@ -484,11 +483,11 @@ export function AuditLogsTable({
         grade,
         type,
         businessType,
-        lob,
         agent,
         feedbackStatus,
         auditSource,
         historyFilter,
+        dateSort,
         filtered.length,
       ].join("|"),
     [
@@ -500,11 +499,11 @@ export function AuditLogsTable({
       grade,
       type,
       businessType,
-      lob,
       agent,
       feedbackStatus,
       auditSource,
       historyFilter,
+      dateSort,
       filtered.length,
     ]
   );
@@ -589,7 +588,6 @@ export function AuditLogsTable({
     grade !== "" ||
     type !== "" ||
     businessType !== "" ||
-    lob !== "" ||
     agent !== "" ||
     feedbackStatus !== "" ||
     auditSource !== "";
@@ -601,13 +599,11 @@ export function AuditLogsTable({
     if (scorePreset !== "all") count++;
     if (grade) count++;
     if (type) count++;
-    if (businessType) count++;
-    if (lob) count++;
     if (agent) count++;
     if (feedbackStatus) count++;
     if (auditSource) count++;
     return count;
-  }, [dateRange, customRange, scorePreset, grade, type, businessType, lob, agent, feedbackStatus, auditSource]);
+  }, [dateRange, customRange, scorePreset, grade, type, agent, feedbackStatus, auditSource]);
 
   const activeFilterChips = useMemo(() => {
     const chips: { key: string; label: string; onRemove: () => void }[] = [];
@@ -652,15 +648,8 @@ export function AuditLogsTable({
     if (businessType) {
       chips.push({
         key: "business",
-        label: businessType,
+        label: `Business: ${businessType}`,
         onRemove: () => setBusinessType(""),
-      });
-    }
-    if (lob) {
-      chips.push({
-        key: "lob",
-        label: `LOB: ${lob}`,
-        onRemove: () => setLob(""),
       });
     }
     if (agent) {
@@ -691,7 +680,7 @@ export function AuditLogsTable({
     }
 
     return chips;
-  }, [dateRange, customRange, scorePreset, grade, type, businessType, lob, agent, feedbackStatus, auditSource]);
+  }, [dateRange, customRange, scorePreset, grade, type, businessType, agent, feedbackStatus, auditSource]);
 
   const clearFilters = () => {
     setSearch("");
@@ -701,7 +690,6 @@ export function AuditLogsTable({
     setGrade("");
     setType("");
     setBusinessType("");
-    setLob("");
     setAgent("");
     setFeedbackStatus("");
     setAuditSource("");
@@ -901,7 +889,7 @@ export function AuditLogsTable({
           open={filterSidebar.open}
           onOpenChange={filterSidebar.onOpenChange}
           title="Audit filters"
-          description="Refine by period, score, grade, type, business, LOB, agent, or feedback status."
+          description="Refine by period, score, grade, type, agent, feedback status, or audit source."
           activeCount={advancedFilterCount}
           onClearAll={clearFilters}
           clearDisabled={!hasActiveFilters}
@@ -1002,28 +990,6 @@ export function AuditLogsTable({
               </label>
 
               <label className="dash-filter">
-                <span>Business</span>
-                <FilterSelect
-                  id="audit-logs-business"
-                  value={businessType}
-                  onChange={setBusinessType}
-                  options={businessFilterOptions}
-                  ariaLabel="Filter by business type"
-                />
-              </label>
-
-              <label className="dash-filter">
-                <span>LOB</span>
-                <FilterSelect
-                  id="audit-logs-lob"
-                  value={lob}
-                  onChange={setLob}
-                  options={lobFilterOptions}
-                  ariaLabel="Filter by LOB"
-                />
-              </label>
-
-              <label className="dash-filter">
                 <span>Feedback</span>
                 <FilterSelect
                   id="audit-logs-feedback"
@@ -1106,6 +1072,20 @@ export function AuditLogsTable({
                   }
                 : undefined
             }
+            toolbarFilters={
+              enableFilters ? (
+                <label className="pf-inline-filter">
+                  <span className="pf-inline-filter__label">Business type</span>
+                  <FilterSelect
+                    id="audit-logs-business"
+                    value={businessType}
+                    onChange={setBusinessType}
+                    options={businessFilterOptions}
+                    ariaLabel="Filter by business type"
+                  />
+                </label>
+              ) : undefined
+            }
             filterChips={enableFilters ? activeFilterChips : undefined}
             onClearFilters={enableFilters ? clearFilters : undefined}
             headerActions={showToolbarActions ? toolbarActions : undefined}
@@ -1143,7 +1123,42 @@ export function AuditLogsTable({
                     <th className="col-agent">Agent</th>
                     <th className="col-type-lob">Type / LOB</th>
                     <th className="col-contact">Number / client name</th>
-                    <th>Audit date</th>
+                    <th>
+                      <button
+                        type="button"
+                        className="audit-logs__date-sort"
+                        onClick={() =>
+                          setDateSort((current) =>
+                            current === "desc" ? "asc" : "desc"
+                          )
+                        }
+                        aria-label={
+                          dateSort === "desc"
+                            ? "Sort by audit date ascending"
+                            : "Sort by audit date descending"
+                        }
+                        title={
+                          dateSort === "desc"
+                            ? "Newest first — click for oldest first"
+                            : "Oldest first — click for newest first"
+                        }
+                      >
+                        Audit date
+                        {dateSort === "desc" ? (
+                          <ArrowDownWideNarrow
+                            size={14}
+                            className="audit-logs__date-sort-icon"
+                            aria-hidden
+                          />
+                        ) : (
+                          <ArrowUpNarrowWide
+                            size={14}
+                            className="audit-logs__date-sort-icon"
+                            aria-hidden
+                          />
+                        )}
+                      </button>
+                    </th>
                     <th>Auditor</th>
                     <th>Score</th>
                     <th>Grade</th>

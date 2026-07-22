@@ -24,6 +24,7 @@ export default async function ImportPage() {
           roles={roles}
           templates={auditContext.templates}
           templateBodies={auditContext.templateBodies}
+          entityCatalog={auditContext.entityCatalog}
         />
       </PageFrame>
     );

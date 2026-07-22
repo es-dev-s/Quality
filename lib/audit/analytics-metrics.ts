@@ -24,6 +24,7 @@ export type AnalyticsAuditRecord = {
   supervisor: string | null;
   auditor: string | null;
   type: string;
+  businessType: string;
   callDate: string;
   auditDate: string;
   qualityPct: number;

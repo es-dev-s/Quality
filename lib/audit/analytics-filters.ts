@@ -15,6 +15,7 @@ export type AnalyticsIncludeFilters = {
   agent: string;
   teamName: string;
   auditor: string;
+  businessType: string;
 };
 
 export type AnalyticsInteractionFilter = "both" | "call" | "chat";
@@ -36,12 +37,14 @@ export const EMPTY_ANALYTICS_INCLUDE_FILTERS: AnalyticsIncludeFilters = {
   agent: "",
   teamName: "",
   auditor: "",
+  businessType: "",
 };
 
 export type AnalyticsFilterOptions = {
   agents: string[];
   teamNames: string[];
   auditors: string[];
+  businessTypes: string[];
 };
 
 export const ANALYTICS_PERIOD_PRESETS: {
@@ -66,11 +69,13 @@ export function extractAnalyticsFilterOptions(
   const agents = new Set<string>();
   const teamNames = new Set<string>();
   const auditors = new Set<string>();
+  const businessTypes = new Set<string>();
 
   for (const record of records) {
     if (record.agent) agents.add(record.agent);
     if (record.supervisor) teamNames.add(record.supervisor);
     if (record.auditor) auditors.add(record.auditor);
+    if (record.businessType) businessTypes.add(record.businessType);
   }
 
   for (const name of rosterAgentNames) {
@@ -84,6 +89,7 @@ export function extractAnalyticsFilterOptions(
     agents: sort(agents),
     teamNames: sort(teamNames),
     auditors: sort(auditors),
+    businessTypes: sort(businessTypes),
   };
 }
 
@@ -97,6 +103,9 @@ export function filterAnalyticsByInclude(
       return false;
     }
     if (filters.auditor && record.auditor !== filters.auditor) return false;
+    if (filters.businessType && record.businessType !== filters.businessType) {
+      return false;
+    }
     return true;
   });
 }
@@ -104,7 +113,12 @@ export function filterAnalyticsByInclude(
 export function hasActiveAnalyticsIncludeFilters(
   filters: AnalyticsIncludeFilters
 ): boolean {
-  return Boolean(filters.agent || filters.teamName || filters.auditor);
+  return Boolean(
+    filters.agent ||
+      filters.teamName ||
+      filters.auditor ||
+      filters.businessType
+  );
 }
 
 export function hasActiveAnalyticsInteractionFilter(

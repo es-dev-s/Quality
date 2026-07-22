@@ -6,6 +6,7 @@ import { AuditImportPanel } from "@/components/import/audit-import-panel";
 import { DataImportPanel as UserImportPanel } from "@/components/import/data-import-panel";
 import type { AuditImportTemplateOption } from "@/lib/import/audit-import-types";
 import type { RoleImportOption } from "@/lib/import/user-import-types";
+import type { ImportEntityCatalog } from "@/lib/import/import-entity-catalog";
 import type { AuditTemplate } from "@/lib/audit/types";
 import { cn } from "@/lib/utils";
 
@@ -15,12 +16,14 @@ type ImportHubProps = {
   roles: RoleImportOption[];
   templates: AuditImportTemplateOption[];
   templateBodies: Record<string, AuditTemplate>;
+  entityCatalog: ImportEntityCatalog;
 };
 
 export function ImportHub({
   roles,
   templates,
   templateBodies,
+  entityCatalog,
 }: ImportHubProps) {
   const [tab, setTab] = useState<ImportTab>("audits");
 
@@ -56,7 +59,11 @@ export function ImportHub({
       </div>
 
       {tab === "audits" ? (
-        <AuditImportPanel templates={templates} templateBodies={templateBodies} />
+        <AuditImportPanel
+          templates={templates}
+          templateBodies={templateBodies}
+          entityCatalog={entityCatalog}
+        />
       ) : (
         <UserImportPanel roles={roles} />
       )}

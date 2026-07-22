@@ -98,6 +98,7 @@ export type DashboardAuditRecord = {
   auditor: string | null;
   lob: string;
   type: string;
+  businessType: string;
   callDate: string;
   auditDate: string;
   qualityPct: number;
