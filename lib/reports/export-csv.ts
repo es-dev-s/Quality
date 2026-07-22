@@ -63,6 +63,7 @@ const FIXED_HEADERS = [
   "Feedback for agent",
   "Supervisor remarks",
   "Submitted by",
+  "Audit source",
   "Submitted at",
 ] as const;
 
@@ -100,6 +101,7 @@ function buildFixedRowValues(row: AuditExportRow): unknown[] {
     row.agentFeedback,
     row.supervisorRemarks,
     row.submittedBy,
+    row.auditSource,
     row.createdAt,
   ];
 }

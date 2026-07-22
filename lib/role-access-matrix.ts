@@ -45,11 +45,11 @@ export const ACCESS_MODULES: {
 export const DATA_VISIBILITY: Record<SystemRoleSlug, string> = {
   [SYSTEM_ROLE_SLUGS.AGENT]: "Own audit records only",
   [SYSTEM_ROLE_SLUGS.SUPERVISOR]:
-    "Agents created or assigned to this supervisor (after QM approval)",
+    "Agents created or assigned to this supervisor (after QM approval); can submit audits for their team",
   [SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR]:
     "Same as Supervisor — can also submit call/chat audits for their team",
   [SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]:
-    "Audits for aligned agents and records where this user is the analyst",
+    "Own/aligned audits, plus all supervisor-submitted audits (tagged) for verification",
   [SYSTEM_ROLE_SLUGS.QUALITY_MANAGER]:
     "Agents approved or assigned by this manager",
   [SYSTEM_ROLE_SLUGS.ADMIN]: "All audit records",
@@ -197,6 +197,7 @@ export const EXPECTED_SYSTEM_ROLE_MATRIX: Record<
     overview: "Read",
     auditLogs: "Read",
     analytics: "Read",
+    auditForm: "Read/Write",
     settings: "Partial",
     team: "Read/Write",
     feedback: "Read",

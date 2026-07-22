@@ -11,6 +11,8 @@ import {
   normalizeUploadedReferencePath,
 } from "@/lib/upload/reference-url-paths";
 import type { AuditDetail } from "@/lib/audit/audit-records";
+import { AuditSourceBadge } from "@/components/audit/audit-source-badge";
+import { auditSourceLabel } from "@/lib/audit/audit-source";
 import { interactionContactFieldLabel, interactionReferenceSectionLabel } from "@/lib/audit/interaction-labels";
 import type { AuditRow } from "@/lib/audit/types";
 import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
@@ -281,7 +283,17 @@ export function AuditDetailModal({
                       {detail.mobile}
                     </Field>
                   ) : null}
-                  <Field label="Submitted by">{detail.submittedBy}</Field>
+                  <Field label="Submitted by">
+                    <span className="audit-logs__code-cell">
+                      {detail.submittedBy}
+                      {detail.auditSource !== "other" ? (
+                        <AuditSourceBadge source={detail.auditSource} />
+                      ) : null}
+                    </span>
+                  </Field>
+                  <Field label="Audit source">
+                    {auditSourceLabel(detail.auditSource)}
+                  </Field>
                   <Field label="Submitted at">{formatDateTime(detail.createdAt)}</Field>
                 </div>
 

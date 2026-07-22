@@ -60,6 +60,7 @@ import { assertAuditNotHistory } from "@/lib/audit/history-guard";
 import { fetchAgentRosterNames } from "@/lib/audit/agent-roster";
 import { canFilterByAgent } from "@/lib/audit/agent-filter-access";
 import { dataScopeFromSession } from "@/lib/audit/data-scope";
+import { resolveAuditSourceKind } from "@/lib/audit/audit-source";
 import { ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
 import {
@@ -437,7 +438,11 @@ type AuditLogRow = {
   supervisorRemarks: string;
   referenceUrl: string | null;
   mobile: string | null;
-  submittedBy: { name: string | null; email: string };
+  submittedBy: {
+    name: string | null;
+    email: string;
+    role?: { slug: string; name: string } | null;
+  };
   createdAt: Date | string;
   isHistory: boolean;
 };
@@ -447,6 +452,7 @@ function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
     s.mobile ?? "",
     s.referenceUrl
   );
+  const submittedByRoleSlug = s.submittedBy.role?.slug ?? null;
 
   return {
     id: s.id,
@@ -474,6 +480,8 @@ function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
     mobile: legacy.mobile || null,
     referenceUrl: legacy.referenceUrl || null,
     submittedBy: s.submittedBy.name ?? s.submittedBy.email,
+    submittedByRoleSlug,
+    auditSource: resolveAuditSourceKind(submittedByRoleSlug),
     createdAt: toIsoTimestamp(s.createdAt),
     isHistory: s.isHistory,
   };
@@ -583,7 +591,13 @@ export async function getAuditDetail(id: string) {
   const submission = await prisma.auditSubmission.findFirst({
     where: await scopedAuditByIdWhere(session, parsedId.data.id),
     include: {
-      submittedBy: { select: { name: true, email: true } },
+      submittedBy: {
+        select: {
+          name: true,
+          email: true,
+          role: { select: { slug: true, name: true } },
+        },
+      },
     },
   });
 
@@ -593,6 +607,7 @@ export async function getAuditDetail(id: string) {
     submission.mobile ?? "",
     submission.referenceUrl
   );
+  const submittedByRoleSlug = submission.submittedBy.role?.slug ?? null;
 
   return {
     id: submission.id,
@@ -632,6 +647,8 @@ export async function getAuditDetail(id: string) {
     rows: parseRows(submission.rows),
     submittedBy:
       submission.submittedBy.name ?? submission.submittedBy.email,
+    submittedByRoleSlug,
+    auditSource: resolveAuditSourceKind(submittedByRoleSlug),
     createdAt: submission.createdAt.toISOString(),
     isHistory: submission.isHistory,
   } satisfies AuditDetail;

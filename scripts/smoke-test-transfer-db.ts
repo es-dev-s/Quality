@@ -67,9 +67,9 @@ async function main() {
       (s) => s.scope.slug === "audit-form:read"
     );
     record(
-      "standard supervisor has no audit form",
-      !hasAuditForm,
-      hasAuditForm ? "Unexpected audit-form:read on supervisor" : "Correct"
+      "standard supervisor has audit form",
+      hasAuditForm,
+      hasAuditForm ? "Correct" : "Missing audit-form:read on supervisor — run npm run db:seed:rbac"
     );
   }
 

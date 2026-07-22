@@ -111,6 +111,7 @@ export async function buildSupervisorAgentMap(
 
 /** Roles that can open /forms/audit (audit-form:read). */
 export const AUDIT_FORM_ACCESS_ROLES: SystemRoleSlug[] = [
+  SYSTEM_ROLE_SLUGS.SUPERVISOR,
   SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR,
   SYSTEM_ROLE_SLUGS.QUALITY_ANALYST,
   SYSTEM_ROLE_SLUGS.QUALITY_MANAGER,
@@ -129,9 +130,9 @@ export const FORM_SUPERVISOR_AGENT_RULES: Record<
     agentScope: "—",
   },
   [SYSTEM_ROLE_SLUGS.SUPERVISOR]: {
-    canAccessForm: false,
-    supervisorScope: "—",
-    agentScope: "—",
+    canAccessForm: true,
+    supervisorScope: "Self only",
+    agentScope: "Active agents provisioned by this supervisor",
   },
   [SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR]: {
     canAccessForm: true,

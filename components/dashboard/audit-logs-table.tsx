@@ -16,6 +16,10 @@ import { AuditDetailModal } from "@/components/audit-logs/audit-detail-modal";
 import { HistoryBadge } from "@/components/audit/history-badge";
 import { HistoryFilterSection } from "@/components/audit/history-filter-section";
 import {
+  auditSourceFilterLabel,
+  type AuditSourceKind,
+} from "@/lib/audit/audit-source";
+import {
   ReferenceAttachmentView,
   referenceAttachmentSearchText,
 } from "@/components/audit-logs/reference-attachment-view";
@@ -182,6 +186,8 @@ function matchesSearch(row: AuditLogEntry, query: string) {
     row.feedbackDate ?? "",
     row.agentFeedback,
     row.mobile,
+    row.submittedBy,
+    row.auditSource,
     referenceAttachmentSearchText(row.referenceUrl),
   ]
     .filter(Boolean)
@@ -224,6 +230,7 @@ export function AuditLogsTable({
   const [lob, setLob] = useState("");
   const [agent, setAgent] = useState("");
   const [feedbackStatus, setFeedbackStatus] = useState("");
+  const [auditSource, setAuditSource] = useState<AuditSourceKind | "">("");
   const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
     defaultAuditHistoryFilter(submissions)
   );
@@ -433,6 +440,16 @@ export function AuditLogsTable({
     []
   );
 
+  const sourceFilterOptions = useMemo(
+    () => [
+      { value: "", label: auditSourceFilterLabel("all") },
+      { value: "supervisor", label: "Supervisor audits" },
+      { value: "qa", label: "QA audits" },
+      { value: "other", label: "Other sources" },
+    ],
+    []
+  );
+
   const filtered = useMemo(() => {
     const hasCustom = !!(customRange.from || customRange.to);
     const historyScoped = filterByAuditHistory(rows, historyFilter);
@@ -451,9 +468,10 @@ export function AuditLogsTable({
       if (lob && row.lob !== lob) return false;
       if (!matchesAgentFilter(row.agent, agent)) return false;
       if (feedbackStatus && row.feedbackStatus !== feedbackStatus) return false;
+      if (auditSource && row.auditSource !== auditSource) return false;
       return true;
     });
-  }, [rows, historyFilter, search, scorePreset, dateRange, customRange, grade, type, businessType, lob, agent, feedbackStatus]);
+  }, [rows, historyFilter, search, scorePreset, dateRange, customRange, grade, type, businessType, lob, agent, feedbackStatus, auditSource]);
 
   const paginationResetKey = useMemo(
     () =>
@@ -469,6 +487,7 @@ export function AuditLogsTable({
         lob,
         agent,
         feedbackStatus,
+        auditSource,
         historyFilter,
         filtered.length,
       ].join("|"),
@@ -484,6 +503,7 @@ export function AuditLogsTable({
       lob,
       agent,
       feedbackStatus,
+      auditSource,
       historyFilter,
       filtered.length,
     ]
@@ -571,7 +591,8 @@ export function AuditLogsTable({
     businessType !== "" ||
     lob !== "" ||
     agent !== "" ||
-    feedbackStatus !== "";
+    feedbackStatus !== "" ||
+    auditSource !== "";
 
   const advancedFilterCount = useMemo(() => {
     let count = 0;
@@ -584,8 +605,9 @@ export function AuditLogsTable({
     if (lob) count++;
     if (agent) count++;
     if (feedbackStatus) count++;
+    if (auditSource) count++;
     return count;
-  }, [dateRange, customRange, scorePreset, grade, type, businessType, lob, agent, feedbackStatus]);
+  }, [dateRange, customRange, scorePreset, grade, type, businessType, lob, agent, feedbackStatus, auditSource]);
 
   const activeFilterChips = useMemo(() => {
     const chips: { key: string; label: string; onRemove: () => void }[] = [];
@@ -655,9 +677,21 @@ export function AuditLogsTable({
         onRemove: () => setFeedbackStatus(""),
       });
     }
+    if (auditSource) {
+      chips.push({
+        key: "source",
+        label:
+          auditSource === "supervisor"
+            ? "Supervisor audits"
+            : auditSource === "qa"
+              ? "QA audits"
+              : "Other sources",
+        onRemove: () => setAuditSource(""),
+      });
+    }
 
     return chips;
-  }, [dateRange, customRange, scorePreset, grade, type, businessType, lob, agent, feedbackStatus]);
+  }, [dateRange, customRange, scorePreset, grade, type, businessType, lob, agent, feedbackStatus, auditSource]);
 
   const clearFilters = () => {
     setSearch("");
@@ -670,6 +704,7 @@ export function AuditLogsTable({
     setLob("");
     setAgent("");
     setFeedbackStatus("");
+    setAuditSource("");
     setHistoryFilter(defaultAuditHistoryFilter(rows));
   };
 
@@ -996,6 +1031,19 @@ export function AuditLogsTable({
                   onChange={setFeedbackStatus}
                   options={feedbackFilterOptions}
                   ariaLabel="Filter by feedback status"
+                />
+              </label>
+
+              <label className="dash-filter">
+                <span>Audit source</span>
+                <FilterSelect
+                  id="audit-logs-source"
+                  value={auditSource}
+                  onChange={(value) =>
+                    setAuditSource(value as AuditSourceKind | "")
+                  }
+                  options={sourceFilterOptions}
+                  ariaLabel="Filter by audit source"
                 />
               </label>
             </FilterSidebarGrid>

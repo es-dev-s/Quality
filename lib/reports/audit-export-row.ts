@@ -1,6 +1,10 @@
 import type { Prisma } from "@prisma/client";
 import type { CategoryScore, AuditRow } from "@/lib/audit/types";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
+import {
+  auditSourceLabel,
+  resolveAuditSourceKind,
+} from "@/lib/audit/audit-source";
 
 export type AuditExportRow = {
   id: string;
@@ -34,6 +38,8 @@ export type AuditExportRow = {
   agentFeedback: string;
   supervisorRemarks: string;
   submittedBy: string;
+  submittedByRoleSlug: string | null;
+  auditSource: string;
   createdAt: string;
   catScores: Record<string, CategoryScore>;
   rows: AuditRow[];
@@ -76,7 +82,13 @@ export const AUDIT_EXPORT_SELECT = {
   record: true,
   createdAt: true,
   template: { select: { name: true } },
-  submittedBy: { select: { name: true, email: true } },
+  submittedBy: {
+    select: {
+      name: true,
+      email: true,
+      role: { select: { slug: true, name: true } },
+    },
+  },
 } satisfies Prisma.AuditSubmissionSelect;
 
 export type AuditExportSubmission = Prisma.AuditSubmissionGetPayload<{
@@ -171,6 +183,10 @@ export function mapSubmissionToExportRow(
     supervisorRemarks: submission.supervisorRemarks ?? "",
     submittedBy:
       submission.submittedBy.name ?? submission.submittedBy.email ?? "",
+    submittedByRoleSlug: submission.submittedBy.role?.slug ?? null,
+    auditSource: auditSourceLabel(
+      resolveAuditSourceKind(submission.submittedBy.role?.slug)
+    ),
     createdAt:
       submission.createdAt instanceof Date
         ? submission.createdAt.toISOString()

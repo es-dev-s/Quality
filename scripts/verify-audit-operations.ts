@@ -171,10 +171,20 @@ function verifyUiGatesMatchRbac() {
     fail("Agent scope", "Agent should read logs but not write audit form");
   }
 
-  if (!canEditAuditSubmissions(supervisor) && canAccessPath(supervisor, "/audit-logs")) {
-    pass("Supervisor scope", "View logs without edit/delete");
+  if (
+    canWriteAuditForm(supervisor) &&
+    canAccessPath(supervisor, "/forms/audit") &&
+    !canEditAuditSubmissions(supervisor)
+  ) {
+    pass(
+      "Supervisor scope",
+      "Can fill audit form; view logs without edit/delete of saved audits"
+    );
   } else {
-    fail("Supervisor scope", "Supervisor should not edit saved audits");
+    fail(
+      "Supervisor scope",
+      "Supervisor should create audits but not edit saved audits"
+    );
   }
 }
 

@@ -111,8 +111,12 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleSlug, RoleDefinition> = {
   [SYSTEM_ROLE_SLUGS.SUPERVISOR]: {
     name: "Supervisor",
     description:
-      "Team-management tier: onboard agents (QM approval), view scoped audits.",
-    permissions: [...SUPERVISOR_TIER_PERMISSIONS],
+      "Team management and audit forms for provisioned agents (QM approval).",
+    permissions: [
+      ...SUPERVISOR_TIER_PERMISSIONS,
+      PERMISSIONS.AUDIT_FORM_READ,
+      PERMISSIONS.AUDIT_FORM_WRITE,
+    ],
   },
   [SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR]: {
     name: "Training Supervisor",

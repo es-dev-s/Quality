@@ -1,4 +1,5 @@
 import type { FeedbackSecurity, FeedbackStatus } from "@/lib/audit/feedback";
+import type { AuditSourceKind } from "@/lib/audit/audit-source";
 import type {
   AuditFormData,
   AuditRow,
@@ -33,6 +34,10 @@ export type AuditLogEntry = {
   mobile: string | null;
   referenceUrl: string | null;
   submittedBy: string;
+  /** Role slug of the user who submitted the form (for source tagging). */
+  submittedByRoleSlug: string | null;
+  /** Derived source tag: supervisor | qa | other */
+  auditSource: AuditSourceKind;
   createdAt: string;
   isHistory: boolean;
 };
@@ -71,6 +76,8 @@ export type AuditDetail = {
   catScores: Record<string, CategoryScore>;
   rows: AuditRow[];
   submittedBy: string;
+  submittedByRoleSlug: string | null;
+  auditSource: AuditSourceKind;
   createdAt: string;
   isHistory: boolean;
 };

@@ -4379,6 +4379,31 @@ textarea {
   vertical-align: middle;
 }
 
+.audit-source-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  border: 1px solid var(--color-border);
+}
+
+.audit-source-badge--supervisor {
+  color: #7a4a00;
+  background: #fff4e0;
+  border-color: #f0d5a0;
+}
+
+.audit-source-badge--qa {
+  color: #0f4c5c;
+  background: #e4f4f7;
+  border-color: #b7dce4;
+}
+
 .audit-logs__code-cell {
   display: inline-flex;
   align-items: center;

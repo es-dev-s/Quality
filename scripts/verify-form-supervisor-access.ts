@@ -43,7 +43,7 @@ async function main() {
   );
   console.log(
     "Roles without form access:",
-    "Agent, Supervisor (assign Training Supervisor or Quality Analyst for audits)"
+    "Agent"
   );
 
   if (errors > 0) {

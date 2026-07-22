@@ -7,7 +7,10 @@ import {
 import { isSuperAdmin } from "@/lib/rbac";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
 import { fetchAgentRosterNames } from "@/lib/audit/agent-roster";
-import { isSupervisorTierRole } from "@/lib/audit/supervisor-tier";
+import {
+  isSupervisorTierRole,
+  SUPERVISOR_TIER_ROLE_SLUG_FILTER,
+} from "@/lib/audit/supervisor-tier";
 import { caseInsensitiveIn } from "@/lib/audit/prisma-string-filters";
 import {
   fetchAgentUserAuditMatchNames,
@@ -106,6 +109,12 @@ export async function auditSubmissionScopeWhere(
         { submittedById: ctx.userId },
         ...(auditorFilter ? [{ auditor: auditorFilter }] : []),
         ...(agentFilter ? [{ agent: agentFilter }] : []),
+        // Supervisor / Training Supervisor form audits — QA verifies these.
+        {
+          submittedBy: {
+            role: { slug: SUPERVISOR_TIER_ROLE_SLUG_FILTER },
+          },
+        },
       ]);
     }
     default:

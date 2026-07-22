@@ -38,10 +38,16 @@ if (!trainingDef.permissions.includes(PERMISSIONS.AUDIT_FORM_WRITE)) {
   ok("training-supervisor has audit-form:write");
 }
 
-if (supervisorDef.permissions.includes(PERMISSIONS.AUDIT_FORM_READ)) {
-  fail("standard supervisor should not have audit-form:read");
+if (!supervisorDef.permissions.includes(PERMISSIONS.AUDIT_FORM_READ)) {
+  fail("standard supervisor missing audit-form:read");
 } else {
-  ok("standard supervisor has no audit-form:read");
+  ok("standard supervisor has audit-form:read");
+}
+
+if (!supervisorDef.permissions.includes(PERMISSIONS.AUDIT_FORM_WRITE)) {
+  fail("standard supervisor missing audit-form:write");
+} else {
+  ok("standard supervisor has audit-form:write");
 }
 
 if (!AUDIT_FORM_ACCESS_ROLES.includes(SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR)) {
@@ -50,10 +56,10 @@ if (!AUDIT_FORM_ACCESS_ROLES.includes(SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR)) {
   ok("training-supervisor in AUDIT_FORM_ACCESS_ROLES");
 }
 
-if (AUDIT_FORM_ACCESS_ROLES.includes(SYSTEM_ROLE_SLUGS.SUPERVISOR)) {
-  fail("standard supervisor should not be in AUDIT_FORM_ACCESS_ROLES");
+if (!AUDIT_FORM_ACCESS_ROLES.includes(SYSTEM_ROLE_SLUGS.SUPERVISOR)) {
+  fail("standard supervisor not in AUDIT_FORM_ACCESS_ROLES");
 } else {
-  ok("standard supervisor excluded from AUDIT_FORM_ACCESS_ROLES");
+  ok("standard supervisor in AUDIT_FORM_ACCESS_ROLES");
 }
 
 const trainingRules = FORM_SUPERVISOR_AGENT_RULES[SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR];
@@ -61,6 +67,13 @@ if (!trainingRules.canAccessForm) {
   fail("training-supervisor form rules should allow form access");
 } else {
   ok("training-supervisor form scope configured");
+}
+
+const supervisorRules = FORM_SUPERVISOR_AGENT_RULES[SYSTEM_ROLE_SLUGS.SUPERVISOR];
+if (!supervisorRules.canAccessForm) {
+  fail("standard supervisor form rules should allow form access");
+} else {
+  ok("standard supervisor form scope configured");
 }
 
 if (!isSupervisorTierRole(SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR)) {

@@ -27,7 +27,13 @@ export const AUDIT_LOG_LIST_SELECT = {
   mobile: true,
   isHistory: true,
   createdAt: true,
-  submittedBy: { select: { name: true, email: true } },
+  submittedBy: {
+    select: {
+      name: true,
+      email: true,
+      role: { select: { slug: true, name: true } },
+    },
+  },
 } satisfies Prisma.AuditSubmissionSelect;
 
 export const AUDIT_DASHBOARD_SELECT = {
