@@ -2158,6 +2158,12 @@ textarea {
   text-align: center;
 }
 
+.dash-target-input input:disabled,
+.dash-target-input input:read-only {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
 .dash-target-summary {
   display: flex;
   align-items: center;

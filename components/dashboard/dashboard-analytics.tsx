@@ -53,6 +53,7 @@ import {
   buildAgentFilterSelectOptions,
   canFilterByAgent,
 } from "@/lib/audit/agent-filter-access";
+import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
 
 type DashboardAnalyticsProps = {
@@ -120,6 +121,9 @@ export function DashboardAnalytics({
   );
   const [selectedFatal, setSelectedFatal] = useState<string | null>(null);
   const filterSidebar = useFilterSidebar();
+  const canEditAuditTargets =
+    roleSlug === SYSTEM_ROLE_SLUGS.SUPERADMIN ||
+    roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER;
 
   const records = data.records ?? [];
   const referenceNow = useMemo(
@@ -681,9 +685,18 @@ export function DashboardAnalytics({
                 min={1}
                 max={999}
                 value={agentTarget}
-                onChange={(e) =>
-                  setAgentTarget(Math.max(1, Number(e.target.value) || 1))
+                disabled={!canEditAuditTargets}
+                readOnly={!canEditAuditTargets}
+                title={
+                  canEditAuditTargets
+                    ? "Set monthly audit target per agent"
+                    : "Only Quality Manager and Superadmin can change this"
                 }
+                aria-label="Monthly audit target per agent"
+                onChange={(e) => {
+                  if (!canEditAuditTargets) return;
+                  setAgentTarget(Math.max(1, Number(e.target.value) || 1));
+                }}
               />
             </label>
           </div>
@@ -738,11 +751,20 @@ export function DashboardAnalytics({
                 min={1}
                 max={99999}
                 value={resolvedMonthlyTarget}
-                onChange={(e) =>
+                disabled={!canEditAuditTargets}
+                readOnly={!canEditAuditTargets}
+                title={
+                  canEditAuditTargets
+                    ? "Set total monthly audit target for auditors"
+                    : "Only Quality Manager and Superadmin can change this"
+                }
+                aria-label="Total monthly audit target for auditors"
+                onChange={(e) => {
+                  if (!canEditAuditTargets) return;
                   setTotalMonthlyTarget(
                     Math.max(1, Number(e.target.value) || 1)
-                  )
-                }
+                  );
+                }}
               />
             </label>
           </div>

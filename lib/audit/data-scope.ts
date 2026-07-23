@@ -31,11 +31,6 @@ export function effectiveScopeName(ctx: DataScopeContext): string | null {
   });
 }
 
-const GLOBAL_DATA_ROLES = new Set<SystemRoleSlug>([
-  SYSTEM_ROLE_SLUGS.SUPERADMIN,
-  SYSTEM_ROLE_SLUGS.ADMIN,
-]);
-
 function noAccessFilter(): Prisma.AuditSubmissionWhereInput {
   return { id: "__no_access__" };
 }
@@ -49,34 +44,50 @@ function orClauses(
   return { OR: filtered };
 }
 
+/** Audits submitted by Supervisor / Training Supervisor roles. */
+function supervisorSubmittedClause(): Prisma.AuditSubmissionWhereInput {
+  return {
+    submittedBy: {
+      role: { slug: SUPERVISOR_TIER_ROLE_SLUG_FILTER },
+    },
+  };
+}
+
+/**
+ * Hide supervisor-submitted audits from roles that should not see them.
+ * Only Quality Manager (roster-scoped) and Superadmin may view those rows.
+ */
+function excludeSupervisorSubmitted(
+  where: Prisma.AuditSubmissionWhereInput
+): Prisma.AuditSubmissionWhereInput {
+  return {
+    AND: [where, { NOT: supervisorSubmittedClause() }],
+  };
+}
+
 /**
  * Row-level filter for audit submissions based on role and managed user hierarchy.
+ *
+ * Supervisor / Training Supervisor form audits are visible to:
+ * - Superadmin (all)
+ * - Quality Manager (agents on that QM's roster)
+ * - The same supervisor who submitted the audit (own submissions only)
  */
 export async function auditSubmissionScopeWhere(
   ctx: DataScopeContext
 ): Promise<Prisma.AuditSubmissionWhereInput | undefined> {
-  if (isSuperAdmin(ctx.role) || GLOBAL_DATA_ROLES.has(ctx.role.slug as SystemRoleSlug)) {
+  if (isSuperAdmin(ctx.role)) {
     return undefined;
   }
 
   const roleSlug = ctx.role.slug as SystemRoleSlug;
 
-  if (isSupervisorTierRole(roleSlug)) {
-    const agentNames = await fetchAgentRosterNames(ctx.userId, roleSlug);
-    const agentFilter = caseInsensitiveIn(agentNames);
-    const workingClause: Prisma.AuditSubmissionWhereInput | null = agentFilter
-      ? { agent: agentFilter, isHistory: false }
-      : null;
-    const historyClause: Prisma.AuditSubmissionWhereInput = {
-      historyOwnerId: ctx.userId,
-      isHistory: true,
-    };
-    return orClauses([
-      ...(workingClause ? [workingClause] : []),
-      historyClause,
-    ]);
+  // Admin sees everything except supervisor-submitted audits.
+  if (roleSlug === SYSTEM_ROLE_SLUGS.ADMIN) {
+    return { NOT: supervisorSubmittedClause() };
   }
 
+  // QM: respective roster — includes supervisor audits for those agents only.
   if (roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
     const agentNames = await fetchAgentRosterNames(
       ctx.userId,
@@ -89,14 +100,41 @@ export async function auditSubmissionScopeWhere(
     return { agent: agentFilter };
   }
 
+  if (isSupervisorTierRole(roleSlug)) {
+    const agentNames = await fetchAgentRosterNames(ctx.userId, roleSlug);
+    const agentFilter = caseInsensitiveIn(agentNames);
+    // Own submissions are always visible to the auditing supervisor.
+    // Other supervisors' form audits stay hidden (QM / Superadmin only).
+    const teamNonSupervisorClause: Prisma.AuditSubmissionWhereInput | null =
+      agentFilter
+        ? {
+            AND: [
+              { agent: agentFilter, isHistory: false },
+              { NOT: supervisorSubmittedClause() },
+            ],
+          }
+        : null;
+    const historyClause: Prisma.AuditSubmissionWhereInput = {
+      historyOwnerId: ctx.userId,
+      isHistory: true,
+    };
+    return orClauses([
+      { submittedById: ctx.userId },
+      ...(teamNonSupervisorClause ? [teamNonSupervisorClause] : []),
+      historyClause,
+    ]);
+  }
+
   switch (roleSlug) {
     case SYSTEM_ROLE_SLUGS.AGENT: {
       const matchNames = await fetchAgentUserAuditMatchNames(ctx.userId);
       const agentFilter = caseInsensitiveIn(matchNames);
-      return orClauses([
-        { submittedById: ctx.userId },
-        ...(agentFilter ? [{ agent: agentFilter }] : []),
-      ]);
+      return excludeSupervisorSubmitted(
+        orClauses([
+          { submittedById: ctx.userId },
+          ...(agentFilter ? [{ agent: agentFilter }] : []),
+        ])
+      );
     }
     case SYSTEM_ROLE_SLUGS.QUALITY_ANALYST: {
       const [agentNames, auditorNames] = await Promise.all([
@@ -105,17 +143,13 @@ export async function auditSubmissionScopeWhere(
       ]);
       const agentFilter = caseInsensitiveIn(agentNames);
       const auditorFilter = caseInsensitiveIn(auditorNames);
-      return orClauses([
-        { submittedById: ctx.userId },
-        ...(auditorFilter ? [{ auditor: auditorFilter }] : []),
-        ...(agentFilter ? [{ agent: agentFilter }] : []),
-        // Supervisor / Training Supervisor form audits — QA verifies these.
-        {
-          submittedBy: {
-            role: { slug: SUPERVISOR_TIER_ROLE_SLUG_FILTER },
-          },
-        },
-      ]);
+      return excludeSupervisorSubmitted(
+        orClauses([
+          { submittedById: ctx.userId },
+          ...(auditorFilter ? [{ auditor: auditorFilter }] : []),
+          ...(agentFilter ? [{ agent: agentFilter }] : []),
+        ])
+      );
     }
     default:
       return noAccessFilter();

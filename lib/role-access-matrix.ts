@@ -43,16 +43,18 @@ export const ACCESS_MODULES: {
 
 /** Row-level audit data visibility (enforced in addition to module scopes). */
 export const DATA_VISIBILITY: Record<SystemRoleSlug, string> = {
-  [SYSTEM_ROLE_SLUGS.AGENT]: "Own audit records only",
+  [SYSTEM_ROLE_SLUGS.AGENT]:
+    "Own audit records only (excludes supervisor-submitted audits)",
   [SYSTEM_ROLE_SLUGS.SUPERVISOR]:
-    "Agents created or assigned to this supervisor (after QM approval); can submit audits for their team",
+    "Agents created or assigned to this supervisor (after QM approval); can submit audits and view own submissions — other supervisors' audits visible only to QM / Superadmin",
   [SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR]:
-    "Same as Supervisor — can also submit call/chat audits for their team",
+    "Same as Supervisor — can submit call/chat audits and view own submissions — other supervisors' audits visible only to QM / Superadmin",
   [SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]:
-    "Own/aligned audits, plus all supervisor-submitted audits (tagged) for verification",
+    "Own/aligned audits only (supervisor-submitted audits are hidden)",
   [SYSTEM_ROLE_SLUGS.QUALITY_MANAGER]:
-    "Agents approved or assigned by this manager",
-  [SYSTEM_ROLE_SLUGS.ADMIN]: "All audit records",
+    "Agents approved or assigned by this manager, including supervisor-submitted audits for those agents",
+  [SYSTEM_ROLE_SLUGS.ADMIN]:
+    "All audit records except supervisor-submitted audits",
   [SYSTEM_ROLE_SLUGS.SUPERADMIN]: "All audit records",
 };
 
