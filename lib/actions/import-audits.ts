@@ -172,7 +172,8 @@ export async function importAuditSubmissions(
     structurallyValid.push(row);
   }
 
-  // Entity integrity — Agent + Quality Auditor must exist in DB (Team Name is free text).
+  // Entity integrity — Agent (user or roster) + Quality Auditor (audit-capable user).
+  // Team Name is free text.
   const catalog = await loadImportEntityCatalog();
   const entityValidation = validateImportEntities(
     structurallyValid.map((row) => ({

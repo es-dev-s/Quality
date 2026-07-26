@@ -178,7 +178,7 @@ export function validateImportEntities(
       missingAgents: [...missingAgents],
       missingAuditors: [...missingAuditors],
       missingTeams: [],
-      summary: `Import blocked — create these in Settings first. ${parts.join(" · ")}`,
+      summary: `Import blocked — Agent Name must match an active agent user or agents roster entry; Quality Auditor must match an audit-capable user (QA / supervisor / QM / admin). ${parts.join(" · ")}`,
     };
   }
 

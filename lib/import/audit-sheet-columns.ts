@@ -185,6 +185,37 @@ function countFilled(preview: AuditSheetPreviewValues): number {
   ).length;
 }
 
+/**
+ * Identity / outcome columns used to detect incomplete junk rows.
+ * Parameter score columns are excluded — Call vs Chat leaves many blank by design.
+ */
+export const AUDIT_IMPORT_SIGNAL_COLUMNS = [
+  "Call Date",
+  "Audit Date",
+  "Quality Auditor",
+  "Call/Chat",
+  "Agent Name",
+  "Team Name",
+  "LOB",
+  "Sub-LOB",
+  "Overall Score (With Fatal)",
+  "Feedback Status",
+] as const satisfies readonly AuditSheetPreviewColumn[];
+
+/** Rows with more than this many empty signal columns are hidden and not importable. */
+export const MAX_EMPTY_IMPORT_SIGNAL_COLUMNS = 5;
+
+/** True when a row is too incomplete to preview or import. */
+export function hasTooManyEmptyImportColumns(
+  preview: AuditSheetPreviewValues
+): boolean {
+  let empty = 0;
+  for (const column of AUDIT_IMPORT_SIGNAL_COLUMNS) {
+    if (!preview[column]?.trim()) empty += 1;
+  }
+  return empty > MAX_EMPTY_IMPORT_SIGNAL_COLUMNS;
+}
+
 function buildPreviewFromNames(
   row: Record<string, string>
 ): AuditSheetPreviewValues {

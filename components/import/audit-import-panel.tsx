@@ -149,7 +149,7 @@ export function AuditImportPanel({
   function handleImport() {
     if (entityBlocked) {
       setImportError(
-        "Import blocked — every row’s Agent Name and Quality Auditor must already exist in the database. Create missing users in Settings, then re-upload."
+        "Import blocked — every row’s Agent Name must match an active agent user or agents roster entry, and Quality Auditor must match an active auditor/supervisor/QA user. Fix names in the sheet (or add them in Settings), then re-upload."
       );
       return;
     }
@@ -185,9 +185,10 @@ export function AuditImportPanel({
           <p className="import-page__notice-title">Import audit form records</p>
           <p className="import-page__notice-text">
             Upload your Google Sheet CSV/Excel. The importer auto-detects{" "}
-            <strong>Quality Auditor</strong> and <strong>Agent Name</strong>, then
-            assigns them to matching users in the database. If either is missing
-            in the DB, the whole import is blocked.{" "}
+            <strong>Quality Auditor</strong> and <strong>Agent Name</strong>.
+            Agent Name matches active agent login users or the agents roster;
+            Quality Auditor matches QA, supervisor, QM, or admin users. If either
+            is unmatched, the whole import is blocked.{" "}
             <strong>Team Name</strong> is imported as-is (not validated). Fully
             empty rows are ignored. Incomplete or unmatched rows are never
             written to the database.
@@ -236,8 +237,8 @@ export function AuditImportPanel({
         <h2 className="import-card__title">File format</h2>
         <p className="import-card__desc">
           Upload CSV with these columns: Call Date, Audit Date, Quality Auditor,
-          Call/Chat, Agent Name, Team Name, LOB… through Call Length. Preview shows
-          every column exactly as detected from your file.
+          Call/Chat, Agent Name, Team Name, LOB… through Call Length. Rows with
+          more than 5 empty core columns are hidden and cannot be imported.
         </p>
         <div className="import-formats import-formats--two">
           {(

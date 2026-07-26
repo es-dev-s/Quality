@@ -1,3 +1,4 @@
+import { hasTooManyEmptyImportColumns } from "@/lib/import/audit-sheet-columns";
 import type { ParsedAuditImportRow } from "@/lib/import/audit-import-types";
 
 const SERIAL_HEADER_RE =
@@ -60,6 +61,10 @@ export function importRowIntegrityError(
 ): string | null {
   if (row.errors.length > 0) {
     return row.errors.join(" ");
+  }
+
+  if (row.sheetPreview && hasTooManyEmptyImportColumns(row.sheetPreview)) {
+    return "Row has more than 5 empty required columns.";
   }
 
   const agent = row.formData.agent.trim();

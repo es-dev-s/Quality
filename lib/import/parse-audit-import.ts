@@ -23,7 +23,10 @@ import type {
 import { recordsFromSpreadsheetWithMeta } from "@/lib/import/spreadsheet-records";
 import { FIXED_EXPORT_HEADERS } from "@/lib/import/audit-export-headers";
 import { buildScoresFromFlatParamColumns } from "@/lib/import/sheet-param-map";
-import { buildAuditSheetPreviewStrict } from "@/lib/import/audit-sheet-columns";
+import {
+  buildAuditSheetPreviewStrict,
+  hasTooManyEmptyImportColumns,
+} from "@/lib/import/audit-sheet-columns";
 import {
   entityErrorsForRow,
   type ImportEntityCatalog,
@@ -382,7 +385,7 @@ export function parseAuditImportSpreadsheet(
   }
 
   // Ensure contract column names exist on every row (name match + position fallback).
-  // Fully empty / serial-only rows are dropped — never imported or flagged as errors.
+  // Blank rows and rows with >5 empty core columns are dropped — never shown or imported.
   const records = rawRecords
     .map((raw, index) => {
       const preview = buildAuditSheetPreviewStrict(raw);
@@ -395,13 +398,15 @@ export function parseAuditImportSpreadsheet(
       return { raw, enriched, preview, sheetRowNumber: index + 1 };
     })
     .filter(
-      ({ raw, enriched }) =>
-        !isBlankAuditSheetRow(raw) && !isBlankAuditSheetRow(enriched)
+      ({ raw, enriched, preview }) =>
+        !isBlankAuditSheetRow(raw) &&
+        !isBlankAuditSheetRow(enriched) &&
+        !hasTooManyEmptyImportColumns(preview)
     );
 
   if (records.length === 0) {
     throw new Error(
-      "No audit rows found in the file (empty rows were ignored)."
+      "No audit rows found in the file (empty or incomplete rows with more than 5 empty core columns were ignored)."
     );
   }
 
