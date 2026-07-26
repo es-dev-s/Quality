@@ -1,5 +1,6 @@
 import type { AuditFormData, AuditRow, CategoryScore, ScoresMap } from "@/lib/audit/types";
 import type { AuditFeedbackFields } from "@/lib/audit/feedback";
+import type { AuditSheetPreviewValues } from "@/lib/import/audit-sheet-columns";
 
 export type AuditImportTemplateOption = {
   id: string;
@@ -29,7 +30,7 @@ export type ParsedAuditImportRow = {
   };
   submittedAt: string | null;
   /** Column-wise values matching the upload CSV contract for UI preview. */
-  sheetPreview: Record<string, string>;
+  sheetPreview: AuditSheetPreviewValues;
   errors: string[];
 };
 

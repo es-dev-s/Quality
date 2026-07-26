@@ -205,13 +205,17 @@ export const AUDIT_IMPORT_SIGNAL_COLUMNS = [
 /** Rows with more than this many empty signal columns are hidden and not importable. */
 export const MAX_EMPTY_IMPORT_SIGNAL_COLUMNS = 5;
 
-/** True when a row is too incomplete to preview or import. */
+/**
+ * True when a row is too incomplete to preview or import.
+ * Accepts a partial map so server payloads stay safe if preview keys are missing.
+ */
 export function hasTooManyEmptyImportColumns(
-  preview: AuditSheetPreviewValues
+  preview?: Partial<Record<string, string>> | null
 ): boolean {
+  if (!preview) return true;
   let empty = 0;
   for (const column of AUDIT_IMPORT_SIGNAL_COLUMNS) {
-    if (!preview[column]?.trim()) empty += 1;
+    if (!String(preview[column] ?? "").trim()) empty += 1;
   }
   return empty > MAX_EMPTY_IMPORT_SIGNAL_COLUMNS;
 }

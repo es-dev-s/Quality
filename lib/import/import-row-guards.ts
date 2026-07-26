@@ -52,6 +52,28 @@ function isFiniteNonNegative(value: number): boolean {
   return Number.isFinite(value) && value >= 0;
 }
 
+/** Rebuild signal columns from form fields when sheetPreview is missing/tampered. */
+function signalPreviewForIntegrity(
+  row: ParsedAuditImportRow
+): Partial<Record<string, string>> {
+  const fromSheet = row.sheetPreview ?? {};
+  return {
+    "Call Date": fromSheet["Call Date"] || row.formData.callDate,
+    "Audit Date": fromSheet["Audit Date"] || row.formData.auditDate,
+    "Quality Auditor": fromSheet["Quality Auditor"] || row.formData.auditor,
+    "Call/Chat": fromSheet["Call/Chat"] || row.formData.type,
+    "Agent Name": fromSheet["Agent Name"] || row.formData.agent,
+    "Team Name": fromSheet["Team Name"] || row.formData.supervisor,
+    LOB: fromSheet.LOB || row.formData.lob,
+    "Sub-LOB": fromSheet["Sub-LOB"] || row.formData.sublob,
+    "Overall Score (With Fatal)":
+      fromSheet["Overall Score (With Fatal)"] ||
+      (Number.isFinite(row.qualityPct) ? String(row.qualityPct) : ""),
+    "Feedback Status":
+      fromSheet["Feedback Status"] || row.formData.feedbackStatus,
+  };
+}
+
 /**
  * Server/client integrity gate — blocks incomplete or fabricated rows
  * from reaching Prisma.
@@ -63,7 +85,7 @@ export function importRowIntegrityError(
     return row.errors.join(" ");
   }
 
-  if (row.sheetPreview && hasTooManyEmptyImportColumns(row.sheetPreview)) {
+  if (hasTooManyEmptyImportColumns(signalPreviewForIntegrity(row))) {
     return "Row has more than 5 empty required columns.";
   }
 
