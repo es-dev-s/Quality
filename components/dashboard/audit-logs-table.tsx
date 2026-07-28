@@ -19,6 +19,7 @@ import {
   auditSourceFilterLabel,
   type AuditSourceKind,
 } from "@/lib/audit/audit-source";
+import { AUDIT_TYPE_OPTIONS } from "@/lib/audit/audit-type";
 import {
   ReferenceAttachmentView,
   referenceAttachmentSearchText,
@@ -180,6 +181,7 @@ function matchesSearch(row: AuditLogEntry, query: string) {
     row.grade,
     row.type,
     row.businessType,
+    row.auditType,
     String(row.finalPct),
     row.feedbackSecurity,
     row.feedbackStatus,
@@ -227,6 +229,7 @@ export function AuditLogsTable({
   const [grade, setGrade] = useState("");
   const [type, setType] = useState("");
   const [businessType, setBusinessType] = useState("");
+  const [auditType, setAuditType] = useState("");
   const [agent, setAgent] = useState("");
   const [feedbackStatus, setFeedbackStatus] = useState("");
   const [auditSource, setAuditSource] = useState<AuditSourceKind | "">("");
@@ -414,6 +417,14 @@ export function AuditLogsTable({
     [businessTypeOptions]
   );
 
+  const auditTypeFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All audit types" },
+      ...AUDIT_TYPE_OPTIONS.map((value) => ({ value, label: value })),
+    ],
+    []
+  );
+
   const agentFilterOptions = useMemo(
     () => buildAgentFilterSelectOptions(agentNames),
     [agentNames]
@@ -452,6 +463,7 @@ export function AuditLogsTable({
       if (grade && row.grade !== grade) return false;
       if (type && row.type !== type) return false;
       if (businessType && row.businessType !== businessType) return false;
+      if (auditType && row.auditType !== auditType) return false;
       if (!matchesAgentFilter(row.agent, agent)) return false;
       if (feedbackStatus && row.feedbackStatus !== feedbackStatus) return false;
       if (auditSource && row.auditSource !== auditSource) return false;
@@ -470,7 +482,7 @@ export function AuditLogsTable({
       if (createdCmp !== 0) return createdCmp * direction;
       return a.auditCode.localeCompare(b.auditCode) * direction;
     });
-  }, [rows, historyFilter, search, scorePreset, dateRange, customRange, grade, type, businessType, agent, feedbackStatus, auditSource, dateSort]);
+  }, [rows, historyFilter, search, scorePreset, dateRange, customRange, grade, type, businessType, auditType, agent, feedbackStatus, auditSource, dateSort]);
 
   const paginationResetKey = useMemo(
     () =>
@@ -483,6 +495,7 @@ export function AuditLogsTable({
         grade,
         type,
         businessType,
+        auditType,
         agent,
         feedbackStatus,
         auditSource,
@@ -499,6 +512,7 @@ export function AuditLogsTable({
       grade,
       type,
       businessType,
+      auditType,
       agent,
       feedbackStatus,
       auditSource,
@@ -588,6 +602,7 @@ export function AuditLogsTable({
     grade !== "" ||
     type !== "" ||
     businessType !== "" ||
+    auditType !== "" ||
     agent !== "" ||
     feedbackStatus !== "" ||
     auditSource !== "";
@@ -652,6 +667,13 @@ export function AuditLogsTable({
         onRemove: () => setBusinessType(""),
       });
     }
+    if (auditType) {
+      chips.push({
+        key: "auditType",
+        label: `Audit type: ${auditType}`,
+        onRemove: () => setAuditType(""),
+      });
+    }
     if (agent) {
       chips.push({
         key: "agent",
@@ -680,7 +702,7 @@ export function AuditLogsTable({
     }
 
     return chips;
-  }, [dateRange, customRange, scorePreset, grade, type, businessType, agent, feedbackStatus, auditSource]);
+  }, [dateRange, customRange, scorePreset, grade, type, businessType, auditType, agent, feedbackStatus, auditSource]);
 
   const clearFilters = () => {
     setSearch("");
@@ -690,6 +712,7 @@ export function AuditLogsTable({
     setGrade("");
     setType("");
     setBusinessType("");
+    setAuditType("");
     setAgent("");
     setFeedbackStatus("");
     setAuditSource("");
@@ -1074,16 +1097,28 @@ export function AuditLogsTable({
             }
             toolbarFilters={
               enableFilters ? (
-                <label className="pf-inline-filter">
-                  <span className="pf-inline-filter__label">Business type</span>
-                  <FilterSelect
-                    id="audit-logs-business"
-                    value={businessType}
-                    onChange={setBusinessType}
-                    options={businessFilterOptions}
-                    ariaLabel="Filter by business type"
-                  />
-                </label>
+                <>
+                  <label className="pf-inline-filter">
+                    <span className="pf-inline-filter__label">Audit type</span>
+                    <FilterSelect
+                      id="audit-logs-audit-type"
+                      value={auditType}
+                      onChange={setAuditType}
+                      options={auditTypeFilterOptions}
+                      ariaLabel="Filter by audit type"
+                    />
+                  </label>
+                  <label className="pf-inline-filter">
+                    <span className="pf-inline-filter__label">Business type</span>
+                    <FilterSelect
+                      id="audit-logs-business"
+                      value={businessType}
+                      onChange={setBusinessType}
+                      options={businessFilterOptions}
+                      ariaLabel="Filter by business type"
+                    />
+                  </label>
+                </>
               ) : undefined
             }
             filterChips={enableFilters ? activeFilterChips : undefined}
@@ -1217,6 +1252,7 @@ export function AuditLogsTable({
                       {row.type}
                       <span className="audit-logs__type-meta">
                         {row.businessType}
+                        {row.auditType?.trim() ? ` · ${row.auditType}` : ""}
                       </span>
                     </span>
                     <div className="dash-cell-muted">{row.lob}</div>

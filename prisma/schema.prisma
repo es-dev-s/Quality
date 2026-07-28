@@ -281,6 +281,7 @@ model AuditSubmission {
   auditor        String?
   type           String
   businessType   String
+  auditType      String        @default("") @map("audit_type")
   callDate       String
   auditDate      String
   lob            String
@@ -327,6 +328,7 @@ model AuditSubmission {
   @@index([auditor])
   @@index([auditDate])
   @@index([feedbackStatus])
+  @@index([auditType])
   @@index([submittedById, auditDate])
   @@index([templateId, auditDate])
   @@index([id, createdAt])

@@ -5,6 +5,7 @@ import {
   parseFeedbackStatus,
 } from "@/lib/audit/feedback";
 import { calculateResults } from "@/lib/audit/calculate-results";
+import { parseAuditType } from "@/lib/audit/audit-type";
 import type {
   AuditFormData,
   AuditRow,
@@ -316,6 +317,9 @@ function buildFormData(row: Record<string, string>): AuditFormData {
       "qa",
     ]),
     type,
+    auditType: parseAuditType(
+      pickField(row, ["audit type", "audittype", "audit category"])
+    ),
     businessType: pickField(row, ["business type", "businesstype"]),
     callDate: pickField(row, ["call date", "calldate", "interaction date"]),
     auditDate: pickField(row, ["audit date", "auditdate"]),

@@ -24,6 +24,7 @@ import {
   canChangeFeedbackStatusInAuditLogs,
 } from "@/lib/audit/feedback-status-access";
 import { calculateResults } from "@/lib/audit/calculate-results";
+import { parseAuditType } from "@/lib/audit/audit-type";
 import { getInteractionConfig } from "@/lib/actions/interaction-config";
 import { validateAuditFormAgainstConfig } from "@/lib/audit/validate-audit-form-config";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
@@ -293,6 +294,7 @@ export async function saveAuditSubmission(
     auditor: record.auditor || null,
     type: record.type,
     businessType: record.businessType,
+    auditType: record.auditType || "",
     callDate: record.callDate,
     auditDate: record.auditDate,
     lob: record.lob,
@@ -423,6 +425,7 @@ type AuditLogRow = {
   reason: string | null;
   type: string;
   businessType: string;
+  auditType: string;
   callDate: string;
   auditDate: string;
   auditor: string | null;
@@ -464,6 +467,7 @@ function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
     reason: s.reason,
     type: s.type,
     businessType: s.businessType,
+    auditType: s.auditType ?? "",
     callDate: s.callDate,
     auditDate: s.auditDate,
     auditor: s.auditor,
@@ -617,6 +621,7 @@ export async function getAuditDetail(id: string) {
     auditor: submission.auditor,
     type: submission.type,
     businessType: submission.businessType,
+    auditType: submission.auditType ?? "",
     callDate: submission.callDate,
     auditDate: submission.auditDate,
     lob: submission.lob,
@@ -686,6 +691,7 @@ function submissionToFormData(
     supervisor: submission.supervisor ?? "",
     auditor: submission.auditor ?? "",
     type: submission.type as AuditFormData["type"],
+    auditType: parseAuditType(submission.auditType),
     businessType: submission.businessType,
     callDate: submission.callDate,
     auditDate: submission.auditDate,
@@ -876,6 +882,7 @@ export async function updateAuditSubmission(
         auditor: record.auditor || null,
         type: record.type,
         businessType: record.businessType,
+        auditType: record.auditType || "",
         callDate: record.callDate,
         auditDate: record.auditDate,
         lob: record.lob,

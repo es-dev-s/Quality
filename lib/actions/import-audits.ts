@@ -30,6 +30,7 @@ const importRowSchema = z.object({
     supervisor: z.string(),
     auditor: z.string().min(1),
     type: z.enum(["Call", "Chat"]),
+    auditType: z.string(),
     businessType: z.string(),
     callDate: z.string(),
     auditDate: z.string(),
@@ -252,6 +253,7 @@ export async function importAuditSubmissions(
           auditor: normalizedRow.formData.auditor || null,
           type: normalizedRow.formData.type,
           businessType: normalizedRow.formData.businessType || "",
+          auditType: normalizedRow.formData.auditType || "",
           callDate:
             normalizedRow.formData.callDate || normalizedRow.formData.auditDate,
           auditDate:

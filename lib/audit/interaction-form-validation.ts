@@ -23,6 +23,11 @@ const INTERACTION_FIELD_SPECS: InteractionFieldSpec[] = [
     isMissing: (formData) => !formData.auditor.trim(),
   },
   {
+    id: "auditType",
+    label: "Audit type",
+    isMissing: (formData) => !formData.auditType.trim(),
+  },
+  {
     id: "callDate",
     label: "Interaction date",
     isMissing: (formData) => !formData.callDate.trim(),

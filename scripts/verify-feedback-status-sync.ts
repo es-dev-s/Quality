@@ -35,6 +35,7 @@ const row = (feedbackStatus: AuditLogEntry["feedbackStatus"]): AuditLogEntry =>
     sublob: null,
     reason: null,
     type: "Call",
+    auditType: "BAU Audit",
     businessType: "Inbound",
     callDate: "2026-01-01",
     auditDate: "2026-01-02",

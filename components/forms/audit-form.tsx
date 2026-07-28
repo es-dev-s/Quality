@@ -27,6 +27,7 @@ import type {
   InteractionType,
   ScoresMap,
 } from "@/lib/audit/types";
+import { AUDIT_TYPE_OPTIONS, type AuditType } from "@/lib/audit/audit-type";
 import { cn } from "@/lib/utils";
 import { MessageSquare, Phone } from "lucide-react";
 import {
@@ -60,6 +61,7 @@ const INTERACTION_FIELD_IDS: Partial<Record<keyof AuditFormData, string>> = {
   supervisor: "supervisor",
   agent: "agent",
   auditor: "auditor",
+  auditType: "auditType",
   callDate: "callDate",
   businessType: "businessType",
   lob: "lob",
@@ -122,6 +124,7 @@ function createInitialFormData(): AuditFormData {
     supervisor: "",
     auditor: "",
     type: "Call",
+    auditType: "",
     businessType: "",
     callDate: todayISO(),
     auditDate: todayISO(),
@@ -756,6 +759,33 @@ export function AuditForm({
                 </div>
 
                 <div className="audit-details__row">
+                  <Field className={fieldAttentionClass("auditType")}>
+                    <Label htmlFor="auditType">
+                      Audit type
+                      {isInteractionFieldRequired("auditType") ? (
+                        <span className="audit-required"> *</span>
+                      ) : null}
+                    </Label>
+                    <Select
+                      id="auditType"
+                      className="audit-control"
+                      value={formData.auditType}
+                      disabled={pending}
+                      onChange={(e) =>
+                        updateForm({
+                          auditType: e.target.value as AuditType | "",
+                        })
+                      }
+                    >
+                      <option value="">Select audit type</option>
+                      {AUDIT_TYPE_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+
                   <Field className={fieldAttentionClass("callDate")}>
                     <Label htmlFor="callDate">
                       {isCallInteraction ? "Call date" : "Chat date"}
@@ -793,7 +823,9 @@ export function AuditForm({
                       ))}
                     </Select>
                   </Field>
+                </div>
 
+                <div className="audit-details__row">
                   <Field className="audit-field audit-field--audit-date">
                     <Label htmlFor="auditDate">Audit date</Label>
                     <Input

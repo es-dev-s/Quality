@@ -8,6 +8,7 @@ export const FIXED_EXPORT_HEADERS = [
   "Supervisor",
   "Quality analyst",
   "Interaction type",
+  "Audit type",
   "Business type",
   "LOB",
   "Sub-LOB",

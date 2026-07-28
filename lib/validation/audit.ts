@@ -3,6 +3,7 @@ import {
   FEEDBACK_SECURITY_OPTIONS,
   FEEDBACK_STATUS_OPTIONS,
 } from "@/lib/audit/feedback";
+import { AUDIT_TYPE_OPTIONS } from "@/lib/audit/audit-type";
 import { cuidSchema, submissionKeySchema } from "@/lib/validation/common";
 
 const scoreValueSchema = z.string().trim().max(32);
@@ -15,6 +16,7 @@ export const auditFormDataSchema = z
     supervisor: z.string(),
     auditor: z.string(),
     type: z.enum(["Call", "Chat"]),
+    auditType: z.union([z.enum(AUDIT_TYPE_OPTIONS), z.literal("")]),
     businessType: z.string(),
     callDate: z.string(),
     auditDate: z.string(),

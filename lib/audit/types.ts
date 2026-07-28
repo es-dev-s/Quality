@@ -1,8 +1,10 @@
 import type { FeedbackSecurity, FeedbackStatus } from "@/lib/audit/feedback";
+import type { AuditType } from "@/lib/audit/audit-type";
 
 export type InteractionType = "Call" | "Chat";
 export type BusinessType = string;
 export type { FeedbackSecurity, FeedbackStatus };
+export type { AuditType };
 
 export type ScoringScheme =
   | "Y/N/Fatal/NA"
@@ -75,6 +77,8 @@ export type AuditFormData = {
   supervisor: string;
   auditor: string;
   type: InteractionType;
+  /** Static classification: BAU / Certification / New Agent / Calibration. */
+  auditType: AuditType | "";
   businessType: BusinessType;
   callDate: string;
   auditDate: string;

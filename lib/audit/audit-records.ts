@@ -18,6 +18,7 @@ export type AuditLogEntry = {
   reason: string | null;
   type: string;
   businessType: string;
+  auditType: string;
   callDate: string;
   auditDate: string;
   auditor: string | null;
@@ -51,6 +52,7 @@ export type AuditDetail = {
   auditor: string | null;
   type: string;
   businessType: string;
+  auditType: string;
   callDate: string;
   auditDate: string;
   lob: string;

@@ -93,6 +93,7 @@ const form = {
   supervisor: "Manali Jadhav",
   auditor: "Belina",
   type: "Call" as const,
+  auditType: "BAU Audit" as const,
   businessType: "Sales" as const,
   callDate: "2026-01-01",
   auditDate: "2026-01-01",

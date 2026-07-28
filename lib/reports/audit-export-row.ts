@@ -15,6 +15,7 @@ export type AuditExportRow = {
   auditor: string | null;
   type: string;
   businessType: string;
+  auditType: string;
   callDate: string;
   auditDate: string;
   lob: string;
@@ -56,6 +57,7 @@ export const AUDIT_EXPORT_SELECT = {
   auditor: true,
   type: true,
   businessType: true,
+  auditType: true,
   callDate: true,
   auditDate: true,
   lob: true,
@@ -159,6 +161,7 @@ export function mapSubmissionToExportRow(
     auditor: submission.auditor,
     type: submission.type,
     businessType: submission.businessType,
+    auditType: submission.auditType ?? "",
     callDate: submission.callDate,
     auditDate: submission.auditDate,
     lob: submission.lob,

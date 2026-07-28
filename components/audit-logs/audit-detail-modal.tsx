@@ -272,6 +272,9 @@ export function AuditDetailModal({
                   <Field label="Supervisor">{detail.supervisor ?? "—"}</Field>
                   <Field label="Quality analyst">{detail.auditor ?? "—"}</Field>
                   <Field label="Type">{detail.type} · {detail.businessType}</Field>
+                  <Field label="Audit type">
+                    {detail.auditType?.trim() ? detail.auditType : "—"}
+                  </Field>
                   <Field label="LOB">
                     {detail.lob}{detail.sublob ? ` / ${detail.sublob}` : ""}
                   </Field>
