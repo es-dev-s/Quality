@@ -77,10 +77,13 @@ function RequestFormModal({
   open,
   onOpenChange,
   mode,
+  createsAgentImmediately = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   mode: "agent" | "analyst";
+  /** QM / Superadmin: agent accounts are created on submit (no pending approval). */
+  createsAgentImmediately?: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -136,15 +139,22 @@ function RequestFormModal({
     });
   }
 
+  const agentTitle = createsAgentImmediately
+    ? "Create agent account"
+    : "Request new agent";
+  const agentDescription = createsAgentImmediately
+    ? "Creates an active agent under your team immediately. Share the temporary password securely."
+    : "Submitted to Quality Manager for approval. The account is created only after approval.";
+
   return (
     <Modal
       open={open}
       onClose={() => !pending && onOpenChange(false)}
-      title={isAgent ? "Request new agent" : "Request quality analyst"}
+      title={isAgent ? agentTitle : "Request quality analyst"}
       size="lg"
       description={
         isAgent
-          ? "Submitted to Quality Manager for approval. The account is created only after approval."
+          ? agentDescription
           : "Submitted to Admin for approval. The account is created only after approval."
       }
     >
@@ -1494,7 +1504,7 @@ export function TeamManagement({
       {canProvisionAgent && (
         <Button onClick={() => setRequestMode("agent")}>
           <Plus size={16} />
-          Request agent
+          {canApproveAgent ? "Create agent" : "Request agent"}
         </Button>
       )}
       {canProvisionAnalyst && (
@@ -1855,6 +1865,9 @@ export function TeamManagement({
         <RequestFormModal
           open
           mode={requestMode}
+          createsAgentImmediately={
+            requestMode === "agent" && canApproveAgent
+          }
           onOpenChange={(open) => !open && setRequestMode(null)}
         />
       )}

@@ -133,7 +133,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleSlug, RoleDefinition> = {
   [SYSTEM_ROLE_SLUGS.QUALITY_MANAGER]: {
     name: "Quality Manager",
     description:
-      "Approves agent requests and assigns agents to quality analysts.",
+      "Requests and approves agents, creates supervisors, and assigns agents to quality analysts.",
     permissions: [
       PERMISSIONS.OVERVIEW_READ,
       PERMISSIONS.AUDIT_LOGS_READ,
@@ -146,6 +146,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleSlug, RoleDefinition> = {
       PERMISSIONS.FEEDBACK_READ,
       PERMISSIONS.FEEDBACK_STATUS,
       PERMISSIONS.SETTINGS_READ,
+      PERMISSIONS.USERS_PROVISION_AGENT,
       PERMISSIONS.USERS_APPROVE_AGENT,
       PERMISSIONS.USERS_PROVISION_ANALYST,
       PERMISSIONS.USERS_READ_MANAGED,

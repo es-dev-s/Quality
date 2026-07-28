@@ -284,11 +284,13 @@ export async function getTeamManagementData() {
       : {
           status: "PENDING" as const,
           targetRoleSlug: SYSTEM_ROLE_SLUGS.AGENT,
+          // QM reviews requests from team roles — not their own (auto-approved).
           requestedBy: {
             role: {
               slug: {
                 in: [
                   SYSTEM_ROLE_SLUGS.SUPERVISOR,
+                  SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR,
                   SYSTEM_ROLE_SLUGS.QUALITY_ANALYST,
                 ],
               },
@@ -522,8 +524,9 @@ export async function requestAgentUser(formData: FormData) {
 
   const credentials = await buildPasswordCredentials(parsed.data.password);
 
+  let requestId: string;
   try {
-    await prisma.userProvisioningRequest.create({
+    const created = await prisma.userProvisioningRequest.create({
       data: {
         name: parsed.data.name.trim(),
         email,
@@ -533,7 +536,9 @@ export async function requestAgentUser(formData: FormData) {
         targetRoleSlug: SYSTEM_ROLE_SLUGS.AGENT,
         requestedById: session.user.id,
       },
+      select: { id: true },
     });
+    requestId = created.id;
   } catch (error) {
     if (isPrismaUniqueViolation(error)) {
       return { error: "A pending request already exists for this email." };
@@ -541,10 +546,41 @@ export async function requestAgentUser(formData: FormData) {
     throw error;
   }
 
+  // QM / Superadmin already hold approve-agent — create the account immediately
+  // so requests are not stranded waiting for self-approval.
+  const canSelfApproveAgent =
+    canApproveAgentRequests(session.user.role) &&
+    (session.user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER ||
+      isSuperAdmin(session.user.role));
+
+  if (canSelfApproveAgent) {
+    const approved = await approveRequest(
+      requestId,
+      session.user.id,
+      "Auto-approved: requested by Quality Manager / Super Admin."
+    );
+    if ("error" in approved && approved.error) {
+      // Avoid stranded pending rows QM cannot review in their own queue.
+      await prisma.userProvisioningRequest
+        .delete({ where: { id: requestId } })
+        .catch(() => undefined);
+      return { error: approved.error };
+    }
+    revalidateProvisioningPaths(session.user.id);
+    return {
+      success: true,
+      message: `Agent account created for ${email}. Use the temporary password you set.`,
+      email,
+      password: parsed.data.password,
+      createdImmediately: true as const,
+    };
+  }
+
   revalidateProvisioningPaths(session.user.id);
   return {
     success: true,
     message: "Agent request submitted for Quality Manager approval.",
+    createdImmediately: false as const,
   };
 }
 
