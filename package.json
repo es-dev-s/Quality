@@ -12,6 +12,7 @@
     "verify:resilience": "tsx scripts/verify-production-resilience.ts",
     "verify:form-supervisors": "tsx scripts/verify-form-supervisor-access.ts",
     "verify:audit-import": "tsx scripts/verify-audit-import.ts",
+    "lan:check": "tsx scripts/verify-lan-config.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",

@@ -67,6 +67,9 @@ export function canAccessPath(
   if (pathname === "/import" || pathname.startsWith("/import/")) {
     return IMPORT_ENABLED && isSuperAdmin(role);
   }
+  if (pathname === "/kpi" || pathname.startsWith("/kpi/")) {
+    return isSuperAdmin(role);
+  }
 
   const permission = resolveRoutePermission(pathname);
   if (!permission) return true;
@@ -191,6 +194,11 @@ export function canWriteAuditTemplates(role?: SessionRole | null): boolean {
 
 export function canImportData(role?: SessionRole | null): boolean {
   return IMPORT_ENABLED && isSuperAdmin(role);
+}
+
+/** Superadmin-only KPI workspace. */
+export function canViewKpi(role?: SessionRole | null): boolean {
+  return isSuperAdmin(role);
 }
 
 export function canEditFeedbackStatus(role?: SessionRole | null): boolean {

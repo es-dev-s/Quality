@@ -1,9 +1,14 @@
+function addMonths(date: Date, months: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + months, date.getDate());
+}
+
 export type DateRangeFilter =
   | "all"
   | "today"
   | "yesterday"
   | "week"
   | "month"
+  | "3m"
   | "6m"
   | "1y"
   | "custom";
@@ -33,16 +38,12 @@ function startOfWeekMonday(date: Date): Date {
   return d;
 }
 
-function addMonths(date: Date, months: number): Date {
-  return new Date(date.getFullYear(), date.getMonth() + months, date.getDate());
-}
-
 export function matchesDateRange(
   callDate: string,
   range: DateRangeFilter,
   now = new Date()
 ): boolean {
-  if (range === "all") return true;
+  if (range === "all" || range === "custom") return true;
 
   const date = parseYmd(callDate);
   const today = startOfDay(now);
@@ -66,6 +67,7 @@ export function matchesDateRange(
     );
   }
 
+  if (range === "3m") return date >= addMonths(now, -3);
   if (range === "6m") return date >= addMonths(now, -6);
   if (range === "1y") return date >= addMonths(now, -12);
 

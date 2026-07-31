@@ -6,6 +6,7 @@ import {
   BarChart3,
   ClipboardList,
   FileText,
+  Gauge,
   History,
   LayoutDashboard,
   PhoneCall,
@@ -17,6 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   canImportData,
+  canViewKpi,
   canWriteAuditTemplates,
 } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -145,6 +147,7 @@ export function DashboardSidebar() {
 
   const showTemplateAdmin = canWriteAuditTemplates(user.role);
   const showImport = canImportData(user.role);
+  const showKpi = canViewKpi(user.role);
   const visibleMainNav = mainNav.filter((item) =>
     hasScope(user.role, item.permission)
   );
@@ -208,6 +211,16 @@ export function DashboardSidebar() {
                     label="Import"
                     icon={Upload}
                     active={pathname === "/import" || pathname.startsWith("/import/")}
+                    collapsed={collapsed}
+                    onNavigate={closeMobile}
+                  />
+                ) : null}
+                {showKpi ? (
+                  <NavLink
+                    href="/kpi"
+                    label="KPI"
+                    icon={Gauge}
+                    active={pathname === "/kpi" || pathname.startsWith("/kpi/")}
                     collapsed={collapsed}
                     onNavigate={closeMobile}
                   />

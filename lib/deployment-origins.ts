@@ -1,6 +1,10 @@
 import os from "os";
 import { collectConfiguredOrigins, getPort, isProduction } from "./deployment";
 
+function isIpv4Family(family: string | number): boolean {
+  return family === "IPv4" || family === 4;
+}
+
 /** Private LAN IPv4 addresses (Node.js only — used at build/dev config time). */
 export function getLanIpv4Hosts(): string[] {
   const port = getPort();
@@ -9,7 +13,8 @@ export function getLanIpv4Hosts(): string[] {
   for (const iface of Object.values(os.networkInterfaces())) {
     if (!iface) continue;
     for (const addr of iface) {
-      if (addr.family === "IPv4" && !addr.internal) {
+      // Node may report family as "IPv4" or 4 depending on version/options.
+      if (isIpv4Family(addr.family) && !addr.internal) {
         hosts.push(`${addr.address}:${port}`);
         hosts.push(addr.address);
       }
@@ -17,6 +22,19 @@ export function getLanIpv4Hosts(): string[] {
   }
 
   return hosts;
+}
+
+/** Primary shareable LAN URL for phones/tablets on the same Wi‑Fi. */
+export function getPrimaryLanUrl(): string | null {
+  const port = getPort();
+  for (const iface of Object.values(os.networkInterfaces())) {
+    if (!iface) continue;
+    for (const addr of iface) {
+      if (!isIpv4Family(addr.family) || addr.internal) continue;
+      return `http://${addr.address}:${port}`;
+    }
+  }
+  return null;
 }
 
 export function collectAllowedOrigins(): string[] {

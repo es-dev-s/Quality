@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import {
   collectAllowedOrigins,
   collectDevAllowedOrigins,
+  getPrimaryLanUrl,
 } from "./lib/deployment-origins";
 
 function shouldTrustHostAtBuild(): boolean {
@@ -26,9 +27,13 @@ if (process.env.NODE_ENV === "production") {
     `[deploy] AUTH_SECURE_COOKIES=${process.env.AUTH_SECURE_COOKIES ?? "unset"} APP_URL=${process.env.APP_URL ?? "unset"} AUTH_TRUST_HOST=${process.env.AUTH_TRUST_HOST ?? "(production default: true)"}`
   );
 } else {
+  const lanUrl = getPrimaryLanUrl();
   console.info(
     `[dev] LAN Server Action origins (${collectAllowedOrigins().length}): ${collectAllowedOrigins().slice(0, 8).join(", ")}${collectAllowedOrigins().length > 8 ? "…" : ""}`
   );
+  if (lanUrl) {
+    console.info(`[dev] Phone / LAN prototype URL: ${lanUrl}`);
+  }
 }
 
 const nextConfig: NextConfig = {

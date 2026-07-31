@@ -1,0 +1,145 @@
+import { KPI_COLUMNS, type KpiColumn } from "@/lib/kpi/columns";
+import {
+  KPI_METRIC_HINTS,
+  KPI_PRIMARY_COLUMNS,
+  formatKpiDisplay,
+  isUnavailableKpiValue,
+} from "@/lib/kpi/metric-meta";
+import type { KpiTableRow } from "@/lib/kpi/compute-kpi";
+
+type KpiScoreboardProps = {
+  /** Filtered-scope summary row (overall). */
+  summary: KpiTableRow | null;
+  targetPerAgent: number;
+  agentCount: number;
+  qmName?: string | null;
+  qmRosterSize?: number | null;
+};
+
+function valueOf(
+  summary: KpiTableRow | null,
+  column: KpiColumn
+): string {
+  return formatKpiDisplay(summary?.values[column]);
+}
+
+export function KpiScoreboard({
+  summary,
+  targetPerAgent,
+  agentCount,
+  qmName = null,
+  qmRosterSize = null,
+}: KpiScoreboardProps) {
+  const hasData = Boolean(summary);
+  const scopeLine = qmName
+    ? `QM portfolio · ${qmName}${
+        qmRosterSize != null ? ` · ${qmRosterSize} agents on roster` : ""
+      }`
+    : `Platform view · ${agentCount} ${
+        agentCount === 1 ? "agent" : "agents"
+      } audited in period`;
+
+  return (
+    <div className="kpi-scoreboard">
+      <div className="kpi-scoreboard__intro">
+        <div>
+          <h2 className="kpi-scoreboard__title">Performance summary</h2>
+          <p className="kpi-scoreboard__desc">
+            {qmName
+              ? "KPIs calculated for agents on this Quality Manager’s roster (approved or assigned), using the same formulas as the dashboard."
+              : "KPIs for the selected time and QA filters. Choose a QM to score that manager’s portfolio."}
+          </p>
+        </div>
+        <div className="kpi-scoreboard__meta-block">
+          <p className="kpi-scoreboard__meta">{scopeLine}</p>
+          <p className="kpi-scoreboard__meta">
+            Target <strong>{targetPerAgent}</strong>/agent
+          </p>
+        </div>
+      </div>
+
+      <div className="kpi-scoreboard__cards" role="list">
+        {KPI_PRIMARY_COLUMNS.map((column) => {
+          const display = valueOf(summary, column);
+          const unavailable = isUnavailableKpiValue(summary?.values[column]);
+          return (
+            <article
+              key={column}
+              className={
+                unavailable ? "kpi-card kpi-card--muted" : "kpi-card"
+              }
+              role="listitem"
+            >
+              <p className="kpi-card__label">{column}</p>
+              <p className="kpi-card__value">{hasData ? display : "—"}</p>
+              <p className="kpi-card__hint">{KPI_METRIC_HINTS[column]}</p>
+            </article>
+          );
+        })}
+      </div>
+
+      <section className="kpi-detail-panel" aria-label="All KPI indicators">
+        <div className="kpi-detail-panel__head">
+          <h3 className="kpi-detail-panel__title">All indicators</h3>
+          <p className="kpi-detail-panel__desc">
+            Full workbook for the current filter scope
+            {qmName ? ` · ${qmName}` : ""}.
+          </p>
+        </div>
+
+        <div className="kpi-detail-table__scroll">
+          <table className="kpi-detail-table">
+            <thead>
+              <tr>
+                <th scope="col">Indicator</th>
+                <th scope="col">Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {!hasData ? (
+                <tr>
+                  <td colSpan={2} className="kpi-detail-table__empty">
+                    No KPI data for the selected filters.
+                  </td>
+                </tr>
+              ) : (
+                KPI_COLUMNS.map((column) => {
+                  const raw = summary?.values[column];
+                  const unavailable = isUnavailableKpiValue(raw);
+                  return (
+                    <tr
+                      key={column}
+                      className={
+                        unavailable
+                          ? "kpi-detail-table__row--muted"
+                          : undefined
+                      }
+                    >
+                      <th scope="row">
+                        <span className="kpi-detail-table__name">{column}</span>
+                        <span className="kpi-detail-table__hint">
+                          {KPI_METRIC_HINTS[column]}
+                        </span>
+                      </th>
+                      <td>
+                        <span
+                          className={
+                            unavailable
+                              ? "kpi-detail-table__value kpi-detail-table__value--empty"
+                              : "kpi-detail-table__value"
+                          }
+                        >
+                          {formatKpiDisplay(raw)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+}
