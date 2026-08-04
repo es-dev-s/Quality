@@ -53,6 +53,8 @@ export const DATA_VISIBILITY: Record<SystemRoleSlug, string> = {
     "Own/aligned audits only (supervisor-submitted audits are hidden)",
   [SYSTEM_ROLE_SLUGS.QUALITY_MANAGER]:
     "Agents approved or assigned by this manager, including supervisor-submitted audits for those agents",
+  [SYSTEM_ROLE_SLUGS.MEMBER]:
+    "Only audits for Agents/QAs explicitly granted by a Quality Manager or Superadmin; empty until grants exist",
   [SYSTEM_ROLE_SLUGS.ADMIN]:
     "All audit records except supervisor-submitted audits",
   [SYSTEM_ROLE_SLUGS.SUPERADMIN]: "All audit records",
@@ -64,6 +66,7 @@ export const ACCESS_SCOPE_LABEL: Record<SystemRoleSlug, string> = {
   [SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR]: "Read",
   [SYSTEM_ROLE_SLUGS.QUALITY_ANALYST]: "Read",
   [SYSTEM_ROLE_SLUGS.QUALITY_MANAGER]: "Partial",
+  [SYSTEM_ROLE_SLUGS.MEMBER]: "Delegated",
   [SYSTEM_ROLE_SLUGS.ADMIN]: "Partial",
   [SYSTEM_ROLE_SLUGS.SUPERADMIN]: "Full access",
 };
@@ -73,6 +76,7 @@ const TEAM_WRITE_SCOPES: Permission[] = [
   PERMISSIONS.USERS_APPROVE_AGENT,
   PERMISSIONS.USERS_APPROVE_ANALYST,
   PERMISSIONS.AGENT_ASSIGN,
+  PERMISSIONS.USERS_MEMBER_ACCESS,
   PERMISSIONS.ADMIN_USERS,
   PERMISSIONS.ADMIN_ROLES,
 ];
@@ -180,6 +184,7 @@ export const SYSTEM_ROLE_ORDER: SystemRoleSlug[] = [
   SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR,
   SYSTEM_ROLE_SLUGS.QUALITY_ANALYST,
   SYSTEM_ROLE_SLUGS.QUALITY_MANAGER,
+  SYSTEM_ROLE_SLUGS.MEMBER,
   SYSTEM_ROLE_SLUGS.ADMIN,
   SYSTEM_ROLE_SLUGS.SUPERADMIN,
 ];
@@ -232,6 +237,12 @@ export const EXPECTED_SYSTEM_ROLE_MATRIX: Record<
     settings: "Partial",
     team: "Read/Write",
     feedback: "Read",
+  },
+  [SYSTEM_ROLE_SLUGS.MEMBER]: {
+    overview: "Read",
+    auditLogs: "Read",
+    analytics: "Read",
+    feedback: "Change status",
   },
   [SYSTEM_ROLE_SLUGS.ADMIN]: {
     overview: "Read",

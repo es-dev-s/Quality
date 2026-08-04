@@ -146,6 +146,11 @@ export const FORM_SUPERVISOR_AGENT_RULES: Record<
     agentScope:
       "When a supervisor is selected: that supervisor's provisioned agents ∩ QA roster",
   },
+  [SYSTEM_ROLE_SLUGS.MEMBER]: {
+    canAccessForm: false,
+    supervisorScope: "—",
+    agentScope: "—",
+  },
   [SYSTEM_ROLE_SLUGS.QUALITY_MANAGER]: {
     canAccessForm: true,
     supervisorScope:

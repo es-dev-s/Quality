@@ -9,7 +9,7 @@ import {
   requirePermission,
   requirePermissionResult,
 } from "@/lib/auth-guards";
-import { PERMISSIONS } from "@/lib/permissions";
+import { PERMISSIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import {
   canEditFeedbackFully,
   canEditSupervisorRemarks,
@@ -23,6 +23,7 @@ import {
   assertFeedbackStatusChangeAllowed,
   canChangeFeedbackStatusInAuditLogs,
 } from "@/lib/audit/feedback-status-access";
+import { resolveMemberFeedbackMode } from "@/lib/audit/member-access";
 import { calculateResults } from "@/lib/audit/calculate-results";
 import { parseAuditType } from "@/lib/audit/audit-type";
 import { getInteractionConfig } from "@/lib/actions/interaction-config";
@@ -1003,10 +1004,15 @@ export async function updateAuditFeedback(
   const nextStatusParsed = parseFeedbackStatus(parsed.data.feedbackStatus);
 
   if (!canEditFeedbackFully(session.user.role)) {
+    const memberMode =
+      session.user.role.slug === SYSTEM_ROLE_SLUGS.MEMBER
+        ? await resolveMemberFeedbackMode(session.user.id)
+        : undefined;
     const statusError = assertFeedbackStatusChangeAllowed(
       session.user.role,
       previousStatus,
-      nextStatusParsed
+      nextStatusParsed,
+      memberMode
     );
     if (statusError) {
       return { error: statusError };

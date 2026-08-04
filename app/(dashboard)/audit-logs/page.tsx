@@ -4,6 +4,8 @@ import { TablePageSkeleton } from "@/components/dashboard/page-skeletons";
 import { AuditLogsTable } from "@/components/dashboard/audit-logs-table";
 import { requirePageAccess } from "@/lib/auth-guards";
 import { getAuditLogs } from "@/lib/actions/audit";
+import { resolveMemberFeedbackMode } from "@/lib/audit/member-access";
+import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import {
   canEditAuditSubmissions,
   canEditFeedbackDate,
@@ -17,7 +19,12 @@ import {
 
 async function AuditLogsContent() {
   const session = await requirePageAccess("/audit-logs");
-  const { submissions, totalCount } = await getAuditLogs();
+  const [{ submissions, totalCount }, memberFeedbackMode] = await Promise.all([
+    getAuditLogs(),
+    session.user.role.slug === SYSTEM_ROLE_SLUGS.MEMBER
+      ? resolveMemberFeedbackMode(session.user.id)
+      : Promise.resolve(undefined),
+  ]);
   return (
     <AuditLogsTable
       submissions={submissions}
@@ -25,6 +32,7 @@ async function AuditLogsContent() {
       roleSlug={session.user.role.slug}
       showSectionHead={false}
       feedbackStatusRole={session.user.role}
+      memberFeedbackMode={memberFeedbackMode}
       canEditFeedbackFully={canEditFeedbackFully(session.user.role)}
       canEditFeedbackDate={canEditFeedbackDate(session.user.role)}
       canEditSupervisorRemarks={canEditSupervisorRemarks(session.user.role)}

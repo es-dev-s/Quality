@@ -16,6 +16,7 @@ import {
   fetchAgentUserAuditMatchNames,
   fetchUserAuditMatchNamesById,
 } from "@/lib/audit/user-audit-match";
+import { fetchMemberGrantedTargetUserIds } from "@/lib/audit/member-access";
 
 export type DataScopeContext = {
   userId: string;
@@ -63,6 +64,57 @@ function excludeSupervisorSubmitted(
   return {
     AND: [where, { NOT: supervisorSubmittedClause() }],
   };
+}
+
+/** Agent visibility for a specific user id (used by Agent role and Member grants). */
+export async function buildAgentScopeWhere(
+  userId: string
+): Promise<Prisma.AuditSubmissionWhereInput> {
+  const matchNames = await fetchAgentUserAuditMatchNames(userId);
+  const agentFilter = caseInsensitiveIn(matchNames);
+  return excludeSupervisorSubmitted(
+    orClauses([
+      { submittedById: userId },
+      ...(agentFilter ? [{ agent: agentFilter }] : []),
+    ])
+  );
+}
+
+/** QA visibility for a specific user id (used by QA role and Member grants). */
+export async function buildQaScopeWhere(
+  userId: string
+): Promise<Prisma.AuditSubmissionWhereInput> {
+  const [agentNames, auditorNames] = await Promise.all([
+    fetchAgentRosterNames(userId, SYSTEM_ROLE_SLUGS.QUALITY_ANALYST),
+    fetchUserAuditMatchNamesById(userId),
+  ]);
+  const agentFilter = caseInsensitiveIn(agentNames);
+  const auditorFilter = caseInsensitiveIn(auditorNames);
+  return excludeSupervisorSubmitted(
+    orClauses([
+      { submittedById: userId },
+      ...(auditorFilter ? [{ auditor: auditorFilter }] : []),
+      ...(agentFilter ? [{ agent: agentFilter }] : []),
+    ])
+  );
+}
+
+async function buildMemberScopeWhere(
+  memberUserId: string
+): Promise<Prisma.AuditSubmissionWhereInput> {
+  const { agentIds, qaIds } =
+    await fetchMemberGrantedTargetUserIds(memberUserId);
+
+  if (agentIds.length === 0 && qaIds.length === 0) {
+    return noAccessFilter();
+  }
+
+  const clauses = await Promise.all([
+    ...agentIds.map((id) => buildAgentScopeWhere(id)),
+    ...qaIds.map((id) => buildQaScopeWhere(id)),
+  ]);
+
+  return orClauses(clauses);
 }
 
 /**
@@ -126,31 +178,12 @@ export async function auditSubmissionScopeWhere(
   }
 
   switch (roleSlug) {
-    case SYSTEM_ROLE_SLUGS.AGENT: {
-      const matchNames = await fetchAgentUserAuditMatchNames(ctx.userId);
-      const agentFilter = caseInsensitiveIn(matchNames);
-      return excludeSupervisorSubmitted(
-        orClauses([
-          { submittedById: ctx.userId },
-          ...(agentFilter ? [{ agent: agentFilter }] : []),
-        ])
-      );
-    }
-    case SYSTEM_ROLE_SLUGS.QUALITY_ANALYST: {
-      const [agentNames, auditorNames] = await Promise.all([
-        fetchAgentRosterNames(ctx.userId, SYSTEM_ROLE_SLUGS.QUALITY_ANALYST),
-        fetchUserAuditMatchNamesById(ctx.userId),
-      ]);
-      const agentFilter = caseInsensitiveIn(agentNames);
-      const auditorFilter = caseInsensitiveIn(auditorNames);
-      return excludeSupervisorSubmitted(
-        orClauses([
-          { submittedById: ctx.userId },
-          ...(auditorFilter ? [{ auditor: auditorFilter }] : []),
-          ...(agentFilter ? [{ agent: agentFilter }] : []),
-        ])
-      );
-    }
+    case SYSTEM_ROLE_SLUGS.AGENT:
+      return buildAgentScopeWhere(ctx.userId);
+    case SYSTEM_ROLE_SLUGS.QUALITY_ANALYST:
+      return buildQaScopeWhere(ctx.userId);
+    case SYSTEM_ROLE_SLUGS.MEMBER:
+      return buildMemberScopeWhere(ctx.userId);
     default:
       return noAccessFilter();
   }

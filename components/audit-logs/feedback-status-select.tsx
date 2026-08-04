@@ -3,6 +3,7 @@
 import { Select } from "@/components/primitives/field";
 import type { FeedbackStatus } from "@/lib/audit/feedback";
 import { getFeedbackStatusSelectConfig } from "@/lib/audit/feedback-status-access";
+import type { MemberFeedbackMode } from "@/lib/audit/member-access";
 import type { SessionRole } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +13,7 @@ type FeedbackStatusSelectProps = {
   className?: string;
   onChange: (status: FeedbackStatus) => void;
   ariaLabel: string;
+  memberFeedbackMode?: MemberFeedbackMode;
 };
 
 export function feedbackStatusClass(status: FeedbackStatus) {
@@ -27,8 +29,9 @@ export function FeedbackStatusSelect({
   className,
   onChange,
   ariaLabel,
+  memberFeedbackMode,
 }: FeedbackStatusSelectProps) {
-  const config = getFeedbackStatusSelectConfig(role, value);
+  const config = getFeedbackStatusSelectConfig(role, value, memberFeedbackMode);
 
   if (!config.showSelect) {
     return (

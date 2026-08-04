@@ -8,7 +8,9 @@ import { getAuditors, getAuditReferenceOptions } from "@/lib/actions/audit";
 import { getInteractionConfig } from "@/lib/actions/interaction-config";
 import { getAuditFormWorkbench } from "@/lib/actions/templates";
 import { resolveAuditFormTemplateId } from "@/lib/audit/audit-form-utils";
+import { fetchMemberGrantedQaNames } from "@/lib/audit/member-access";
 import { buildSupervisorAgentMap } from "@/lib/audit/supervisor-agent-map";
+import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { resolveAuditSaveRedirect } from "@/lib/rbac";
 import type { InteractionType } from "@/lib/audit/types";
 
@@ -29,17 +31,29 @@ async function AuditFormContent({
 }) {
   const session = await requirePageAccess("/forms/audit");
   const params = await searchParams;
-  const currentAuditorName =
-    session.user.name?.trim() || session.user.email || "";
   const initialType = parseInitialType(params.type);
+  const isMember = session.user.role.slug === SYSTEM_ROLE_SLUGS.MEMBER;
 
-  const [auditors, interactionConfig, workbench, auditReferenceOptions] =
-    await Promise.all([
-      getAuditors(),
-      getInteractionConfig(),
-      getAuditFormWorkbench(),
-      getAuditReferenceOptions(),
-    ]);
+  const [
+    auditors,
+    interactionConfig,
+    workbench,
+    auditReferenceOptions,
+    grantedQaNames,
+  ] = await Promise.all([
+    getAuditors(),
+    getInteractionConfig(),
+    getAuditFormWorkbench(),
+    getAuditReferenceOptions(),
+    isMember ? fetchMemberGrantedQaNames(session.user.id) : Promise.resolve([]),
+  ]);
+
+  // Members act as a granted QA identity (auto-select when only one).
+  const currentAuditorName = isMember
+    ? grantedQaNames.length === 1
+      ? grantedQaNames[0]!
+      : ""
+    : session.user.name?.trim() || session.user.email || "";
 
   if (workbench.templates.length === 0) {
     return (

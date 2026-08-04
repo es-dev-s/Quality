@@ -24,12 +24,14 @@ import {
   canApproveAnalystRequests,
   canAssignAgents,
   canManageManagedUsers,
+  canManageMemberAccess,
   canProvisionAgents,
   canProvisionAnalysts,
   canReadManagedUsers,
   hasScope,
   isSuperAdmin,
 } from "@/lib/rbac";
+import { getMemberAccessPanelData } from "@/lib/actions/member-access";
 
 const isoDateSchema = z.union([
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date (YYYY-MM-DD)"),
@@ -46,6 +48,8 @@ const requestUserSchema = z.object({
 const createSupervisorSchema = requestUserSchema.extend({
   teamName: z.string().trim().min(1, "Team name is required"),
 });
+
+const createMemberSchema = requestUserSchema;
 
 const reviewSchema = z.object({
   id: z.string().min(1),
@@ -241,6 +245,7 @@ export async function getTeamManagementData() {
     canManageManaged &&
     (role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER || isSuperAdminRole);
   const canAssign = canAssignAgents(role);
+  const canManageMembers = canManageMemberAccess(role);
 
   if (
     !canProvisionAgent &&
@@ -249,6 +254,7 @@ export async function getTeamManagementData() {
     !canApproveAnalyst &&
     !canReadManaged &&
     !canAssign &&
+    !canManageMembers &&
     !hasScope(role, PERMISSIONS.ADMIN_USERS)
   ) {
     return {
@@ -259,6 +265,8 @@ export async function getTeamManagementData() {
       canReadManaged: false,
       canManageManaged: false,
       canProvisionSupervisor: false,
+      canProvisionMember: false,
+      canManageMemberAccess: false,
       canAssignAgents: false,
       myRequests: [] as ProvisioningRequestRow[],
       pendingApprovals: [] as ProvisioningRequestRow[],
@@ -267,6 +275,11 @@ export async function getTeamManagementData() {
       assigneeOptions: [] as AssigneeOptionRow[],
       agentAssignments: [] as AgentAssignmentRow[],
       pendingTransferRequests: [],
+      memberAccess: {
+        members: [],
+        grantableTargets: [],
+        grantsByMemberId: {},
+      },
     };
   }
 
@@ -311,6 +324,7 @@ export async function getTeamManagementData() {
     assigneeOptions,
     agentAssignments,
     pendingTransferRequests,
+    memberAccess,
   ] = await Promise.all([
     prisma.userProvisioningRequest.findMany({
       where: { requestedById: session.user.id },
@@ -403,6 +417,13 @@ export async function getTeamManagementData() {
           })
       : Promise.resolve([]),
     canApproveAgent ? getPendingAgentTransfersForApproval() : Promise.resolve([]),
+    canManageMembers
+      ? getMemberAccessPanelData()
+      : Promise.resolve({
+          members: [],
+          grantableTargets: [],
+          grantsByMemberId: {},
+        }),
   ]);
 
   let managedWithCounts: ManagedUserRow[] = [];
@@ -469,6 +490,8 @@ export async function getTeamManagementData() {
     canReadManaged,
     canManageManaged,
     canProvisionSupervisor,
+    canProvisionMember: canManageMembers,
+    canManageMemberAccess: canManageMembers,
     canAssignAgents: canAssign,
     myRequests: myRequests.map(mapRequest),
     pendingApprovals: pendingApprovals.map(mapRequest),
@@ -493,6 +516,7 @@ export async function getTeamManagementData() {
       assignToName: resolveRoleUserName(row.assignedTo),
     })),
     pendingTransferRequests,
+    memberAccess,
   };
 }
 
@@ -675,6 +699,64 @@ export async function createSupervisorUser(formData: FormData) {
         passwordEncrypted: credentials.passwordEncrypted,
         roleId: supervisorRoleId,
         teamName: parsed.data.teamName.trim(),
+        dateOfJoining: normalizeJoiningDate(parsed.data.dateOfJoining),
+        createdById: session.user.id,
+        isActive: true,
+        approvalStatus: "ACTIVE",
+      },
+    });
+  } catch (error) {
+    if (isPrismaUniqueViolation(error, "email")) {
+      return { error: "A user with this email already exists." };
+    }
+    throw error;
+  }
+
+  revalidateProvisioningPaths(session.user.id);
+  return {
+    success: true,
+    email,
+    password: parsed.data.password,
+  };
+}
+
+export async function createMemberUser(formData: FormData) {
+  await requirePermission(PERMISSIONS.USERS_MEMBER_ACCESS);
+  const session = await requireAuth();
+  if (!canManageMemberAccess(session.user.role)) {
+    return {
+      error: "Only Quality Managers and Superadmin can create Member accounts.",
+    };
+  }
+
+  const parsed = createMemberSchema.safeParse({
+    name: formData.get("name"),
+    email: formData.get("email"),
+    password: formData.get("password"),
+    dateOfJoining: formData.get("dateOfJoining") || undefined,
+  });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const email = parsed.data.email.toLowerCase();
+  const emailError = await assertEmailAvailableForNewRequest(email);
+  if (emailError) {
+    return { error: emailError };
+  }
+
+  const credentials = await buildPasswordCredentials(parsed.data.password);
+  const memberRoleId = await getRoleIdBySlug(SYSTEM_ROLE_SLUGS.MEMBER);
+
+  try {
+    await prisma.user.create({
+      data: {
+        name: parsed.data.name.trim(),
+        email,
+        password: credentials.password,
+        passwordEncrypted: credentials.passwordEncrypted,
+        roleId: memberRoleId,
         dateOfJoining: normalizeJoiningDate(parsed.data.dateOfJoining),
         createdById: session.user.id,
         isActive: true,

@@ -26,6 +26,8 @@ export const PERMISSIONS = {
   USERS_READ_MANAGED: "users:read-managed",
   USERS_MANAGE_MANAGED: "users:manage-managed",
   AGENT_ASSIGN: "users:assign-agent",
+  /** Grant/revoke Agent or QA visibility to Member users (QM + Superadmin). */
+  USERS_MEMBER_ACCESS: "users:member-access",
   USER_READ_SENSITIVE: "admin:user-sensitive",
 } as const;
 
@@ -82,6 +84,7 @@ export const SYSTEM_ROLE_SLUGS = {
   TRAINING_SUPERVISOR: "training-supervisor",
   QUALITY_ANALYST: "quality-analyst",
   QUALITY_MANAGER: "quality-manager",
+  MEMBER: "member",
   ADMIN: LEGACY_ADMIN_ROLE_SLUG,
   SUPERADMIN: SUPERADMIN_ROLE_SLUG,
 } as const;
@@ -152,6 +155,18 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleSlug, RoleDefinition> = {
       PERMISSIONS.USERS_READ_MANAGED,
       PERMISSIONS.USERS_MANAGE_MANAGED,
       PERMISSIONS.AGENT_ASSIGN,
+      PERMISSIONS.USERS_MEMBER_ACCESS,
+    ],
+  },
+  [SYSTEM_ROLE_SLUGS.MEMBER]: {
+    name: "Member",
+    description:
+      "Delegated viewer created by Superadmin or Quality Manager. Sees Agent/QA data only after explicit grants. No form create access.",
+    permissions: [
+      PERMISSIONS.OVERVIEW_READ,
+      PERMISSIONS.AUDIT_LOGS_READ,
+      PERMISSIONS.ANALYTICS_READ,
+      PERMISSIONS.FEEDBACK_STATUS,
     ],
   },
   [SYSTEM_ROLE_SLUGS.ADMIN]: {

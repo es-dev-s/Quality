@@ -2,6 +2,7 @@ import {
   FEEDBACK_STATUS_OPTIONS,
   type FeedbackStatus,
 } from "@/lib/audit/feedback";
+import type { MemberFeedbackMode } from "@/lib/audit/member-access";
 import { isDefinedSystemRole, PERMISSIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { hasScope, isSuperAdmin, type SessionRole } from "@/lib/rbac";
 
@@ -37,7 +38,17 @@ function feedbackOptionsForRole(
   }));
 }
 
-function usesAgentFeedbackWorkflow(role: SessionRole): boolean {
+function isMemberRole(role: SessionRole): boolean {
+  return role.slug === SYSTEM_ROLE_SLUGS.MEMBER;
+}
+
+function usesAgentFeedbackWorkflow(
+  role: SessionRole,
+  memberMode?: MemberFeedbackMode
+): boolean {
+  if (isMemberRole(role)) {
+    return memberMode === "agent";
+  }
   if (hasScope(role, PERMISSIONS.FEEDBACK_WRITE)) return false;
   if (hasScope(role, PERMISSIONS.AUDIT_FORM_WRITE)) return false;
   if (role.slug === SYSTEM_ROLE_SLUGS.AGENT) return true;
@@ -48,7 +59,13 @@ function usesAgentFeedbackWorkflow(role: SessionRole): boolean {
   );
 }
 
-function usesQaFeedbackWorkflow(role: SessionRole): boolean {
+function usesQaFeedbackWorkflow(
+  role: SessionRole,
+  memberMode?: MemberFeedbackMode
+): boolean {
+  if (isMemberRole(role)) {
+    return memberMode === "qa";
+  }
   if (hasScope(role, PERMISSIONS.FEEDBACK_WRITE)) return false;
   if (
     role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST ||
@@ -82,17 +99,18 @@ export function canChangeFeedbackStatusInAuditLogs(
 }
 
 export function getAllowedFeedbackStatuses(
-  role?: SessionRole | null
+  role?: SessionRole | null,
+  memberMode?: MemberFeedbackMode
 ): FeedbackStatus[] {
   if (!role) return [];
   if (isSuperAdmin(role)) return [...FEEDBACK_STATUS_OPTIONS];
   if (hasScope(role, PERMISSIONS.FEEDBACK_WRITE)) {
     return [...FEEDBACK_STATUS_OPTIONS];
   }
-  if (usesQaFeedbackWorkflow(role)) {
+  if (usesQaFeedbackWorkflow(role, memberMode)) {
     return QA_FEEDBACK_STATUSES;
   }
-  if (usesAgentFeedbackWorkflow(role)) {
+  if (usesAgentFeedbackWorkflow(role, memberMode)) {
     return AGENT_FEEDBACK_STATUSES;
   }
   return [];
@@ -149,7 +167,8 @@ function agentFeedbackConfig(current: FeedbackStatus): FeedbackStatusSelectConfi
 /** Dropdown config for one audit row (role + current status). */
 export function getFeedbackStatusSelectConfig(
   role: SessionRole | null | undefined,
-  current: FeedbackStatus
+  current: FeedbackStatus,
+  memberMode?: MemberFeedbackMode
 ): FeedbackStatusSelectConfig {
   if (!role || !canChangeFeedbackStatusInAuditLogs(role)) {
     return {
@@ -157,6 +176,16 @@ export function getFeedbackStatusSelectConfig(
       editable: false,
       options: [],
       selectValue: current,
+    };
+  }
+
+  if (isMemberRole(role) && (!memberMode || memberMode === "none")) {
+    return {
+      showSelect: false,
+      editable: false,
+      options: [],
+      selectValue: current,
+      hint: "No Agent or QA access granted yet",
     };
   }
 
@@ -169,7 +198,7 @@ export function getFeedbackStatusSelectConfig(
     };
   }
 
-  if (usesQaFeedbackWorkflow(role)) {
+  if (usesQaFeedbackWorkflow(role, memberMode)) {
     return {
       showSelect: true,
       editable: true,
@@ -181,7 +210,7 @@ export function getFeedbackStatusSelectConfig(
     };
   }
 
-  if (usesAgentFeedbackWorkflow(role)) {
+  if (usesAgentFeedbackWorkflow(role, memberMode)) {
     return agentFeedbackConfig(current);
   }
 
@@ -195,15 +224,16 @@ export function getFeedbackStatusSelectConfig(
 
 export function canEditFeedbackDateTimeForStatus(
   role: SessionRole | null | undefined,
-  status: FeedbackStatus
+  status: FeedbackStatus,
+  memberMode?: MemberFeedbackMode
 ): boolean {
   if (!role || status === "Pending") return false;
   if (isSuperAdmin(role)) return true;
   if (hasScope(role, PERMISSIONS.FEEDBACK_WRITE)) return true;
-  if (usesQaFeedbackWorkflow(role)) {
+  if (usesQaFeedbackWorkflow(role, memberMode)) {
     return status === "Shared";
   }
-  if (usesAgentFeedbackWorkflow(role)) {
+  if (usesAgentFeedbackWorkflow(role, memberMode)) {
     return status === "Acknowledged" || status === "Disputed";
   }
   return false;
@@ -212,7 +242,8 @@ export function canEditFeedbackDateTimeForStatus(
 export function assertFeedbackStatusChangeAllowed(
   role: SessionRole | null | undefined,
   previous: FeedbackStatus,
-  next: FeedbackStatus
+  next: FeedbackStatus,
+  memberMode?: MemberFeedbackMode
 ): string | null {
   if (isSuperAdmin(role)) return null;
 
@@ -220,14 +251,18 @@ export function assertFeedbackStatusChangeAllowed(
     return null;
   }
 
-  if (role && usesQaFeedbackWorkflow(role)) {
+  if (role && isMemberRole(role) && (!memberMode || memberMode === "none")) {
+    return "No Agent or QA access has been granted for feedback updates.";
+  }
+
+  if (role && usesQaFeedbackWorkflow(role, memberMode)) {
     if (!QA_FEEDBACK_STATUSES.includes(next)) {
       return "Quality Analyst can only set Pending or Shared.";
     }
     return null;
   }
 
-  if (role && usesAgentFeedbackWorkflow(role)) {
+  if (role && usesAgentFeedbackWorkflow(role, memberMode)) {
     if (!AGENT_FEEDBACK_STATUSES.includes(next)) {
       return "Agents can only set Acknowledged or Disputed.";
     }

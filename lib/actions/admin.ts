@@ -169,6 +169,12 @@ function assertSuperAdminRoleAssignment(
         "Only Super Admin can assign Super Admin, Quality Manager, or legacy Admin roles.",
     };
   }
+  if (targetRoleSlug === SYSTEM_ROLE_SLUGS.MEMBER) {
+    return {
+      error:
+        "Member accounts are created from Settings → Team by Superadmin or Quality Manager.",
+    };
+  }
   return null;
 }
 

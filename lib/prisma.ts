@@ -56,7 +56,8 @@ function getPgPool(): Pool {
     connectionString,
     max: poolMaxConnections(),
     idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 20_000,
+    // Fail fast so pages don't hang for tens of seconds on a bad/slow DB.
+    connectionTimeoutMillis: 8_000,
     keepAlive: true,
     keepAliveInitialDelayMillis: 10_000,
   };

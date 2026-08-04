@@ -129,6 +129,16 @@ export function canAssignAgents(role?: SessionRole | null): boolean {
   return hasScope(role, PERMISSIONS.AGENT_ASSIGN);
 }
 
+/** Create Member users and grant/revoke Agent/QA access to them. */
+export function canManageMemberAccess(role?: SessionRole | null): boolean {
+  if (!role) return false;
+  if (isSuperAdmin(role)) return true;
+  return (
+    role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER &&
+    hasScope(role, PERMISSIONS.USERS_MEMBER_ACCESS)
+  );
+}
+
 export function canAccessTeamManagement(role?: SessionRole | null): boolean {
   if (!role) return false;
   return (
@@ -137,7 +147,8 @@ export function canAccessTeamManagement(role?: SessionRole | null): boolean {
     canApproveAgentRequests(role) ||
     canApproveAnalystRequests(role) ||
     canReadManagedUsers(role) ||
-    canAssignAgents(role)
+    canAssignAgents(role) ||
+    canManageMemberAccess(role)
   );
 }
 

@@ -1,6 +1,36 @@
+function isPrivateOrLocalHost(url: string): boolean {
+  try {
+    const host = new URL(url.replace(/^postgresql:/i, "http:")).hostname;
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "::1" ||
+      host.endsWith(".local")
+    ) {
+      return true;
+    }
+    // RFC1918 / common lab ranges
+    if (/^10\./.test(host)) return true;
+    if (/^192\.168\./.test(host)) return true;
+    if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 /** pg v8 treats sslmode=require as verify-full; libpq compat avoids TLS chain errors on Supabase. */
 function withSsl(url: string): string {
   let next = url;
+
+  // LAN / local Postgres usually has no TLS — don't force require.
+  if (isPrivateOrLocalHost(next)) {
+    if (!/sslmode=/i.test(next)) {
+      const separator = next.includes("?") ? "&" : "?";
+      next = `${next}${separator}sslmode=disable`;
+    }
+    return next;
+  }
 
   if (!/uselibpqcompat=/i.test(next)) {
     const separator = next.includes("?") ? "&" : "?";

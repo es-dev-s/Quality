@@ -65,12 +65,14 @@ import {
   feedbackStatusClass,
 } from "@/components/audit-logs/feedback-status-select";
 import { canEditFeedbackDateTimeForStatus } from "@/lib/audit/feedback-status-access";
+import type { MemberFeedbackMode } from "@/lib/audit/member-access";
 import {
   buildAgentFilterSelectOptions,
   canFilterByAgent,
   matchesAgentFilter,
 } from "@/lib/audit/agent-filter-access";
 import { resolveMetricDate } from "@/lib/audit/metric-dates";
+import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import type { SessionRole } from "@/lib/rbac";
 import { formatSecondsAgo } from "@/lib/format-relative-time";
 import { useRealtime } from "@/lib/hooks/use-realtime";
@@ -100,6 +102,7 @@ type AuditLogsTableProps = {
   showSectionHead?: boolean;
   enableFilters?: boolean;
   feedbackStatusRole?: SessionRole | null;
+  memberFeedbackMode?: MemberFeedbackMode;
   canEditFeedbackFully?: boolean;
   canEditFeedbackDate?: boolean;
   canEditSupervisorRemarks?: boolean;
@@ -211,6 +214,7 @@ export function AuditLogsTable({
   showSectionHead = true,
   enableFilters = true,
   feedbackStatusRole = null,
+  memberFeedbackMode,
   canEditFeedbackFully = false,
   canEditFeedbackDate = false,
   canEditSupervisorRemarks = false,
@@ -806,7 +810,11 @@ export function AuditLogsTable({
     !row.isHistory &&
     (isSuperAdmin ||
       canEditFeedbackFully ||
-      canEditFeedbackDateTimeForStatus(feedbackStatusRole, row.feedbackStatus));
+      canEditFeedbackDateTimeForStatus(
+        feedbackStatusRole,
+        row.feedbackStatus,
+        memberFeedbackMode
+      ));
 
   const resultLabel =
     rows.length === 0
@@ -1055,15 +1063,24 @@ export function AuditLogsTable({
       >
         {rows.length === 0 ? (
           <div className="platform-report-table-empty">
-            No audits yet.
-            {canCreateAudit ? (
+            {roleSlug === SYSTEM_ROLE_SLUGS.MEMBER ? (
               <>
-                {" "}
-                <Link href="/forms/audit" className="audit-logs__empty-link">
-                  Start your first audit
-                </Link>
+                No access assigned yet. Ask a Quality Manager to grant Agent or
+                QA visibility.
               </>
-            ) : null}
+            ) : (
+              <>
+                No audits yet.
+                {canCreateAudit ? (
+                  <>
+                    {" "}
+                    <Link href="/forms/audit" className="audit-logs__empty-link">
+                      Start your first audit
+                    </Link>
+                  </>
+                ) : null}
+              </>
+            )}
           </div>
         ) : (
           <DataTablePanel
@@ -1347,6 +1364,7 @@ export function AuditLogsTable({
                       <FeedbackStatusSelect
                         key={`${row.id}-${row.feedbackStatus}`}
                         role={feedbackStatusRole}
+                        memberFeedbackMode={memberFeedbackMode}
                         value={row.feedbackStatus}
                         onChange={(feedbackStatus) =>
                           patchRowFeedback(row.id, { feedbackStatus })

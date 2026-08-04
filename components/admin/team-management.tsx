@@ -29,6 +29,7 @@ import {
   requestAgentUser,
   requestQualityAnalystUser,
   createSupervisorUser,
+  createMemberUser,
   resetManagedUserPassword,
   type AgentAssignmentRow,
   type AssignableAgentRow,
@@ -46,12 +47,27 @@ import {
   rejectAgentTransferRequest,
   type PendingAgentTransferRow,
 } from "@/lib/actions/agent-transfer";
+import {
+  bulkGrantMemberAccess,
+  revokeMemberAccess,
+  type GrantableTargetRow,
+  type MemberOptionRow,
+} from "@/lib/actions/member-access";
+import type { MemberAccessGrantRecord } from "@/lib/audit/member-access";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+
+type MemberAccessPanelData = {
+  members: MemberOptionRow[];
+  grantableTargets: GrantableTargetRow[];
+  grantsByMemberId: Record<string, MemberAccessGrantRecord[]>;
+};
 
 type TeamManagementProps = {
   canProvisionAgent: boolean;
   canProvisionAnalyst: boolean;
   canProvisionSupervisor: boolean;
+  canProvisionMember: boolean;
+  canManageMemberAccess: boolean;
   canApproveAgent: boolean;
   canApproveAnalyst: boolean;
   canReadManaged: boolean;
@@ -64,6 +80,7 @@ type TeamManagementProps = {
   assigneeOptions: AssigneeOptionRow[];
   agentAssignments: AgentAssignmentRow[];
   pendingTransferRequests: PendingAgentTransferRow[];
+  memberAccess: MemberAccessPanelData;
   embedded?: boolean;
 };
 
@@ -348,6 +365,127 @@ function CreateSupervisorModal({
           </Button>
           <Button type="submit" disabled={pending}>
             {pending ? "Creating…" : "Create supervisor"}
+          </Button>
+        </ModalActions>
+      </form>
+    </Modal>
+  );
+}
+
+function CreateMemberModal({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const router = useRouter();
+  const { toast, toastPasswordReveal } = useToast();
+  const [pending, startTransition] = useTransition();
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      const generated = generateClientPassword(12);
+      setPassword(generated);
+      setConfirmPassword(generated);
+    }
+  }, [open]);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+
+    if (!isPasswordFormValid(password, confirmPassword, { minLength: 6 })) {
+      toast("Enter a matching password of at least 6 characters.", "error");
+      return;
+    }
+
+    formData.set("password", password);
+
+    startTransition(async () => {
+      const result = await createMemberUser(formData);
+      if ("error" in result && result.error) {
+        toast(result.error, "error");
+        return;
+      }
+
+      if ("success" in result && result.success && result.password && result.email) {
+        toastPasswordReveal(result.email, result.password, {
+          note: "Member account created. Grant Agent or QA access from Member access, then share this password securely.",
+        });
+      } else {
+        toast("Member created.", "success");
+      }
+
+      onOpenChange(false);
+      router.refresh();
+    });
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={() => !pending && onOpenChange(false)}
+      title="Create member"
+      size="lg"
+      description="Create a Member account. Visibility stays empty until you grant specific Agent or Quality Analyst access."
+    >
+      <form onSubmit={handleSubmit}>
+        <FormStack>
+          <Field>
+            <Label htmlFor="member-name">Profile name</Label>
+            <Input id="member-name" name="name" required disabled={pending} />
+          </Field>
+          <Field>
+            <Label htmlFor="member-email">Email</Label>
+            <Input
+              id="member-email"
+              name="email"
+              type="email"
+              required
+              disabled={pending}
+            />
+          </Field>
+          <PasswordField
+            id="member-password"
+            label="Temporary password"
+            value={password}
+            onChange={setPassword}
+            required
+            disabled={pending}
+            minLength={6}
+            hint="Minimum 6 characters. Use Generate for a secure temporary password."
+          />
+          <PasswordConfirmField
+            id="member-password-confirm"
+            password={password}
+            value={confirmPassword}
+            onChange={setConfirmPassword}
+            disabled={pending}
+          />
+          <Field>
+            <Label htmlFor="member-doj">Date of joining (optional)</Label>
+            <Input
+              id="member-doj"
+              name="dateOfJoining"
+              type="date"
+              disabled={pending}
+            />
+          </Field>
+        </FormStack>
+        <ModalActions>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={pending}
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={pending}>
+            {pending ? "Creating…" : "Create member"}
           </Button>
         </ModalActions>
       </form>
@@ -681,6 +819,7 @@ type TeamSubTabId =
   | "transfer-requests"
   | "analyst-requests"
   | "assignments"
+  | "member-access"
   | "members"
   | "my-requests";
 
@@ -1319,10 +1458,579 @@ function AgentAssignmentPanel({
   );
 }
 
+type MemberAccessRoleFilter = "all" | "agent" | "qa";
+
+function MemberAccessPanel({
+  members,
+  grantableTargets,
+  grantsByMemberId,
+  onChanged,
+  pending,
+}: {
+  members: MemberOptionRow[];
+  grantableTargets: GrantableTargetRow[];
+  grantsByMemberId: Record<string, MemberAccessGrantRecord[]>;
+  onChanged: () => void;
+  pending: boolean;
+  fillViewport?: boolean;
+}) {
+  const { toast } = useToast();
+  const [, startTransition] = useTransition();
+  const [memberId, setMemberId] = useState(members[0]?.id ?? "");
+  const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>([]);
+  const [roleFilter, setRoleFilter] = useState<MemberAccessRoleFilter>("all");
+  const [targetSearch, setTargetSearch] = useState("");
+  const [grantRoleFilter, setGrantRoleFilter] =
+    useState<MemberAccessRoleFilter>("all");
+  const [grantSearch, setGrantSearch] = useState("");
+
+  useEffect(() => {
+    if (!memberId && members[0]?.id) {
+      setMemberId(members[0].id);
+    }
+    if (memberId && !members.some((m) => m.id === memberId)) {
+      setMemberId(members[0]?.id ?? "");
+    }
+  }, [members, memberId]);
+
+  useEffect(() => {
+    setSelectedTargetIds([]);
+    setTargetSearch("");
+    setRoleFilter("all");
+    setGrantRoleFilter("all");
+    setGrantSearch("");
+  }, [memberId]);
+
+  useEffect(() => {
+    setTargetSearch("");
+  }, [roleFilter]);
+
+  useEffect(() => {
+    setGrantSearch("");
+  }, [grantRoleFilter]);
+
+  const activeGrants = useMemo(
+    () => (memberId ? grantsByMemberId[memberId] ?? [] : []),
+    [grantsByMemberId, memberId]
+  );
+
+  const totalGrantCount = useMemo(
+    () =>
+      Object.values(grantsByMemberId).reduce(
+        (sum, grants) => sum + grants.length,
+        0
+      ),
+    [grantsByMemberId]
+  );
+
+  const grantedTargetIds = useMemo(
+    () => new Set(activeGrants.map((g) => g.targetUserId)),
+    [activeGrants]
+  );
+
+  const agentCount = useMemo(
+    () =>
+      grantableTargets.filter((t) => t.roleSlug === SYSTEM_ROLE_SLUGS.AGENT)
+        .length,
+    [grantableTargets]
+  );
+  const qaCount = useMemo(
+    () =>
+      grantableTargets.filter(
+        (t) => t.roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
+      ).length,
+    [grantableTargets]
+  );
+
+  const selectableTargets = useMemo(() => {
+    return grantableTargets.filter((t) => {
+      if (grantedTargetIds.has(t.id)) return false;
+      if (roleFilter === "agent") {
+        return t.roleSlug === SYSTEM_ROLE_SLUGS.AGENT;
+      }
+      if (roleFilter === "qa") {
+        return t.roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST;
+      }
+      return true;
+    });
+  }, [grantableTargets, grantedTargetIds, roleFilter]);
+
+  const filteredSelectableTargets = useMemo(() => {
+    const q = targetSearch.trim().toLowerCase();
+    if (!q) return selectableTargets;
+    return selectableTargets.filter(
+      (t) =>
+        t.name.toLowerCase().includes(q) ||
+        t.email.toLowerCase().includes(q) ||
+        t.roleName.toLowerCase().includes(q)
+    );
+  }, [selectableTargets, targetSearch]);
+
+  const filteredGrants = useMemo(() => {
+    return activeGrants.filter((g) => {
+      if (grantRoleFilter === "agent") {
+        if (g.targetRoleSlug !== SYSTEM_ROLE_SLUGS.AGENT) return false;
+      } else if (grantRoleFilter === "qa") {
+        if (g.targetRoleSlug !== SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) return false;
+      }
+      const q = grantSearch.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        g.targetName.toLowerCase().includes(q) ||
+        g.targetEmail.toLowerCase().includes(q) ||
+        g.grantedByName.toLowerCase().includes(q)
+      );
+    });
+  }, [activeGrants, grantRoleFilter, grantSearch]);
+
+  const selectedMember = members.find((m) => m.id === memberId) ?? null;
+  const grantedAgentCount = activeGrants.filter(
+    (g) => g.targetRoleSlug === SYSTEM_ROLE_SLUGS.AGENT
+  ).length;
+  const grantedQaCount = activeGrants.filter(
+    (g) => g.targetRoleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
+  ).length;
+
+  const memberSelectOptions = useMemo(
+    () =>
+      members.map((m) => ({
+        value: m.id,
+        label: `${m.name} · ${m.email}`,
+      })),
+    [members]
+  );
+
+  function toggleTarget(id: string) {
+    setSelectedTargetIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
+  const allFilteredSelected =
+    filteredSelectableTargets.length > 0 &&
+    filteredSelectableTargets.every((t) => selectedTargetIds.includes(t.id));
+  const someFilteredSelected =
+    !allFilteredSelected &&
+    filteredSelectableTargets.some((t) => selectedTargetIds.includes(t.id));
+
+  function toggleAllSelectable() {
+    if (allFilteredSelected) {
+      const filteredIds = new Set(filteredSelectableTargets.map((t) => t.id));
+      setSelectedTargetIds((prev) => prev.filter((id) => !filteredIds.has(id)));
+      return;
+    }
+    setSelectedTargetIds((prev) => [
+      ...new Set([...prev, ...filteredSelectableTargets.map((t) => t.id)]),
+    ]);
+  }
+
+  function handleGrant() {
+    if (!memberId || selectedTargetIds.length === 0) return;
+    startTransition(async () => {
+      const result = await bulkGrantMemberAccess(memberId, selectedTargetIds);
+      if ("error" in result && result.error) {
+        toast(result.error, "error");
+        return;
+      }
+      toast(
+        "message" in result && result.message ? result.message : "Access granted.",
+        "success"
+      );
+      setSelectedTargetIds([]);
+      onChanged();
+    });
+  }
+
+  function handleRevoke(grantId: string) {
+    startTransition(async () => {
+      const result = await revokeMemberAccess(grantId);
+      if ("error" in result && result.error) {
+        toast(result.error, "error");
+        return;
+      }
+      toast(
+        "message" in result && result.message ? result.message : "Access revoked.",
+        "success"
+      );
+      onChanged();
+    });
+  }
+
+  function roleBadge(slug: string) {
+    if (slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
+      return <span className="member-access__badge member-access__badge--qa">QA</span>;
+    }
+    return (
+      <span className="member-access__badge member-access__badge--agent">Agent</span>
+    );
+  }
+
+  function roleFilterTabs(
+    value: MemberAccessRoleFilter,
+    onChange: (next: MemberAccessRoleFilter) => void,
+    counts: { all: number; agent: number; qa: number },
+    idPrefix: string
+  ) {
+    const tabs: { id: MemberAccessRoleFilter; label: string; count: number }[] = [
+      { id: "all", label: "All", count: counts.all },
+      { id: "agent", label: "Agents", count: counts.agent },
+      { id: "qa", label: "QA", count: counts.qa },
+    ];
+    return (
+      <div
+        className="member-access__role-tabs segmented-tabs"
+        role="tablist"
+        aria-label="Filter by role"
+      >
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            id={`${idPrefix}-${tab.id}`}
+            type="button"
+            role="tab"
+            aria-selected={value === tab.id}
+            className={
+              value === tab.id
+                ? "segmented-tabs__btn segmented-tabs__btn--active"
+                : "segmented-tabs__btn"
+            }
+            disabled={pending}
+            onClick={() => onChange(tab.id)}
+          >
+            {tab.label}
+            <span className="segmented-tabs__count">{tab.count}</span>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  if (members.length === 0) {
+    return (
+      <div className="member-access member-access--empty">
+        <div className="member-access__empty-card">
+          <h3 className="member-access__empty-title">No members yet</h3>
+          <p className="member-access__empty-desc">
+            Create a Member account first, then grant them visibility for specific
+            Agents or Quality Analysts.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="member-access">
+      <header className="member-access__hero">
+        <div className="member-access__hero-copy">
+          <h3 className="member-access__title">Member access</h3>
+          <p className="member-access__subtitle">
+            Pick a member, filter Agents or QAs, then grant the same audit visibility
+            those users have. No grants means the member sees nothing.
+          </p>
+        </div>
+        <div className="member-access__stats" aria-label="Access summary">
+          <div className="member-access__stat">
+            <span className="member-access__stat-value">{members.length}</span>
+            <span className="member-access__stat-label">Members</span>
+          </div>
+          <div className="member-access__stat">
+            <span className="member-access__stat-value">{totalGrantCount}</span>
+            <span className="member-access__stat-label">Total grants</span>
+          </div>
+          <div className="member-access__stat">
+            <span className="member-access__stat-value">{agentCount}</span>
+            <span className="member-access__stat-label">Agents</span>
+          </div>
+          <div className="member-access__stat">
+            <span className="member-access__stat-value">{qaCount}</span>
+            <span className="member-access__stat-label">QAs</span>
+          </div>
+        </div>
+      </header>
+
+      <div className="member-access__toolbar">
+        <Field className="member-access__member-field">
+          <Label htmlFor="member-access-member">Member</Label>
+          <Select
+            id="member-access-member"
+            className="ui-select"
+            value={memberId}
+            disabled={pending}
+            options={memberSelectOptions}
+            onChange={(e) => setMemberId(e.target.value)}
+          />
+        </Field>
+        {selectedMember ? (
+          <div className="member-access__member-meta">
+            <span className="member-access__member-name">{selectedMember.name}</span>
+            <span className="member-access__member-email">{selectedMember.email}</span>
+            <span className="member-access__member-chips">
+              <span className="member-access__chip">
+                {grantedAgentCount} Agent{grantedAgentCount === 1 ? "" : "s"}
+              </span>
+              <span className="member-access__chip">
+                {grantedQaCount} QA{grantedQaCount === 1 ? "" : "s"}
+              </span>
+            </span>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="member-access__grid">
+        <section className="member-access__panel" aria-labelledby="member-access-grant-title">
+          <div className="member-access__panel-head">
+            <div>
+              <h4 id="member-access-grant-title" className="member-access__panel-title">
+                Grant access
+              </h4>
+              <p className="member-access__panel-desc">
+                Filter by Agent or QA, then select who this member can see.
+              </p>
+            </div>
+            <span className="member-access__panel-meta">
+              {selectedTargetIds.length} selected · {selectableTargets.length}{" "}
+              available
+            </span>
+          </div>
+
+          <div className="member-access__controls">
+            {roleFilterTabs(
+              roleFilter,
+              setRoleFilter,
+              {
+                all: grantableTargets.filter((t) => !grantedTargetIds.has(t.id))
+                  .length,
+                agent: grantableTargets.filter(
+                  (t) =>
+                    !grantedTargetIds.has(t.id) &&
+                    t.roleSlug === SYSTEM_ROLE_SLUGS.AGENT
+                ).length,
+                qa: grantableTargets.filter(
+                  (t) =>
+                    !grantedTargetIds.has(t.id) &&
+                    t.roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
+                ).length,
+              },
+              "member-grant-filter"
+            )}
+            <div className="member-access__search platform-settings__search-wrap">
+              <Search
+                size={16}
+                className="platform-settings__search-icon"
+                aria-hidden
+              />
+              <input
+                id="member-access-target-search"
+                type="search"
+                className="platform-settings__search"
+                placeholder={
+                  roleFilter === "agent"
+                    ? "Search agents…"
+                    : roleFilter === "qa"
+                      ? "Search quality analysts…"
+                      : "Search agents or QAs…"
+                }
+                value={targetSearch}
+                disabled={pending || !memberId}
+                onChange={(event) => setTargetSearch(event.target.value)}
+                aria-label="Search grantable users"
+              />
+              {targetSearch.trim() ? (
+                <button
+                  type="button"
+                  className="member-access__search-clear"
+                  aria-label="Clear search"
+                  disabled={pending}
+                  onClick={() => setTargetSearch("")}
+                >
+                  <X size={14} aria-hidden />
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {selectableTargets.length === 0 ? (
+            <div className="member-access__panel-empty">
+              {roleFilter === "all"
+                ? "All active Agents and QAs are already granted to this member."
+                : roleFilter === "agent"
+                  ? "No more Agents available to grant."
+                  : "No more Quality Analysts available to grant."}
+            </div>
+          ) : filteredSelectableTargets.length === 0 ? (
+            <div className="member-access__panel-empty">
+              No {roleFilter === "qa" ? "QAs" : roleFilter === "agent" ? "agents" : "users"} match
+              your search.
+            </div>
+          ) : (
+            <div className="member-access__list">
+              <label className="member-access__row member-access__row--all">
+                <input
+                  type="checkbox"
+                  checked={allFilteredSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someFilteredSelected;
+                  }}
+                  disabled={pending || !memberId}
+                  onChange={toggleAllSelectable}
+                />
+                <span>
+                  {targetSearch.trim() || roleFilter !== "all"
+                    ? "Select all shown"
+                    : "Select all available"}
+                </span>
+              </label>
+              {filteredSelectableTargets.map((target) => {
+                const selected = selectedTargetIds.includes(target.id);
+                return (
+                  <label
+                    key={target.id}
+                    className={
+                      selected
+                        ? "member-access__row member-access__row--selected"
+                        : "member-access__row"
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      disabled={pending || !memberId}
+                      onChange={() => toggleTarget(target.id)}
+                    />
+                    <span className="member-access__row-body">
+                      <span className="member-access__row-top">
+                        <span className="member-access__row-name">{target.name}</span>
+                        {roleBadge(target.roleSlug)}
+                      </span>
+                      <span className="member-access__row-email">{target.email}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="member-access__panel-actions">
+            <Button
+              type="button"
+              disabled={pending || !memberId || selectedTargetIds.length === 0}
+              onClick={handleGrant}
+            >
+              {selectedTargetIds.length > 0
+                ? `Grant ${selectedTargetIds.length} access${
+                    selectedTargetIds.length === 1 ? "" : "es"
+                  }`
+                : "Grant access"}
+            </Button>
+          </div>
+        </section>
+
+        <section
+          className="member-access__panel member-access__panel--grants"
+          aria-labelledby="member-access-grants-title"
+        >
+          <div className="member-access__panel-head">
+            <div>
+              <h4 id="member-access-grants-title" className="member-access__panel-title">
+                Active grants
+              </h4>
+              <p className="member-access__panel-desc">
+                Revoke anytime — the member loses that scope immediately.
+              </p>
+            </div>
+            <span className="member-access__panel-meta">
+              {activeGrants.length} grant{activeGrants.length === 1 ? "" : "s"}
+            </span>
+          </div>
+
+          <div className="member-access__controls">
+            {roleFilterTabs(
+              grantRoleFilter,
+              setGrantRoleFilter,
+              {
+                all: activeGrants.length,
+                agent: grantedAgentCount,
+                qa: grantedQaCount,
+              },
+              "member-active-filter"
+            )}
+            <div className="member-access__search platform-settings__search-wrap">
+              <Search
+                size={16}
+                className="platform-settings__search-icon"
+                aria-hidden
+              />
+              <input
+                type="search"
+                className="platform-settings__search"
+                placeholder="Search active grants…"
+                value={grantSearch}
+                disabled={pending || activeGrants.length === 0}
+                onChange={(event) => setGrantSearch(event.target.value)}
+                aria-label="Search active grants"
+              />
+              {grantSearch.trim() ? (
+                <button
+                  type="button"
+                  className="member-access__search-clear"
+                  aria-label="Clear search"
+                  disabled={pending}
+                  onClick={() => setGrantSearch("")}
+                >
+                  <X size={14} aria-hidden />
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {activeGrants.length === 0 ? (
+            <div className="member-access__panel-empty">
+              Nothing granted yet. Select Agents or QAs on the left to start.
+            </div>
+          ) : filteredGrants.length === 0 ? (
+            <div className="member-access__panel-empty">
+              No grants match this filter.
+            </div>
+          ) : (
+            <ul className="member-access__grant-list">
+              {filteredGrants.map((row) => (
+                <li key={row.id} className="member-access__grant">
+                  <div className="member-access__grant-main">
+                    <div className="member-access__row-top">
+                      <span className="member-access__row-name">{row.targetName}</span>
+                      {roleBadge(row.targetRoleSlug)}
+                    </div>
+                    <span className="member-access__row-email">{row.targetEmail}</span>
+                    <span className="member-access__grant-by">
+                      Granted by {row.grantedByName}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={pending}
+                    onClick={() => handleRevoke(row.id)}
+                    aria-label={`Revoke access for ${row.targetName}`}
+                  >
+                    Revoke
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
 export function TeamManagement({
   canProvisionAgent,
   canProvisionAnalyst,
   canProvisionSupervisor,
+  canProvisionMember,
+  canManageMemberAccess,
   canApproveAgent,
   canApproveAnalyst,
   canReadManaged,
@@ -1335,6 +2043,7 @@ export function TeamManagement({
   assigneeOptions,
   agentAssignments,
   pendingTransferRequests,
+  memberAccess,
   embedded = false,
 }: TeamManagementProps) {
   const router = useRouter();
@@ -1345,6 +2054,7 @@ export function TeamManagement({
     null
   );
   const [supervisorModalOpen, setSupervisorModalOpen] = useState(false);
+  const [memberModalOpen, setMemberModalOpen] = useState(false);
   const [passwordUser, setPasswordUser] = useState<ManagedUserRow | null>(null);
   const [liveAgentCount, setLiveAgentCount] = useState<number | null>(null);
   const [subTab, setSubTab] = useState<TeamSubTabId | null>(null);
@@ -1428,6 +2138,18 @@ export function TeamManagement({
 
   const teamTabs = useMemo(() => {
     const tabs: { id: TeamSubTabId; label: string; count?: number }[] = [];
+    // Member access first — primary QM/Superadmin workflow.
+    if (canManageMemberAccess) {
+      const grantCount = Object.values(memberAccess.grantsByMemberId).reduce(
+        (sum, grants) => sum + grants.length,
+        0
+      );
+      tabs.push({
+        id: "member-access",
+        label: "Member access",
+        count: grantCount,
+      });
+    }
     if (canApproveAgent) {
       tabs.push({
         id: "agent-requests",
@@ -1473,12 +2195,14 @@ export function TeamManagement({
     canApproveAgent,
     canApproveAnalyst,
     canAssignAgents,
+    canManageMemberAccess,
     canReadManaged,
     showMyRequests,
     pendingAgentApprovals.length,
     pendingTransferRequests.length,
     pendingAnalystApprovals.length,
     agentAssignments.length,
+    memberAccess.grantsByMemberId,
     managedUsers.length,
     myRequests.length,
   ]);
@@ -1499,6 +2223,12 @@ export function TeamManagement({
         <Button onClick={() => setSupervisorModalOpen(true)}>
           <Plus size={16} />
           Create supervisor
+        </Button>
+      )}
+      {canProvisionMember && (
+        <Button onClick={() => setMemberModalOpen(true)}>
+          <Plus size={16} />
+          Create member
         </Button>
       )}
       {canProvisionAgent && (
@@ -1730,6 +2460,19 @@ export function TeamManagement({
             </TeamTabPanel>
           ) : null}
 
+          {subTab === "member-access" && canManageMemberAccess ? (
+            <TeamTabPanel bare>
+              <MemberAccessPanel
+                members={memberAccess.members}
+                grantableTargets={memberAccess.grantableTargets}
+                grantsByMemberId={memberAccess.grantsByMemberId}
+                pending={pending}
+                fillViewport={embedded}
+                onChanged={() => router.refresh()}
+              />
+            </TeamTabPanel>
+          ) : null}
+
           {subTab === "members" && canReadManaged ? (
             <TeamTabPanel
               title="Your team members"
@@ -1875,6 +2618,11 @@ export function TeamManagement({
       <CreateSupervisorModal
         open={supervisorModalOpen}
         onOpenChange={setSupervisorModalOpen}
+      />
+
+      <CreateMemberModal
+        open={memberModalOpen}
+        onOpenChange={setMemberModalOpen}
       />
 
       <ResetPasswordModal

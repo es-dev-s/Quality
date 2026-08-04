@@ -21,6 +21,11 @@ import {
   SYSTEM_ROLE_SLUGS,
   type SystemRoleSlug,
 } from "@/lib/permissions";
+import {
+  fetchMemberGrantedAgentNames,
+  fetchMemberGrantedQaNames,
+  fetchMemberGrantedTargetUserIds,
+} from "@/lib/audit/member-access";
 
 const GLOBAL_DATA_ROLES = new Set<SystemRoleSlug>([
   SYSTEM_ROLE_SLUGS.SUPERADMIN,
@@ -49,6 +54,19 @@ async function resolveVisibleAgentNames(ctx: DataScopeContext): Promise<string[]
   if (slug === SYSTEM_ROLE_SLUGS.AGENT) {
     const self = effectiveScopeName(ctx);
     return self ? [self] : [];
+  }
+
+  if (slug === SYSTEM_ROLE_SLUGS.MEMBER) {
+    const { qaIds } = await fetchMemberGrantedTargetUserIds(ctx.userId);
+    const [grantedAgents, ...qaRosters] = await Promise.all([
+      fetchMemberGrantedAgentNames(ctx.userId),
+      ...qaIds.map((qaId) =>
+        fetchAgentRosterNames(qaId, SYSTEM_ROLE_SLUGS.QUALITY_ANALYST)
+      ),
+    ]);
+    return [...new Set([...grantedAgents, ...qaRosters.flat()])].sort((a, b) =>
+      a.localeCompare(b)
+    );
   }
 
   return [];
@@ -85,6 +103,24 @@ async function resolveVisibleSupervisorNames(
     return [];
   }
 
+  if (slug === SYSTEM_ROLE_SLUGS.MEMBER) {
+    const { agentIds, qaIds } = await fetchMemberGrantedTargetUserIds(ctx.userId);
+    const visibleAgentIds = new Set<string>(agentIds);
+    for (const qaId of qaIds) {
+      const rosterIds = await fetchVisibleAgentUserIds(
+        qaId,
+        SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
+      );
+      for (const id of rosterIds) visibleAgentIds.add(id);
+    }
+    const linked = await fetchSupervisorNamesForAgentUserIds([...visibleAgentIds]);
+    if (linked.length > 0) return linked;
+    if (visibleAgentIds.size > 0) {
+      return fetchActiveSupervisorUserNames();
+    }
+    return [];
+  }
+
   return [];
 }
 
@@ -96,6 +132,10 @@ async function resolveVisibleAuditorNames(ctx: DataScopeContext): Promise<string
   if (ctx.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
     const self = effectiveScopeName(ctx);
     return self ? [self] : [];
+  }
+
+  if (ctx.role.slug === SYSTEM_ROLE_SLUGS.MEMBER) {
+    return fetchMemberGrantedQaNames(ctx.userId);
   }
 
   if (

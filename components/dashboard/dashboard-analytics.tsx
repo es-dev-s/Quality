@@ -914,7 +914,9 @@ export function DashboardAnalytics({
                 <tr>
                   <td colSpan={5}>
                     <p className="ui-empty-state__desc" style={{ padding: "var(--space-8)" }}>
-                      No submissions in your scope yet.
+                      {roleSlug === SYSTEM_ROLE_SLUGS.MEMBER
+                        ? "No access assigned yet. Ask a Quality Manager to grant Agent or QA visibility."
+                        : "No submissions in your scope yet."}
                     </p>
                   </td>
                 </tr>
