@@ -1,27 +1,17 @@
 "use client";
 
-
-
-import { useEffect, useState } from "react";
-
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { AgentsTable } from "@/components/admin/agents-table";
-
 import { InteractionConfigManager } from "@/components/admin/interaction-config-manager";
-
 import { ConnectedUsersPanel } from "@/components/admin/connected-users-panel";
 import { TeamManagement } from "@/components/admin/team-management";
-
 import { UsersTable } from "@/components/admin/users-table";
-
 import { RolesTable } from "@/components/admin/roles-table";
-
 import { useToast } from "@/components/primitives/toast";
-
 import type { AgentListItem } from "@/lib/actions/agents";
-
 import type { ConnectedUserRow } from "@/lib/actions/user-connections";
 import type { getTeamManagementData } from "@/lib/actions/user-provisioning";
-
 import type { InteractionConfig } from "@/lib/audit/types";
 
 
@@ -56,7 +46,7 @@ type User = {
 
   dateOfJoining?: string | null;
 
-  createdAt: Date;
+  createdAt: string;
 
 };
 
@@ -166,16 +156,24 @@ export function SettingsManagement({
 
 }: SettingsManagementProps) {
 
+  const router = useRouter();
   const { dismissPasswordToasts } = useToast();
+  const [tabPending, startTabTransition] = useTransition();
   const [tab, setTab] = useState<TabId>(initialTab);
 
   const [interactionMounted, setInteractionMounted] = useState(
-
     initialTab === "interaction" && canManageInteraction
-
   );
 
-
+  function goToTab(next: TabId) {
+    if (next === tab && !tabPending) return;
+    setTab(next);
+    startTabTransition(() => {
+      const href =
+        next === "agents" ? "/settings" : `/settings?tab=${next}`;
+      router.push(href);
+    });
+  }
 
   useEffect(() => {
     const allowed =
@@ -186,8 +184,9 @@ export function SettingsManagement({
       (tab === "users" && canManageUsers) ||
       (tab === "roles" && canManageRoles);
     if (!allowed) {
-      setTab("agents");
+      goToTab("agents");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync invalid tab only
   }, [
     tab,
     canManageInteraction,
@@ -198,23 +197,14 @@ export function SettingsManagement({
   ]);
 
   useEffect(() => {
-
     setTab(initialTab);
-
     if (initialTab === "interaction" && canManageInteraction) {
-
       setInteractionMounted(true);
-
     }
-
   }, [initialTab, canManageInteraction]);
 
-
-
   useEffect(() => {
-
     if (tab === "interaction" && canManageInteraction) {
-
       setInteractionMounted(true);
 
     }
@@ -273,13 +263,14 @@ export function SettingsManagement({
 
           }
 
-          onClick={() => setTab("agents")}
+          onClick={() => goToTab("agents")}
 
         >
 
           Agent users
-
-          <span className="segmented-tabs__count">{agents.length}</span>
+          {tab === "agents" ? (
+            <span className="segmented-tabs__count">{agents.length}</span>
+          ) : null}
 
         </button>
 
@@ -303,7 +294,7 @@ export function SettingsManagement({
 
             }
 
-            onClick={() => setTab("interaction")}
+            onClick={() => goToTab("interaction")}
 
           >
 
@@ -333,7 +324,7 @@ export function SettingsManagement({
 
             }
 
-            onClick={() => setTab("team")}
+            onClick={() => goToTab("team")}
 
           >
 
@@ -373,13 +364,14 @@ export function SettingsManagement({
 
             }
 
-            onClick={() => setTab("connected")}
+            onClick={() => goToTab("connected")}
 
           >
 
             Connected
-
-            <span className="segmented-tabs__count">{connectedUsers.length}</span>
+            {tab === "connected" ? (
+              <span className="segmented-tabs__count">{connectedUsers.length}</span>
+            ) : null}
 
           </button>
 
@@ -405,13 +397,14 @@ export function SettingsManagement({
 
             }
 
-            onClick={() => setTab("users")}
+            onClick={() => goToTab("users")}
 
           >
 
             Users
-
-            <span className="segmented-tabs__count">{users.length}</span>
+            {tab === "users" ? (
+              <span className="segmented-tabs__count">{users.length}</span>
+            ) : null}
 
           </button>
 
@@ -437,13 +430,14 @@ export function SettingsManagement({
 
             }
 
-            onClick={() => setTab("roles")}
+            onClick={() => goToTab("roles")}
 
           >
 
             Roles
-
-            <span className="segmented-tabs__count">{roles.length}</span>
+            {tab === "roles" ? (
+              <span className="segmented-tabs__count">{roles.length}</span>
+            ) : null}
 
           </button>
 
@@ -453,7 +447,7 @@ export function SettingsManagement({
 
 
 
-      <div className="settings-page__body">
+      <div className={"settings-page__body" + (tabPending ? " settings-page__body--pending" : "")}>
 
         <div
 
@@ -479,9 +473,9 @@ export function SettingsManagement({
 
               requiresTransferApproval={requiresTransferApproval}
 
-              onOpenUsersTab={canManageUsers ? () => setTab("users") : undefined}
+              onOpenUsersTab={canManageUsers ? () => goToTab("users") : undefined}
 
-              onOpenTeamTab={canAccessTeam ? () => setTab("team") : undefined}
+              onOpenTeamTab={canAccessTeam ? () => goToTab("team") : undefined}
 
               embedded
 

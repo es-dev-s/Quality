@@ -20,15 +20,15 @@ export default function Error({
       <div className="login-card">
         <div className="login-card__head">
           <div className="login-card__logo">QA</div>
-          <h1 className="login-card__title">Something went wrong</h1>
+          <h1 className="login-card__title">Page interrupted</h1>
           <p className="login-card__subtitle">
-            An unexpected error occurred. You can try again or return to the
-            dashboard.
+            This view could not finish loading. Refresh usually restores it —
+            your session is still saved.
           </p>
         </div>
         <div className="login-form" style={{ gap: "0.75rem" }}>
           <Button type="button" block onClick={() => reset()}>
-            Try again
+            Refresh page
           </Button>
           <Link href="/dashboard" className="ui-btn ui-btn--secondary ui-btn--block">
             Go to Dashboard

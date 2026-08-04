@@ -95,76 +95,87 @@ export type GrantableTargetRow = {
   roleName: string;
 };
 
+const EMPTY_MEMBER_ACCESS_PANEL = {
+  members: [] as MemberOptionRow[],
+  grantableTargets: [] as GrantableTargetRow[],
+  grantsByMemberId: {} as Record<string, MemberAccessGrantRecord[]>,
+};
+
 export async function getMemberAccessPanelData(): Promise<{
   members: MemberOptionRow[];
   grantableTargets: GrantableTargetRow[];
   grantsByMemberId: Record<string, MemberAccessGrantRecord[]>;
 }> {
-  await requirePermission(PERMISSIONS.USERS_MEMBER_ACCESS);
-  const gate = await assertCanManageMemberAccess();
-  if ("error" in gate) {
-    return { members: [], grantableTargets: [], grantsByMemberId: {} };
-  }
+  try {
+    await requirePermission(PERMISSIONS.USERS_MEMBER_ACCESS);
+    const gate = await assertCanManageMemberAccess();
+    if ("error" in gate) {
+      return EMPTY_MEMBER_ACCESS_PANEL;
+    }
 
-  const [members, grantableTargets, allGrants] = await Promise.all([
-    prisma.user.findMany({
-      where: {
-        role: { slug: SYSTEM_ROLE_SLUGS.MEMBER },
-        ...ACTIVE_USER_WHERE,
-      },
-      select: { id: true, name: true, email: true },
-      orderBy: [{ name: "asc" }, { email: "asc" }],
-    }),
-    prisma.user.findMany({
-      where: {
-        role: {
-          slug: {
-            in: [SYSTEM_ROLE_SLUGS.AGENT, SYSTEM_ROLE_SLUGS.QUALITY_ANALYST],
-          },
+    const [members, grantableTargets, allGrants] = await Promise.all([
+      prisma.user.findMany({
+        where: {
+          role: { slug: SYSTEM_ROLE_SLUGS.MEMBER },
+          ...ACTIVE_USER_WHERE,
         },
-        ...ACTIVE_USER_WHERE,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: { select: { slug: true, name: true } },
-      },
-      orderBy: [{ name: "asc" }, { email: "asc" }],
-    }),
-    prisma.memberAccessGrant.findMany({
-      select: { memberId: true },
-    }),
-  ]);
+        select: { id: true, name: true, email: true },
+        orderBy: [{ name: "asc" }, { email: "asc" }],
+      }),
+      prisma.user.findMany({
+        where: {
+          role: {
+            slug: {
+              in: [SYSTEM_ROLE_SLUGS.AGENT, SYSTEM_ROLE_SLUGS.QUALITY_ANALYST],
+            },
+          },
+          ...ACTIVE_USER_WHERE,
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: { select: { slug: true, name: true } },
+        },
+        orderBy: [{ name: "asc" }, { email: "asc" }],
+      }),
+      prisma.memberAccessGrant.findMany({
+        select: { memberId: true },
+      }),
+    ]);
 
-  const memberIds = [...new Set(allGrants.map((g) => g.memberId))];
-  const grantsByMemberId: Record<string, MemberAccessGrantRecord[]> = {};
-  await Promise.all(
-    memberIds.map(async (memberId) => {
-      grantsByMemberId[memberId] = await fetchMemberAccessGrants(memberId);
-    })
-  );
+    const memberIds = [...new Set(allGrants.map((g) => g.memberId))];
+    const grantsByMemberId: Record<string, MemberAccessGrantRecord[]> = {};
+    await Promise.all(
+      memberIds.map(async (memberId) => {
+        grantsByMemberId[memberId] = await fetchMemberAccessGrants(memberId);
+      })
+    );
 
-  // Ensure every member key exists for the UI.
-  for (const member of members) {
-    grantsByMemberId[member.id] ??= [];
+    for (const member of members) {
+      grantsByMemberId[member.id] ??= [];
+    }
+
+    return {
+      members: members.map((user) => ({
+        id: user.id,
+        name: resolveRoleUserName(user),
+        email: user.email,
+      })),
+      grantableTargets: grantableTargets.map((user) => ({
+        id: user.id,
+        name: resolveRoleUserName(user),
+        email: user.email,
+        roleSlug: user.role.slug,
+        roleName: user.role.name,
+      })),
+      grantsByMemberId,
+    };
+  } catch (error) {
+    // Never take down Settings → Team if member-access is unavailable.
+    console.error("[member-access] panel data failed:", error);
+    return EMPTY_MEMBER_ACCESS_PANEL;
   }
-
-  return {
-    members: members.map((user) => ({
-      id: user.id,
-      name: resolveRoleUserName(user),
-      email: user.email,
-    })),
-    grantableTargets: grantableTargets.map((user) => ({
-      id: user.id,
-      name: resolveRoleUserName(user),
-      email: user.email,
-      roleSlug: user.role.slug,
-      roleName: user.role.name,
-    })),
-    grantsByMemberId,
-  };
 }
 
 export async function grantMemberAccess(memberId: string, targetUserId: string) {

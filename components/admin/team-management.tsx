@@ -1466,6 +1466,7 @@ function MemberAccessPanel({
   grantsByMemberId,
   onChanged,
   pending,
+  fillViewport = false,
 }: {
   members: MemberOptionRow[];
   grantableTargets: GrantableTargetRow[];
@@ -1514,32 +1515,9 @@ function MemberAccessPanel({
     [grantsByMemberId, memberId]
   );
 
-  const totalGrantCount = useMemo(
-    () =>
-      Object.values(grantsByMemberId).reduce(
-        (sum, grants) => sum + grants.length,
-        0
-      ),
-    [grantsByMemberId]
-  );
-
   const grantedTargetIds = useMemo(
     () => new Set(activeGrants.map((g) => g.targetUserId)),
     [activeGrants]
-  );
-
-  const agentCount = useMemo(
-    () =>
-      grantableTargets.filter((t) => t.roleSlug === SYSTEM_ROLE_SLUGS.AGENT)
-        .length,
-    [grantableTargets]
-  );
-  const qaCount = useMemo(
-    () =>
-      grantableTargets.filter(
-        (t) => t.roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
-      ).length,
-    [grantableTargets]
   );
 
   const selectableTargets = useMemo(() => {
@@ -1707,49 +1685,44 @@ function MemberAccessPanel({
 
   if (members.length === 0) {
     return (
-      <div className="member-access member-access--empty">
+      <div
+        className={
+          fillViewport
+            ? "member-access member-access--fill member-access--empty"
+            : "member-access member-access--empty"
+        }
+      >
         <div className="member-access__empty-card">
           <h3 className="member-access__empty-title">No members yet</h3>
           <p className="member-access__empty-desc">
-            Create a Member account first, then grant them visibility for specific
-            Agents or Quality Analysts.
+            Use <strong>Create member</strong> above, then come back here to grant
+            Agent or QA visibility.
           </p>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="member-access">
-      <header className="member-access__hero">
-        <div className="member-access__hero-copy">
-          <h3 className="member-access__title">Member access</h3>
-          <p className="member-access__subtitle">
-            Pick a member, filter Agents or QAs, then grant the same audit visibility
-            those users have. No grants means the member sees nothing.
-          </p>
-        </div>
-        <div className="member-access__stats" aria-label="Access summary">
-          <div className="member-access__stat">
-            <span className="member-access__stat-value">{members.length}</span>
-            <span className="member-access__stat-label">Members</span>
-          </div>
-          <div className="member-access__stat">
-            <span className="member-access__stat-value">{totalGrantCount}</span>
-            <span className="member-access__stat-label">Total grants</span>
-          </div>
-          <div className="member-access__stat">
-            <span className="member-access__stat-value">{agentCount}</span>
-            <span className="member-access__stat-label">Agents</span>
-          </div>
-          <div className="member-access__stat">
-            <span className="member-access__stat-value">{qaCount}</span>
-            <span className="member-access__stat-label">QAs</span>
-          </div>
-        </div>
-      </header>
+  const availableCounts = {
+    all: grantableTargets.filter((t) => !grantedTargetIds.has(t.id)).length,
+    agent: grantableTargets.filter(
+      (t) =>
+        !grantedTargetIds.has(t.id) && t.roleSlug === SYSTEM_ROLE_SLUGS.AGENT
+    ).length,
+    qa: grantableTargets.filter(
+      (t) =>
+        !grantedTargetIds.has(t.id) &&
+        t.roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
+    ).length,
+  };
 
-      <div className="member-access__toolbar">
+  return (
+    <div
+      className={
+        fillViewport ? "member-access member-access--fill" : "member-access"
+      }
+    >
+      <div className="member-access__bar">
         <Field className="member-access__member-field">
           <Label htmlFor="member-access-member">Member</Label>
           <Select
@@ -1761,36 +1734,46 @@ function MemberAccessPanel({
             onChange={(e) => setMemberId(e.target.value)}
           />
         </Field>
-        {selectedMember ? (
-          <div className="member-access__member-meta">
-            <span className="member-access__member-name">{selectedMember.name}</span>
-            <span className="member-access__member-email">{selectedMember.email}</span>
-            <span className="member-access__member-chips">
+        <div className="member-access__bar-meta" aria-live="polite">
+          {selectedMember ? (
+            <>
               <span className="member-access__chip">
                 {grantedAgentCount} Agent{grantedAgentCount === 1 ? "" : "s"}
               </span>
               <span className="member-access__chip">
                 {grantedQaCount} QA{grantedQaCount === 1 ? "" : "s"}
               </span>
-            </span>
-          </div>
-        ) : null}
+              <span className="member-access__chip member-access__chip--accent">
+                {selectedTargetIds.length} selected
+              </span>
+            </>
+          ) : (
+            <span className="member-access__bar-hint">Select a member</span>
+          )}
+        </div>
+        <Button
+          type="button"
+          className="member-access__grant-btn"
+          disabled={pending || !memberId || selectedTargetIds.length === 0}
+          onClick={handleGrant}
+        >
+          {selectedTargetIds.length > 0
+            ? `Grant ${selectedTargetIds.length}`
+            : "Grant access"}
+        </Button>
       </div>
 
       <div className="member-access__grid">
-        <section className="member-access__panel" aria-labelledby="member-access-grant-title">
+        <section
+          className="member-access__panel"
+          aria-labelledby="member-access-grant-title"
+        >
           <div className="member-access__panel-head">
-            <div>
-              <h4 id="member-access-grant-title" className="member-access__panel-title">
-                Grant access
-              </h4>
-              <p className="member-access__panel-desc">
-                Filter by Agent or QA, then select who this member can see.
-              </p>
-            </div>
+            <h4 id="member-access-grant-title" className="member-access__panel-title">
+              1. Select people to grant
+            </h4>
             <span className="member-access__panel-meta">
-              {selectedTargetIds.length} selected · {selectableTargets.length}{" "}
-              available
+              {selectableTargets.length} available
             </span>
           </div>
 
@@ -1798,20 +1781,7 @@ function MemberAccessPanel({
             {roleFilterTabs(
               roleFilter,
               setRoleFilter,
-              {
-                all: grantableTargets.filter((t) => !grantedTargetIds.has(t.id))
-                  .length,
-                agent: grantableTargets.filter(
-                  (t) =>
-                    !grantedTargetIds.has(t.id) &&
-                    t.roleSlug === SYSTEM_ROLE_SLUGS.AGENT
-                ).length,
-                qa: grantableTargets.filter(
-                  (t) =>
-                    !grantedTargetIds.has(t.id) &&
-                    t.roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
-                ).length,
-              },
+              availableCounts,
               "member-grant-filter"
             )}
             <div className="member-access__search platform-settings__search-wrap">
@@ -1829,7 +1799,7 @@ function MemberAccessPanel({
                     ? "Search agents…"
                     : roleFilter === "qa"
                       ? "Search quality analysts…"
-                      : "Search agents or QAs…"
+                      : "Search by name or email…"
                 }
                 value={targetSearch}
                 disabled={pending || !memberId}
@@ -1850,79 +1820,72 @@ function MemberAccessPanel({
             </div>
           </div>
 
-          {selectableTargets.length === 0 ? (
-            <div className="member-access__panel-empty">
-              {roleFilter === "all"
-                ? "All active Agents and QAs are already granted to this member."
-                : roleFilter === "agent"
-                  ? "No more Agents available to grant."
-                  : "No more Quality Analysts available to grant."}
-            </div>
-          ) : filteredSelectableTargets.length === 0 ? (
-            <div className="member-access__panel-empty">
-              No {roleFilter === "qa" ? "QAs" : roleFilter === "agent" ? "agents" : "users"} match
-              your search.
-            </div>
-          ) : (
-            <div className="member-access__list">
-              <label className="member-access__row member-access__row--all">
-                <input
-                  type="checkbox"
-                  checked={allFilteredSelected}
-                  ref={(el) => {
-                    if (el) el.indeterminate = someFilteredSelected;
-                  }}
-                  disabled={pending || !memberId}
-                  onChange={toggleAllSelectable}
-                />
-                <span>
-                  {targetSearch.trim() || roleFilter !== "all"
-                    ? "Select all shown"
-                    : "Select all available"}
-                </span>
-              </label>
-              {filteredSelectableTargets.map((target) => {
-                const selected = selectedTargetIds.includes(target.id);
-                return (
-                  <label
-                    key={target.id}
-                    className={
-                      selected
-                        ? "member-access__row member-access__row--selected"
-                        : "member-access__row"
-                    }
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      disabled={pending || !memberId}
-                      onChange={() => toggleTarget(target.id)}
-                    />
-                    <span className="member-access__row-body">
-                      <span className="member-access__row-top">
-                        <span className="member-access__row-name">{target.name}</span>
-                        {roleBadge(target.roleSlug)}
+          <div className="member-access__scroll">
+            {selectableTargets.length === 0 ? (
+              <div className="member-access__panel-empty">
+                {roleFilter === "all"
+                  ? "Everyone available is already granted to this member."
+                  : roleFilter === "agent"
+                    ? "No more Agents available."
+                    : "No more Quality Analysts available."}
+              </div>
+            ) : filteredSelectableTargets.length === 0 ? (
+              <div className="member-access__panel-empty">
+                No{" "}
+                {roleFilter === "qa"
+                  ? "QAs"
+                  : roleFilter === "agent"
+                    ? "agents"
+                    : "users"}{" "}
+                match your search.
+              </div>
+            ) : (
+              <div className="member-access__list">
+                <label className="member-access__row member-access__row--all">
+                  <input
+                    type="checkbox"
+                    checked={allFilteredSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someFilteredSelected;
+                    }}
+                    disabled={pending || !memberId}
+                    onChange={toggleAllSelectable}
+                  />
+                  <span>Select all shown</span>
+                </label>
+                {filteredSelectableTargets.map((target) => {
+                  const selected = selectedTargetIds.includes(target.id);
+                  return (
+                    <label
+                      key={target.id}
+                      className={
+                        selected
+                          ? "member-access__row member-access__row--selected"
+                          : "member-access__row"
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        disabled={pending || !memberId}
+                        onChange={() => toggleTarget(target.id)}
+                      />
+                      <span className="member-access__row-body">
+                        <span className="member-access__row-top">
+                          <span className="member-access__row-name">
+                            {target.name}
+                          </span>
+                          {roleBadge(target.roleSlug)}
+                        </span>
+                        <span className="member-access__row-email">
+                          {target.email}
+                        </span>
                       </span>
-                      <span className="member-access__row-email">{target.email}</span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="member-access__panel-actions">
-            <Button
-              type="button"
-              disabled={pending || !memberId || selectedTargetIds.length === 0}
-              onClick={handleGrant}
-            >
-              {selectedTargetIds.length > 0
-                ? `Grant ${selectedTargetIds.length} access${
-                    selectedTargetIds.length === 1 ? "" : "es"
-                  }`
-                : "Grant access"}
-            </Button>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </section>
 
@@ -1931,14 +1894,12 @@ function MemberAccessPanel({
           aria-labelledby="member-access-grants-title"
         >
           <div className="member-access__panel-head">
-            <div>
-              <h4 id="member-access-grants-title" className="member-access__panel-title">
-                Active grants
-              </h4>
-              <p className="member-access__panel-desc">
-                Revoke anytime — the member loses that scope immediately.
-              </p>
-            </div>
+            <h4
+              id="member-access-grants-title"
+              className="member-access__panel-title"
+            >
+              2. Active access
+            </h4>
             <span className="member-access__panel-meta">
               {activeGrants.length} grant{activeGrants.length === 1 ? "" : "s"}
             </span>
@@ -1964,7 +1925,7 @@ function MemberAccessPanel({
               <input
                 type="search"
                 className="platform-settings__search"
-                placeholder="Search active grants…"
+                placeholder="Search grants…"
                 value={grantSearch}
                 disabled={pending || activeGrants.length === 0}
                 onChange={(event) => setGrantSearch(event.target.value)}
@@ -1984,41 +1945,45 @@ function MemberAccessPanel({
             </div>
           </div>
 
-          {activeGrants.length === 0 ? (
-            <div className="member-access__panel-empty">
-              Nothing granted yet. Select Agents or QAs on the left to start.
-            </div>
-          ) : filteredGrants.length === 0 ? (
-            <div className="member-access__panel-empty">
-              No grants match this filter.
-            </div>
-          ) : (
-            <ul className="member-access__grant-list">
-              {filteredGrants.map((row) => (
-                <li key={row.id} className="member-access__grant">
-                  <div className="member-access__grant-main">
-                    <div className="member-access__row-top">
-                      <span className="member-access__row-name">{row.targetName}</span>
-                      {roleBadge(row.targetRoleSlug)}
+          <div className="member-access__scroll">
+            {activeGrants.length === 0 ? (
+              <div className="member-access__panel-empty">
+                No access yet. Select people on the left, then press{" "}
+                <strong>Grant</strong> above.
+              </div>
+            ) : filteredGrants.length === 0 ? (
+              <div className="member-access__panel-empty">
+                No grants match this filter.
+              </div>
+            ) : (
+              <ul className="member-access__grant-list">
+                {filteredGrants.map((row) => (
+                  <li key={row.id} className="member-access__grant">
+                    <div className="member-access__grant-main">
+                      <div className="member-access__row-top">
+                        <span className="member-access__row-name">
+                          {row.targetName}
+                        </span>
+                        {roleBadge(row.targetRoleSlug)}
+                      </div>
+                      <span className="member-access__row-email">
+                        {row.targetEmail}
+                      </span>
                     </div>
-                    <span className="member-access__row-email">{row.targetEmail}</span>
-                    <span className="member-access__grant-by">
-                      Granted by {row.grantedByName}
-                    </span>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={pending}
-                    onClick={() => handleRevoke(row.id)}
-                    aria-label={`Revoke access for ${row.targetName}`}
-                  >
-                    Revoke
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
+                    <button
+                      type="button"
+                      className="member-access__revoke"
+                      disabled={pending}
+                      onClick={() => handleRevoke(row.id)}
+                      aria-label={`Revoke access for ${row.targetName}`}
+                    >
+                      Revoke
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </section>
       </div>
     </div>

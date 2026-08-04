@@ -46,7 +46,7 @@ type User = {
   dateOfJoining?: string | null;
   teamName?: string | null;
   isActive?: boolean;
-  createdAt: Date;
+  createdAt: string | Date;
 };
 
 type UsersTableProps = {

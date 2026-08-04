@@ -787,6 +787,12 @@
   margin-bottom: 0;
 }
 
+.settings-page__body--pending {
+  opacity: 0.72;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
 .settings-page__body {
   flex: 1;
   min-height: 0;

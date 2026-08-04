@@ -3,8 +3,8 @@
 import type { Prisma } from "@prisma/client";
 import { requireAuth } from "@/lib/auth";
 import {
-  fetchAgentAssigneeEntries,
   fetchAgentRosterEntries,
+  fetchProvisionedAgentEntriesBySupervisorUserIds,
 } from "@/lib/audit/agent-roster";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
 import { prisma } from "@/lib/prisma";
@@ -16,6 +16,7 @@ import {
   isSuperAdmin,
   type SessionRole,
 } from "@/lib/rbac";
+import { isLoginEligibleUser } from "@/lib/user-active-filter";
 import { buildManagedUsersWhere } from "@/lib/user-roster-scope";
 
 export type ConnectedPerson = {
@@ -46,12 +47,6 @@ export type ConnectedUserRow = {
   createdUsers: CreatedUsersByRole[];
   createdUsersTotal: number;
 };
-
-const ROSTER_ROLES = new Set<string>([
-  SYSTEM_ROLE_SLUGS.SUPERVISOR,
-  SYSTEM_ROLE_SLUGS.QUALITY_ANALYST,
-  SYSTEM_ROLE_SLUGS.QUALITY_MANAGER,
-]);
 
 const userSelect = {
   id: true,
@@ -212,37 +207,89 @@ export async function getConnectedUsersOverview(): Promise<ConnectedUserRow[]> {
 
   const roleById = new Map(roles.map((item) => [item.id, item]));
 
+  // Batch roster + assignment lookups (avoid N+1 across hundreds of users).
+  const supervisorIds = users
+    .filter((user) =>
+      user.role.slug === SYSTEM_ROLE_SLUGS.SUPERVISOR ||
+      user.role.slug === SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR
+    )
+    .map((user) => user.id);
+  const qaIds = users
+    .filter((user) => user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST)
+    .map((user) => user.id);
+  const qmIds = users
+    .filter((user) => user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER)
+    .map((user) => user.id);
+  const agentIds = users
+    .filter((user) => user.role.slug === SYSTEM_ROLE_SLUGS.AGENT)
+    .map((user) => user.id);
+
+  const [provisionedBySupervisor, assignmentRows] = await Promise.all([
+    fetchProvisionedAgentEntriesBySupervisorUserIds([
+      ...supervisorIds,
+      ...qaIds,
+    ]),
+    agentIds.length > 0
+      ? prisma.agentAssignment.findMany({
+          where: { agentId: { in: agentIds } },
+          include: {
+            assignedTo: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                isActive: true,
+                approvalStatus: true,
+                role: { select: { name: true, slug: true } },
+              },
+            },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+
   const rosterByUserId = new Map<string, ConnectedPerson[]>();
+  for (const id of supervisorIds) {
+    rosterByUserId.set(
+      id,
+      (provisionedBySupervisor.get(id) ?? []).map(rosterEntryToAgentPerson)
+    );
+  }
+
+  // QA: assigned + provisioned (still one query per QA for assignments — bounded).
   await Promise.all(
-    users
-      .filter((user) => ROSTER_ROLES.has(user.role.slug))
-      .map(async (user) => {
-        const entries = await fetchAgentRosterEntries(user.id, user.role.slug);
-        rosterByUserId.set(
-          user.id,
-          entries.map((entry) => rosterEntryToAgentPerson(entry))
-        );
-      })
+    qaIds.map(async (qaId) => {
+      const entries = await fetchAgentRosterEntries(
+        qaId,
+        SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
+      );
+      rosterByUserId.set(qaId, entries.map(rosterEntryToAgentPerson));
+    })
+  );
+
+  await Promise.all(
+    qmIds.map(async (qmId) => {
+      const entries = await fetchAgentRosterEntries(
+        qmId,
+        SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
+      );
+      rosterByUserId.set(qmId, entries.map(rosterEntryToAgentPerson));
+    })
   );
 
   const assigneesByAgent = new Map<string, ConnectedPerson[]>();
-  await Promise.all(
-    users
-      .filter((user) => user.role.slug === SYSTEM_ROLE_SLUGS.AGENT)
-      .map(async (user) => {
-        const assignees = await fetchAgentAssigneeEntries(user.id);
-        assigneesByAgent.set(
-          user.id,
-          assignees.map((assignee) => ({
-            id: assignee.id,
-            name: assignee.name,
-            email: assignee.email,
-            roleName: assignee.roleName,
-            roleSlug: assignee.roleSlug,
-          }))
-        );
-      })
-  );
+  for (const row of assignmentRows) {
+    if (!isLoginEligibleUser(row.assignedTo)) continue;
+    const list = assigneesByAgent.get(row.agentId) ?? [];
+    list.push({
+      id: row.assignedTo.id,
+      name: resolveRoleUserName(row.assignedTo),
+      email: row.assignedTo.email,
+      roleName: row.assignedTo.role.name,
+      roleSlug: row.assignedTo.role.slug,
+    });
+    assigneesByAgent.set(row.agentId, list);
+  }
 
   const createdByRole = new Map<string, CreatedUsersByRole[]>();
   for (const group of createdGroups) {

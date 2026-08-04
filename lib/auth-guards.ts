@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth-errors";
 import { redirectForInvalidSession } from "@/lib/auth-redirects";
 import type { InvalidSessionReason } from "@/lib/auth-redirects";
+import { rethrowNextNavigation } from "@/lib/next-errors";
 import { PERMISSIONS, type Permission } from "@/lib/permissions";
 import { canAccessPath, firstAccessiblePath, hasScope } from "@/lib/rbac";
 
@@ -48,6 +49,7 @@ export async function requirePageAccess(pathname: string) {
   try {
     session = await requireAuth();
   } catch (error) {
+    rethrowNextNavigation(error);
     if (isInvalidSessionError(error)) {
       redirectForInvalidSession(pathname, invalidSessionRedirectReason(error));
     }

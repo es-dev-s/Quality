@@ -16,21 +16,24 @@ import { isSuperAdmin } from "@/lib/rbac";
 import {
   validateSessionAgainstUser,
 } from "@/lib/auth-session-policy";
+import { withDbRetry } from "@/lib/db/with-db-retry";
 import { cache } from "react";
 
 ensureAuthEnv();
 
 const loadSessionUser = cache(async (userId: string) => {
-  return prisma.user.findUnique({
-    where: { id: userId },
-    include: {
-      role: {
-        include: {
-          scopes: { include: { scope: true } },
+  return withDbRetry(() =>
+    prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        role: {
+          include: {
+            scopes: { include: { scope: true } },
+          },
         },
       },
-    },
-  });
+    })
+  );
 });
 
 function mapSessionRole(user: NonNullable<Awaited<ReturnType<typeof loadSessionUser>>>): SessionRole {
