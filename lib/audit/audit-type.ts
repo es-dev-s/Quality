@@ -5,6 +5,7 @@ export const AUDIT_TYPE_OPTIONS = [
   "Certification Audit",
   "New Agent Audit",
   "Calibration Audit",
+  "Dip-Check",
 ] as const;
 
 export type AuditType = (typeof AUDIT_TYPE_OPTIONS)[number];
@@ -34,6 +35,8 @@ export function parseAuditType(value: unknown): AuditType | "" {
     newagentaudit: "New Agent Audit",
     calibration: "Calibration Audit",
     calibrationaudit: "Calibration Audit",
+    dipcheck: "Dip-Check",
+    dipcheckaudit: "Dip-Check",
   };
   return aliases[compact] ?? "";
 }
