@@ -4,11 +4,17 @@ import { prisma } from "@/lib/prisma";
 import { BUILTIN_AUDIT_TEMPLATES } from "@/lib/audit/rubrics";
 import { patchTemplateFatalYnParams } from "@/lib/audit/fatal-yn-params";
 import { patchTemplateProbingPreferredModeSwap } from "@/lib/audit/probing-preferred-mode-swap";
+import {
+  patchTemplateCategorySpelling,
+  templateHasLegacyCategorySpelling,
+} from "@/lib/audit/analytics-metric-keys";
 import type { AuditSection, AuditTemplate } from "@/lib/audit/types";
 
 function applyTemplateParamPatches(template: AuditTemplate): AuditTemplate {
-  return patchTemplateProbingPreferredModeSwap(
-    patchTemplateFatalYnParams(template)
+  return patchTemplateCategorySpelling(
+    patchTemplateProbingPreferredModeSwap(
+      patchTemplateFatalYnParams(template)
+    )
   );
 }
 
@@ -69,6 +75,19 @@ export const ensureDefaultTemplate = cache(async (): Promise<void> => {
         });
       } catch {
         // Concurrent first requests
+      }
+      continue;
+    }
+
+    if (templateHasLegacyCategorySpelling(existing)) {
+      try {
+        const patched = rowToAuditTemplate(existing);
+        await prisma.formTemplate.update({
+          where: { id: existing.id },
+          data: { sections: patched.sections },
+        });
+      } catch {
+        // Concurrent spelling repairs
       }
     }
   }

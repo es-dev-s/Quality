@@ -70,25 +70,15 @@ export function getCachedAuditLogs(scope: CacheScopeKey, limit: number) {
 }
 
 export function getCachedDashboardRecords(scope: CacheScopeKey) {
-  const key = cacheScopeKey(scope);
-  return unstable_cache(
-    async () => {
-      const where = await scopedWhereForKey(scope);
-      return prisma.auditSubmission.findMany({
-        where,
-        select: AUDIT_DASHBOARD_SELECT,
-        orderBy: { createdAt: "desc" },
-      });
-    },
-    [`dashboard-records-${key}`],
-    {
-      tags: [
-        CACHE_TAGS.AUDIT_SUBMISSIONS,
-        CACHE_TAGS.userDashboard(scope.userId),
-      ],
-      revalidate: CACHE_TTL.REALTIME,
-    }
-  );
+  // Do not use unstable_cache here. Superadmin dashboards exceed Next.js' 2MB
+  // data-cache limit (~7k audits), which throws and looks like a DB outage.
+  return async () => {
+    const where = await scopedWhereForKey(scope);
+    return prisma.auditSubmission.findMany({
+      where,
+      select: AUDIT_DASHBOARD_SELECT,
+    });
+  };
 }
 
 export function getCachedAuditSubmissionsPage(

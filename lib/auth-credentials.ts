@@ -58,6 +58,41 @@ function toVerifiedUser(user: AuthUserRecord): VerifiedAuthUser {
   };
 }
 
+export type LoginAccountStatus =
+  | { ok: true }
+  | { ok: false; reason: CredentialFailureReason };
+
+export async function getLoginAccountStatus(
+  emailRaw: string
+): Promise<LoginAccountStatus> {
+  const email = emailRaw.trim().toLowerCase();
+  if (!email) {
+    return { ok: false, reason: "missing" };
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { isActive: true, approvalStatus: true },
+    });
+
+    if (!user) {
+      return { ok: false, reason: "not_found" };
+    }
+    if (!user.isActive) {
+      return { ok: false, reason: "inactive" };
+    }
+    if (user.approvalStatus !== "ACTIVE") {
+      return { ok: false, reason: "not_approved" };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error("[auth] Login account status failed:", error);
+    return { ok: false, reason: "db_error" };
+  }
+}
+
 export async function verifyCredentialsForLogin(
   emailRaw: string,
   passwordRaw: string

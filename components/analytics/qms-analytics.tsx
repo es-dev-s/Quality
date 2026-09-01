@@ -447,8 +447,7 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
             ))}
           </div>
           <p className="ui-hint" style={{ marginTop: 8 }}>
-            Both combines call and chat parameters with matching names and
-            merged counts.
+            Both merges call and chat parameters that share the same name.
           </p>
         </FilterSidebarSection>
 

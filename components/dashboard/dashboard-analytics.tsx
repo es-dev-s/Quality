@@ -553,7 +553,7 @@ export function DashboardAnalytics({
           <p className={`dash-kpi__value ${scoreTone(stats.avgQualityExclFatal)}`}>
             {stats.avgQualityExclFatal}%
           </p>
-          <p className="dash-kpi__hint">excl. fatal override</p>
+          <p className="dash-kpi__hint">incl. fatal as 0%</p>
         </article>
         <article className="dash-kpi">
           <p className="dash-kpi__label">Pass rate</p>
@@ -639,7 +639,7 @@ export function DashboardAnalytics({
             <div>
               <h2 className="dash-panel__title">Score distribution</h2>
               <p className="dash-panel__desc">
-                Quality score bands in selected period
+                Quality score bands in selected period (FATAL = 0%)
               </p>
             </div>
           </div>
@@ -826,7 +826,7 @@ export function DashboardAnalytics({
                 Top performing agents
               </h2>
               <p className="dash-panel__desc">
-                Highest average quality score in selected period
+                Highest average quality in selected period (FATAL = 0%)
               </p>
             </div>
           </div>

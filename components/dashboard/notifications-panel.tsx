@@ -19,6 +19,11 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "@/lib/actions/notifications";
+import {
+  isNotificationWithinRetention,
+  NOTIFICATION_LIST_MAX,
+  NOTIFICATION_RETENTION_DAYS,
+} from "@/lib/notifications/retention";
 import type { NotificationItem } from "@/lib/notifications/types";
 import { useRealtime } from "@/lib/hooks/use-realtime";
 import { isNotificationSSEEvent } from "@/lib/sse-events";
@@ -49,21 +54,32 @@ function mergeNotification(
   items: NotificationItem[],
   incoming: NotificationItem
 ): NotificationItem[] {
+  if (!isNotificationWithinRetention(incoming.createdAt)) {
+    return items.filter((item) => isNotificationWithinRetention(item.createdAt));
+  }
   const withoutDup = items.filter((item) => item.id !== incoming.id);
-  return [incoming, ...withoutDup].slice(0, 30);
+  return [incoming, ...withoutDup]
+    .filter((item) => isNotificationWithinRetention(item.createdAt))
+    .slice(0, NOTIFICATION_LIST_MAX);
 }
+
+type NotificationListState = {
+  items: NotificationItem[];
+  unreadCount: number;
+};
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
-  const [items, setItems] = useState<NotificationItem[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [{ items, unreadCount }, setList] = useState<NotificationListState>({
+    items: [],
+    unreadCount: 0,
+  });
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
-      const data = await getNotifications({ limit: 20 });
-      setItems(data.items);
-      setUnreadCount(data.unreadCount);
+      const data = await getNotifications({ limit: NOTIFICATION_LIST_MAX });
+      setList({ items: data.items, unreadCount: data.unreadCount });
     } catch {
       // keep last known state
     } finally {
@@ -81,8 +97,19 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         if (!isNotificationSSEEvent(event)) return;
 
         const incoming = event.notification;
-        setItems((current) => mergeNotification(current, incoming));
-        setUnreadCount((count) => count + 1);
+        setList((current) => {
+          const existed = current.items.some((item) => item.id === incoming.id);
+          const nextItems = mergeNotification(current.items, incoming);
+          const accepted =
+            !existed && nextItems.some((item) => item.id === incoming.id);
+          return {
+            items: nextItems,
+            unreadCount:
+              accepted && !incoming.readAt
+                ? current.unreadCount + 1
+                : current.unreadCount,
+          };
+        });
         toast(incoming.title, "warning");
       },
       [toast]
@@ -93,23 +120,25 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     const result = await markNotificationRead(id);
     if ("error" in result && result.error) return;
 
-    setItems((current) =>
-      current.map((item) =>
-        item.id === id
-          ? { ...item, readAt: new Date().toISOString() }
-          : item
-      )
-    );
-    setUnreadCount(result.unreadCount);
+    const readAt = new Date().toISOString();
+    setList((current) => ({
+      items: current.items.map((item) =>
+        item.id === id ? { ...item, readAt: item.readAt ?? readAt } : item
+      ),
+      unreadCount: result.unreadCount,
+    }));
   }, []);
 
   const markAllRead = useCallback(async () => {
     await markAllNotificationsRead();
     const now = new Date().toISOString();
-    setItems((current) =>
-      current.map((item) => ({ ...item, readAt: item.readAt ?? now }))
-    );
-    setUnreadCount(0);
+    setList((current) => ({
+      items: current.items.map((item) => ({
+        ...item,
+        readAt: item.readAt ?? now,
+      })),
+      unreadCount: 0,
+    }));
   }, []);
 
   const value = useMemo(
@@ -147,6 +176,9 @@ export function NotificationBell() {
     useNotifications();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const visibleItems = items.filter((item) =>
+    isNotificationWithinRetention(item.createdAt)
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -185,7 +217,12 @@ export function NotificationBell() {
       {open ? (
         <div className="notification-bell__panel" role="menu">
           <div className="notification-bell__head">
-            <p className="notification-bell__title">Notifications</p>
+            <p className="notification-bell__title">
+              Notifications
+              <span className="notification-bell__window">
+                Last {NOTIFICATION_RETENTION_DAYS} days
+              </span>
+            </p>
             {unreadCount > 0 ? (
               <button
                 type="button"
@@ -198,12 +235,15 @@ export function NotificationBell() {
           </div>
 
           <div className="notification-bell__list">
-            {loading && items.length === 0 ? (
+            {loading && visibleItems.length === 0 ? (
               <p className="notification-bell__empty">Loading…</p>
-            ) : items.length === 0 ? (
-              <p className="notification-bell__empty">No notifications yet.</p>
+            ) : visibleItems.length === 0 ? (
+              <p className="notification-bell__empty">
+                No notifications in the last {NOTIFICATION_RETENTION_DAYS}{" "}
+                days.
+              </p>
             ) : (
-              items.map((item) => (
+              visibleItems.map((item) => (
                 <Link
                   key={item.id}
                   href={item.href}

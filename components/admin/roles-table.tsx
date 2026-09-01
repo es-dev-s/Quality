@@ -140,9 +140,6 @@ export function RolesTable({ roles, embedded = false }: RolesTableProps) {
         <div className="admin-section-head">
           <div>
             <h2 className="admin-section-head__title">All Roles</h2>
-            <p className="admin-section-head__desc">
-              System roles ship with predefined module permissions. Custom roles can be added for specialized access.
-            </p>
           </div>
           <Button
             onClick={() => {

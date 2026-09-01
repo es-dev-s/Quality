@@ -68,8 +68,8 @@ export function AuditorsTab({ data, sortOrder }: AuditorsTabProps) {
       onChange={(id) => setView(id as "summary" | "parameter" | "category")}
       options={[
         { id: "summary", label: "Summary" },
-        { id: "parameter", label: "Parameter wise" },
-        { id: "category", label: "Category wise" },
+        { id: "parameter", label: "By parameter" },
+        { id: "category", label: "By category" },
       ]}
     />
   );
@@ -93,8 +93,8 @@ export function AuditorsTab({ data, sortOrder }: AuditorsTabProps) {
           sortOrder={sortOrder}
           title={
             view === "parameter"
-              ? "QA — parameter wise"
-              : "QA — category wise"
+              ? "QA by parameter"
+              : "QA by category"
           }
           sub="Average score per quality analyst and rubric segment"
         />
@@ -187,7 +187,7 @@ export function AuditorsTab({ data, sortOrder }: AuditorsTabProps) {
 
         <QmsCard className="qms-card--chart">
           <QmsSectionTitle
-            title="QA-wise quality score"
+            title="Quality score by analyst"
             sub={`Average quality % · ${sortOrder === "desc" ? "high to low" : "low to high"}`}
           />
           <QmsChartFrame>

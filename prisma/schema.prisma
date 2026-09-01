@@ -170,6 +170,7 @@ model UserProvisioningRequest {
   passwordHash   String                   @map("password_hash")
   passwordEncrypted String?               @map("password_encrypted")
   dateOfJoining  String?                  @map("date_of_joining")
+  teamName       String?                  @map("team_name")
   targetRoleSlug String                   @map("target_role_slug")
   status         UserProvisioningStatus   @default(PENDING)
   requestedById  String                   @map("requested_by_id")

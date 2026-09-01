@@ -76,8 +76,8 @@ export function TeamsTab({ data, sortOrder }: TeamsTabProps) {
           onChange={(id) => setView(id as "summary" | "parameter" | "category")}
           options={[
             { id: "summary", label: "Summary" },
-            { id: "parameter", label: "Parameter wise" },
-            { id: "category", label: "Category wise" },
+            { id: "parameter", label: "By parameter" },
+            { id: "category", label: "By category" },
           ]}
         />
         <EntityBreakdownTable
@@ -91,8 +91,8 @@ export function TeamsTab({ data, sortOrder }: TeamsTabProps) {
           sortOrder={sortOrder}
           title={
             view === "parameter"
-              ? "Team lead — parameter wise"
-              : "Team lead — category wise"
+              ? "Team lead by parameter"
+              : "Team lead by category"
           }
           sub="Average score per supervisor and rubric segment"
         />
@@ -110,8 +110,8 @@ export function TeamsTab({ data, sortOrder }: TeamsTabProps) {
         onChange={(id) => setView(id as "summary" | "parameter" | "category")}
         options={[
           { id: "summary", label: "Summary" },
-          { id: "parameter", label: "Parameter wise" },
-          { id: "category", label: "Category wise" },
+          { id: "parameter", label: "By parameter" },
+          { id: "category", label: "By category" },
         ]}
       />
 

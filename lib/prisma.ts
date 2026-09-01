@@ -10,6 +10,7 @@ const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
   pgPool?: Pool;
   pgPoolConnectionString?: string;
+  pgPoolMax?: number;
 };
 
 const REQUIRED_DELEGATES = [
@@ -29,15 +30,19 @@ function poolMaxConnections(): number {
   if (Number.isFinite(parsed) && parsed > 0) {
     return Math.floor(parsed);
   }
-  return 3;
+  // Dashboard + session + notifications run in parallel; 3 connections serialized
+  // those round-trips to the remote pooler and made pages feel stuck.
+  return 8;
 }
 
 function getPgPool(): Pool {
   const connectionString = resolveDatabaseUrl();
+  const max = poolMaxConnections();
 
   if (
     globalForPrisma.pgPool &&
-    globalForPrisma.pgPoolConnectionString === connectionString
+    globalForPrisma.pgPoolConnectionString === connectionString &&
+    globalForPrisma.pgPoolMax === max
   ) {
     return globalForPrisma.pgPool;
   }
@@ -54,7 +59,7 @@ function getPgPool(): Pool {
 
   const poolConfig: PoolConfig = {
     connectionString,
-    max: poolMaxConnections(),
+    max,
     idleTimeoutMillis: 30_000,
     // Fail fast so pages don't hang for tens of seconds on a bad/slow DB.
     connectionTimeoutMillis: 8_000,
@@ -70,6 +75,7 @@ function getPgPool(): Pool {
 
   globalForPrisma.pgPool = pool;
   globalForPrisma.pgPoolConnectionString = connectionString;
+  globalForPrisma.pgPoolMax = max;
   return pool;
 }
 

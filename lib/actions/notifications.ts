@@ -2,30 +2,73 @@
 
 import { requireAuth } from "@/lib/auth";
 import { mapNotificationRow } from "@/lib/notifications/dispatch-fatal-audit";
+import {
+  NOTIFICATION_LIST_MAX,
+  notificationRetentionCutoff,
+} from "@/lib/notifications/retention";
 import type { NotificationItem } from "@/lib/notifications/types";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
 const listSchema = z.object({
-  limit: z.number().int().min(1).max(50).optional(),
+  limit: z.number().int().min(1).max(NOTIFICATION_LIST_MAX).optional(),
 });
 
 const idSchema = z.object({
   id: z.string().min(1),
 });
 
+const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+let lastPruneAt = 0;
+let pruneInFlight: Promise<void> | null = null;
+
+function scheduleNotificationPrune(): void {
+  const now = Date.now();
+  if (pruneInFlight || now - lastPruneAt < PRUNE_INTERVAL_MS) return;
+  lastPruneAt = now;
+  pruneInFlight = prisma.notification
+    .deleteMany({
+      where: { createdAt: { lt: notificationRetentionCutoff() } },
+    })
+    .then(() => undefined)
+    .catch((error) => {
+      lastPruneAt = 0;
+      console.error("notification prune failed:", error);
+    })
+    .finally(() => {
+      pruneInFlight = null;
+    });
+}
+
 export async function getNotifications(input?: {
   limit?: number;
 }): Promise<{ items: NotificationItem[]; unreadCount: number }> {
   const session = await requireAuth();
   const parsed = listSchema.safeParse(input ?? {});
-  const limit = parsed.success ? (parsed.data.limit ?? 20) : 20;
+  const limit = parsed.success
+    ? (parsed.data.limit ?? NOTIFICATION_LIST_MAX)
+    : NOTIFICATION_LIST_MAX;
 
-  const where = { userId: session.user.id };
+  scheduleNotificationPrune();
+
+  const where = {
+    userId: session.user.id,
+    createdAt: { gte: notificationRetentionCutoff() },
+  };
 
   const [rows, unreadCount] = await Promise.all([
     prisma.notification.findMany({
       where,
+      select: {
+        id: true,
+        type: true,
+        title: true,
+        body: true,
+        auditId: true,
+        auditCode: true,
+        readAt: true,
+        createdAt: true,
+      },
       orderBy: { createdAt: "desc" },
       take: limit,
     }),
@@ -61,7 +104,11 @@ export async function markNotificationRead(id: string) {
   }
 
   const unreadCount = await prisma.notification.count({
-    where: { userId: session.user.id, readAt: null },
+    where: {
+      userId: session.user.id,
+      readAt: null,
+      createdAt: { gte: notificationRetentionCutoff() },
+    },
   });
 
   return { success: true as const, unreadCount };
@@ -70,8 +117,14 @@ export async function markNotificationRead(id: string) {
 export async function markAllNotificationsRead() {
   const session = await requireAuth();
 
+  scheduleNotificationPrune();
+
   await prisma.notification.updateMany({
-    where: { userId: session.user.id, readAt: null },
+    where: {
+      userId: session.user.id,
+      readAt: null,
+      createdAt: { gte: notificationRetentionCutoff() },
+    },
     data: { readAt: new Date() },
   });
 

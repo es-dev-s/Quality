@@ -317,9 +317,6 @@ export function ConnectedUsersPanel({
         <div className="admin-section-head">
           <div>
             <h2 className="admin-section-head__title">Connected users</h2>
-            <p className="admin-section-head__desc">
-              Active agent rosters and QA assignments — aligned with dashboard and audit forms.
-            </p>
           </div>
         </div>
       )}

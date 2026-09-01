@@ -2,13 +2,12 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRightLeft, UserPlus } from "lucide-react";
+import { UserPlus } from "lucide-react";
 import { Button } from "@/components/primitives/button";
 import {
   DataTablePanel,
   usePaginatedRows,
 } from "@/components/primitives/data-table-panel";
-import { AgentTransferModal } from "@/components/admin/agent-transfer-modal";
 import type { AgentListItem } from "@/lib/actions/agents";
 
 type AgentsTableProps = {
@@ -16,7 +15,6 @@ type AgentsTableProps = {
   canManage: boolean;
   canManageUsers?: boolean;
   canTransferAgents?: boolean;
-  requiresTransferApproval?: boolean;
   onOpenUsersTab?: () => void;
   onOpenTeamTab?: () => void;
   embedded?: boolean;
@@ -27,13 +25,11 @@ export function AgentsTable({
   canManage,
   canManageUsers = false,
   canTransferAgents = false,
-  requiresTransferApproval = true,
   onOpenUsersTab,
   onOpenTeamTab,
   embedded = false,
 }: AgentsTableProps) {
   const [search, setSearch] = useState("");
-  const [transferAgent, setTransferAgent] = useState<AgentListItem | null>(null);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -42,7 +38,8 @@ export function AgentsTable({
       (agent) =>
         (agent.profileName ?? "").toLowerCase().includes(q) ||
         agent.name.toLowerCase().includes(q) ||
-        agent.email.toLowerCase().includes(q)
+        agent.email.toLowerCase().includes(q) ||
+        (agent.teamName ?? "").toLowerCase().includes(q)
     );
   }, [agents, search]);
 
@@ -94,10 +91,6 @@ export function AgentsTable({
         <div className="admin-section-head">
           <div>
             <h2 className="admin-section-head__title">Agent users</h2>
-            <p className="admin-section-head__desc">
-              Users with the Agent role appear in audit forms and row-level data
-              filters.
-            </p>
           </div>
         </div>
       )}
@@ -122,12 +115,11 @@ export function AgentsTable({
               <table className="ui-table platform-report-table">
                 <thead>
                   <tr>
-                    <th>Profile name</th>
+                    <th>User name</th>
                     <th>Email</th>
+                    <th>Team</th>
                     <th>Date of joining</th>
                     <th>Audits</th>
-                    <th>Profile</th>
-                    {canTransferAgents ? <th>Actions</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -145,26 +137,9 @@ export function AgentsTable({
                         ) : null}
                       </td>
                       <td>{agent.email}</td>
+                      <td>{agent.teamName ?? "—"}</td>
                       <td>{agent.dateOfJoining ?? "—"}</td>
                       <td>{agent.auditCount}</td>
-                      <td>
-                        {agent.profileName ?? (
-                          <span className="dash-cell-muted">Unassigned</span>
-                        )}
-                      </td>
-                      {canTransferAgents ? (
-                        <td>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={agent.pendingTransfer}
-                            onClick={() => setTransferAgent(agent)}
-                          >
-                            <ArrowRightLeft size={14} />
-                            Transfer
-                          </Button>
-                        </td>
-                      ) : null}
                     </tr>
                   ))}
                 </tbody>
@@ -180,15 +155,6 @@ export function AgentsTable({
           )}
         </div>
       </div>
-
-      <AgentTransferModal
-        agent={transferAgent}
-        open={transferAgent !== null}
-        requiresApproval={requiresTransferApproval}
-        onOpenChange={(open) => {
-          if (!open) setTransferAgent(null);
-        }}
-      />
     </div>
   );
 }

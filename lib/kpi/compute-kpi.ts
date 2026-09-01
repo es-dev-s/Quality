@@ -6,6 +6,7 @@ import {
   agentNameInVisibleSet,
   normalizeAgentDisplayName,
 } from "@/lib/audit/agent-name-match";
+import { qualityPctForAverage } from "@/lib/audit/metrics-config";
 import { resolveMetricDate } from "@/lib/audit/metric-dates";
 import { KPI_COLUMNS, type KpiColumn, type KpiRow } from "@/lib/kpi/columns";
 import type { KpiFiltersState } from "@/lib/kpi/filters";
@@ -181,7 +182,7 @@ function computeMetricValues(
     const callRecords = records.filter((r) => r.type === "Call");
     const iqaSource = callRecords.length > 0 ? callRecords : records;
     values["Call Quality Score (IQA)"] = `${round1(
-      avg(iqaSource.map((r) => r.qualityPct))
+      avg(iqaSource.map(qualityPctForAverage))
     )}%`;
 
     const disputed = records.filter(
@@ -196,7 +197,7 @@ function computeMetricValues(
       (r) => r.auditType === CALIBRATION_AUDIT
     );
     if (calibration.length > 0) {
-      const scores = calibration.map((r) => r.qualityPct);
+      const scores = calibration.map(qualityPctForAverage);
       const spread = stddev(scores);
       const mean = round1(avg(scores));
       values["Calibration Variance"] =

@@ -46,6 +46,10 @@ type User = {
 
   dateOfJoining?: string | null;
 
+  teamName?: string | null;
+
+  isActive?: boolean;
+
   createdAt: string;
 
 };
@@ -100,8 +104,6 @@ type SettingsManagementProps = {
 
   canTransferAgents?: boolean;
 
-  requiresTransferApproval?: boolean;
-
   interactionConfig: InteractionConfig | null;
 
   interactionUpdatedAt: string;
@@ -139,8 +141,6 @@ export function SettingsManagement({
   canManageAgents,
 
   canTransferAgents = false,
-
-  requiresTransferApproval = true,
 
   interactionConfig,
 
@@ -470,8 +470,6 @@ export function SettingsManagement({
               canManageUsers={canManageUsers}
 
               canTransferAgents={canTransferAgents}
-
-              requiresTransferApproval={requiresTransferApproval}
 
               onOpenUsersTab={canManageUsers ? () => goToTab("users") : undefined}
 

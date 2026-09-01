@@ -73,7 +73,8 @@ export function extractAnalyticsFilterOptions(
 
   for (const record of records) {
     if (record.agent) agents.add(record.agent);
-    if (record.supervisor) teamNames.add(record.supervisor);
+    const team = record.teamName?.trim();
+    if (team) teamNames.add(team);
     if (record.auditor) auditors.add(record.auditor);
     if (record.businessType) businessTypes.add(record.businessType);
   }
@@ -99,8 +100,9 @@ export function filterAnalyticsByInclude(
 ): AnalyticsAuditRecord[] {
   return records.filter((record) => {
     if (filters.agent && record.agent !== filters.agent) return false;
-    if (filters.teamName && record.supervisor !== filters.teamName) {
-      return false;
+    if (filters.teamName) {
+      const team = record.teamName?.trim() || "Unassigned";
+      if (team !== filters.teamName) return false;
     }
     if (filters.auditor && record.auditor !== filters.auditor) return false;
     if (filters.businessType && record.businessType !== filters.businessType) {

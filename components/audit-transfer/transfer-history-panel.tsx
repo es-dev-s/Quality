@@ -1,12 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { ArrowRightLeft } from "lucide-react";
 import {
   DataTablePanel,
   usePaginatedRows,
 } from "@/components/primitives/data-table-panel";
+import { Button } from "@/components/primitives/button";
 import { HistoryBadge } from "@/components/audit/history-badge";
 import { AuditDetailModal } from "@/components/audit-logs/audit-detail-modal";
+import { AgentTransferModal } from "@/components/admin/agent-transfer-modal";
+import type { AgentListItem } from "@/lib/actions/agents";
 import type {
   AgentTransferRow,
   TransferHistoryAuditRow,
@@ -16,6 +20,9 @@ import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
 type TransferHistoryPanelProps = {
   transfers: AgentTransferRow[];
   historyAudits: TransferHistoryAuditRow[];
+  agents?: AgentListItem[];
+  canTransferAgents?: boolean;
+  requiresTransferApproval?: boolean;
 };
 
 function formatWhen(value: string) {
@@ -37,10 +44,14 @@ function transferStatusClass(status: AgentTransferRow["status"]) {
 export function TransferHistoryPanel({
   transfers,
   historyAudits,
+  agents = [],
+  canTransferAgents = false,
+  requiresTransferApproval = true,
 }: TransferHistoryPanelProps) {
   const [transferSearch, setTransferSearch] = useState("");
   const [auditSearch, setAuditSearch] = useState("");
   const [viewAuditId, setViewAuditId] = useState<string | null>(null);
+  const [transferOpen, setTransferOpen] = useState(false);
 
   const filteredTransfers = useMemo(() => {
     const q = transferSearch.trim().toLowerCase();
@@ -77,17 +88,6 @@ export function TransferHistoryPanel({
 
   return (
     <div className="settings-tab-layout">
-      <div className="admin-section-head">
-        <div>
-          <h2 className="admin-section-head__title">Audit Transfer History</h2>
-          <p className="admin-section-head__desc">
-            Transfers log who moved an agent between supervisors. Supervisor
-            requests stay pending until a quality manager approves them. History
-            audits are read-only snapshots retained by the previous supervisor.
-          </p>
-        </div>
-      </div>
-
       <div className="settings-tab-layout__body">
         <DataTablePanel
           pagination={transferPagination}
@@ -100,7 +100,25 @@ export function TransferHistoryPanel({
             placeholder: "Search transfers…",
             ariaLabel: "Search transfers",
           }}
-          emptyState={<p>No agent transfers recorded yet.</p>}
+          headerActions={
+            canTransferAgents ? (
+              <Button
+                size="sm"
+                onClick={() => setTransferOpen(true)}
+                disabled={agents.length === 0}
+              >
+                <ArrowRightLeft size={14} />
+                Transfer agent
+              </Button>
+            ) : undefined
+          }
+          emptyState={
+            <p>
+              {canTransferAgents
+                ? "No agent transfers recorded yet. Use Transfer agent to move someone to another supervisor."
+                : "No agent transfers recorded yet."}
+            </p>
+          }
           renderTable={(slice) => (
             <table className="ui-table platform-report-table">
               <thead>
@@ -150,9 +168,6 @@ export function TransferHistoryPanel({
           <h3 className="admin-section-head__title" style={{ fontSize: "1rem" }}>
             History audits
           </h3>
-          <p className="admin-section-head__desc">
-            Read-only audits tagged when an agent was transferred away.
-          </p>
         </div>
 
         <DataTablePanel
@@ -219,6 +234,16 @@ export function TransferHistoryPanel({
         canEditSupervisorRemarks={false}
         onClose={() => setViewAuditId(null)}
       />
+
+      {canTransferAgents ? (
+        <AgentTransferModal
+          agents={agents}
+          open={transferOpen}
+          requiresApproval={requiresTransferApproval}
+          hideHistoryLink
+          onOpenChange={setTransferOpen}
+        />
+      ) : null}
     </div>
   );
 }

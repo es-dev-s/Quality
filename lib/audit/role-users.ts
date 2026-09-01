@@ -21,6 +21,7 @@ export type RoleUserRecord = {
   email: string;
   profileName: string | null;
   hasProfileName: boolean;
+  teamName: string | null;
   dateOfJoining: string | null;
   roleSlug: string;
   roleName: string;
@@ -31,6 +32,7 @@ const userSelect = {
   id: true,
   name: true,
   email: true,
+  teamName: true,
   dateOfJoining: true,
   createdAt: true,
   role: { select: { slug: true, name: true } },
@@ -40,6 +42,7 @@ function mapRoleUser(user: {
   id: string;
   name: string | null;
   email: string;
+  teamName: string | null;
   dateOfJoining: string | null;
   createdAt: Date;
   role: { slug: string; name: string };
@@ -51,6 +54,7 @@ function mapRoleUser(user: {
     email: user.email,
     profileName,
     hasProfileName: Boolean(profileName),
+    teamName: user.teamName?.trim() || null,
     dateOfJoining: user.dateOfJoining,
     roleSlug: user.role.slug,
     roleName: user.role.name,

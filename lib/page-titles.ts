@@ -4,6 +4,8 @@ const EXACT_TITLES: Record<string, string> = {
   "/analytics": "Analytics",
   "/reports": "Reports",
   "/settings": "Settings",
+  "/audit-transfer-history": "Transfer History",
+  "/kpi": "KPI",
   "/forms": "Forms",
   "/forms/audit": "Audit Form",
   "/forms/templates": "Templates",

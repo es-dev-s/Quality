@@ -52,11 +52,7 @@ export function OverviewTab({
         <QmsKpiTile
           label="Overall quality"
           value={`${kpis.overall_avg}%`}
-          sub={
-            kpis.overall_avg >= PASS_RATE_TARGET_PCT
-              ? `Target met (≥${PASS_RATE_TARGET_PCT}%)`
-              : `Below ${PASS_RATE_TARGET_PCT}% target`
-          }
+          sub="Fatal audits count as 0%"
           tone={kpis.overall_avg >= PASS_RATE_TARGET_PCT ? "success" : "warn"}
         />
         <QmsKpiTile

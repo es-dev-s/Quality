@@ -1,11 +1,12 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { AuthError } from "next-auth";
 import { signIn, signOut } from "@/lib/auth";
+import { SESSION_TOKEN_COOKIE_NAMES } from "@/lib/auth-cookies";
 import {
+  getLoginAccountStatus,
   loginFailureMessage,
-  verifyCredentialsForLogin,
 } from "@/lib/auth-credentials";
 import { prisma } from "@/lib/prisma";
 import {
@@ -71,7 +72,7 @@ export async function loginAction(
   const { email, password } = parsed.data;
   const callbackUrl = safeCallbackUrl(parsed.data.callbackUrl);
 
-  const credentialCheck = await verifyCredentialsForLogin(email, password);
+  const credentialCheck = await getLoginAccountStatus(email);
   if (!credentialCheck.ok) {
     if (credentialCheck.reason === "not_approved") {
       const pending = await prisma.userProvisioningRequest.findFirst({
@@ -97,8 +98,15 @@ export async function loginAction(
   }
 
   try {
-    // Drop stale JWT cookies before issuing a new session (fixes re-login after deactivate/activate).
-    await signOut({ redirect: false });
+    const jar = await cookies();
+    const hasSessionCookie = SESSION_TOKEN_COOKIE_NAMES.some(
+      (name) => Boolean(jar.get(name)?.value)
+    );
+    // Only clear a live session. First-time login was paying for a full signOut
+    // round-trip even when no JWT existed.
+    if (hasSessionCookie) {
+      await signOut({ redirect: false });
+    }
     await signIn("credentials", {
       email,
       password,

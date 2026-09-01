@@ -44,11 +44,6 @@ export function KpiScoreboard({
       <div className="kpi-scoreboard__intro">
         <div>
           <h2 className="kpi-scoreboard__title">Performance summary</h2>
-          <p className="kpi-scoreboard__desc">
-            {qmName
-              ? "KPIs calculated for agents on this Quality Manager’s roster (approved or assigned), using the same formulas as the dashboard."
-              : "KPIs for the selected time and QA filters. Choose a QM to score that manager’s portfolio."}
-          </p>
         </div>
         <div className="kpi-scoreboard__meta-block">
           <p className="kpi-scoreboard__meta">{scopeLine}</p>
@@ -81,10 +76,6 @@ export function KpiScoreboard({
       <section className="kpi-detail-panel" aria-label="All KPI indicators">
         <div className="kpi-detail-panel__head">
           <h3 className="kpi-detail-panel__title">All indicators</h3>
-          <p className="kpi-detail-panel__desc">
-            Full workbook for the current filter scope
-            {qmName ? ` · ${qmName}` : ""}.
-          </p>
         </div>
 
         <div className="kpi-detail-table__scroll">

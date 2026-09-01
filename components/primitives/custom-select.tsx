@@ -117,7 +117,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
     const currentValue = controlled ? String(value) : internalValue;
 
     const options = useMemo(() => {
-      if (optionsProp && optionsProp.length > 0) return optionsProp;
+      if (optionsProp) return optionsProp;
       return parseOptions(children);
     }, [optionsProp, children]);
     const selected =

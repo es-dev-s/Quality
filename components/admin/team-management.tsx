@@ -178,8 +178,23 @@ function RequestFormModal({
       <form onSubmit={handleSubmit}>
         <FormStack>
           <Field>
-            <Label htmlFor="team-name">Profile name</Label>
-            <Input id="team-name" name="name" required disabled={pending} />
+            <Label htmlFor="team-name">User name</Label>
+            <Input
+              id="team-name"
+              name="name"
+              required
+              disabled={pending}
+              placeholder="Person’s display name"
+            />
+          </Field>
+          <Field>
+            <Label htmlFor="team-team-name">Team name</Label>
+            <Input
+              id="team-team-name"
+              name="teamName"
+              disabled={pending}
+              placeholder="Optional — used for team reporting"
+            />
           </Field>
           <Field>
             <Label htmlFor="team-email">Email</Label>
@@ -297,13 +312,19 @@ function CreateSupervisorModal({
       onClose={() => !pending && onOpenChange(false)}
       title="Create supervisor"
       size="lg"
-      description="Create a Supervisor account and assign a team name used for reporting and team scope."
+      description="Create a Supervisor account with a user name and the team name used for reporting and team scope."
     >
       <form onSubmit={handleSubmit}>
         <FormStack>
           <Field>
-            <Label htmlFor="supervisor-name">Profile name</Label>
-            <Input id="supervisor-name" name="name" required disabled={pending} />
+            <Label htmlFor="supervisor-name">User name</Label>
+            <Input
+              id="supervisor-name"
+              name="name"
+              required
+              disabled={pending}
+              placeholder="Person’s display name"
+            />
           </Field>
           <Field>
             <Label htmlFor="supervisor-team-name">
@@ -435,8 +456,23 @@ function CreateMemberModal({
       <form onSubmit={handleSubmit}>
         <FormStack>
           <Field>
-            <Label htmlFor="member-name">Profile name</Label>
-            <Input id="member-name" name="name" required disabled={pending} />
+            <Label htmlFor="member-name">User name</Label>
+            <Input
+              id="member-name"
+              name="name"
+              required
+              disabled={pending}
+              placeholder="Person’s display name"
+            />
+          </Field>
+          <Field>
+            <Label htmlFor="member-team-name">Team name</Label>
+            <Input
+              id="member-team-name"
+              name="teamName"
+              disabled={pending}
+              placeholder="Optional — used for team reporting"
+            />
           </Field>
           <Field>
             <Label htmlFor="member-email">Email</Label>
@@ -2279,10 +2315,6 @@ export function TeamManagement({
           <div className="admin-section-head">
             <div>
               <h2 className="admin-section-head__title">Team management</h2>
-              <p className="admin-section-head__desc">
-                Request new team members with approval workflows. You only see audit
-                data for users you onboard after approval.
-              </p>
             </div>
           </div>
           {teamTabs.length > 0 ? (

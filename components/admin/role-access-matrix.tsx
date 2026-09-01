@@ -25,11 +25,6 @@ export function RoleAccessMatrix() {
     <div className="role-matrix">
       <div className="role-matrix__head">
         <h3 className="role-matrix__title">Roles &amp; module access</h3>
-        <p className="role-matrix__desc">
-          Module permissions from code definitions (system roles). Row-level data
-          visibility is enforced separately on audit records. Settings and Team
-          show Partial when only some tabs or actions are available.
-        </p>
       </div>
 
       <div className="role-matrix__scroll">

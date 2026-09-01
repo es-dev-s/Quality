@@ -1,11 +1,14 @@
-import { PASS_RATE_QUALITY_THRESHOLD } from "@/lib/audit/metrics-config";
+import {
+  PASS_RATE_QUALITY_THRESHOLD,
+  qualityPctForAverage,
+} from "@/lib/audit/metrics-config";
 import { resolveMetricDate } from "@/lib/audit/metric-dates";
 import type { FeedbackSecurity } from "@/lib/audit/feedback";
 import type { AuditRow, CategoryScore } from "@/lib/audit/types";
 import {
   canonicalCategoryKey,
-  canonicalCategoryLabel,
-  metricGroupKey,
+  categoryLabelForInteraction,
+  pickCategoryDisplayName,
   pickDisplayName,
   resolveParameterGroupKey,
 } from "@/lib/audit/analytics-metric-keys";
@@ -33,6 +36,10 @@ export type AnalyticsAuditRecord = {
   feedbackStatus: string;
   feedbackSecurity: FeedbackSecurity;
   isHistory: boolean;
+  reason?: string | null;
+  fatalList?: unknown;
+  /** Live team from User.teamName (supervisor, then agent). Not the person name. */
+  teamName?: string | null;
   rows: AuditRow[];
   catScores: Record<string, CategoryScore>;
 };
@@ -218,7 +225,7 @@ function categoryContributionsForRecord(
       const key = canonicalCategoryKey(rawName);
       if (!key) continue;
       entries.set(key, {
-        displayName: canonicalCategoryLabel(rawName),
+        displayName: categoryLabelForInteraction(rawName, record.type),
         pct: (cat.scored / cat.max) * 100,
       });
     }
@@ -236,7 +243,7 @@ function categoryContributionsForRecord(
     if (!rawName) continue;
     const key = canonicalCategoryKey(rawName);
     const entry = bucket.get(key) ?? {
-      displayName: canonicalCategoryLabel(rawName),
+      displayName: categoryLabelForInteraction(rawName, record.type),
       scoreSum: 0,
       maxSum: 0,
     };
@@ -247,7 +254,7 @@ function categoryContributionsForRecord(
 
   for (const [key, data] of bucket) {
     entries.set(key, {
-      displayName: canonicalCategoryLabel(data.displayName),
+      displayName: data.displayName,
       pct: data.maxSum > 0 ? (data.scoreSum / data.maxSum) * 100 : 0,
     });
   }
@@ -273,8 +280,9 @@ function computeRowMetricStats(
           pctSum: 0,
           count: 0,
         };
-        entry.displayName = canonicalCategoryLabel(
-          pickDisplayName(entry.displayName, contribution.displayName)
+        entry.displayName = pickCategoryDisplayName(
+          entry.displayName,
+          contribution.displayName
         );
         entry.pctSum += contribution.pct;
         entry.count += 1;
@@ -342,7 +350,7 @@ function computeEntityMetricBreakdown(
   for (const record of records) {
     let entity: string | null = null;
     if (entityKey === "team") {
-      entity = record.supervisor?.trim() || "Unassigned";
+      entity = analyticsTeamLabel(record);
     } else if (entityKey === "agent") {
       entity = record.agent?.trim() || null;
     } else {
@@ -367,8 +375,9 @@ function computeEntityMetricBreakdown(
             pctSum: 0,
             count: 0,
           };
-        entry.displayName = canonicalCategoryLabel(
-          pickDisplayName(entry.displayName, contribution.displayName)
+        entry.displayName = pickCategoryDisplayName(
+          entry.displayName,
+          contribution.displayName
         );
         entry.pctSum += contribution.pct;
         entry.count += 1;
@@ -427,12 +436,17 @@ function computeEntityMetricBreakdown(
   });
 }
 
+function analyticsTeamLabel(record: AnalyticsAuditRecord): string {
+  const team = record.teamName?.trim();
+  return team || "Unassigned";
+}
+
 function computeAgentStats(records: AnalyticsAuditRecord[]): QmsAgentStat[] {
   const byAgent = new Map<string, number[]>();
 
   for (const record of records) {
     const list = byAgent.get(record.agent) ?? [];
-    list.push(record.qualityPct);
+    list.push(qualityPctForAverage(record));
     byAgent.set(record.agent, list);
   }
 
@@ -449,9 +463,9 @@ function computeTeamStats(records: AnalyticsAuditRecord[]): QmsTeamStat[] {
   const byTeam = new Map<string, number[]>();
 
   for (const record of records) {
-    const team = record.supervisor?.trim() || "Unassigned";
+    const team = analyticsTeamLabel(record);
     const list = byTeam.get(team) ?? [];
-    list.push(record.qualityPct);
+    list.push(qualityPctForAverage(record));
     byTeam.set(team, list);
   }
 
@@ -470,7 +484,7 @@ function computeAuditorStats(records: AnalyticsAuditRecord[]): QmsAuditorStat[] 
   for (const record of records) {
     if (!record.auditor) continue;
     const entry = byAuditor.get(record.auditor) ?? { scores: [], pass: 0 };
-    entry.scores.push(record.qualityPct);
+    entry.scores.push(qualityPctForAverage(record));
     if (!record.hasFatal && record.qualityPct >= PASS_RATE_QUALITY_THRESHOLD) {
       entry.pass += 1;
     }
@@ -497,7 +511,7 @@ function computeFatalByTeam(
 
   for (const record of records) {
     if (!record.hasFatal) continue;
-    const team = record.supervisor?.trim() || "Unassigned";
+    const team = analyticsTeamLabel(record);
     counts.set(team, (counts.get(team) ?? 0) + 1);
   }
 
@@ -563,7 +577,7 @@ export function computeQmsAnalytics(
   aggregation: AnalyticsAggregationOptions = DEFAULT_AGGREGATION_OPTIONS
 ): QmsAnalyticsData {
   const total = records.length;
-  const overallAvg = total > 0 ? round1(avg(records.map((r) => r.qualityPct))) : 0;
+  const overallAvg = total > 0 ? round1(avg(records.map(qualityPctForAverage))) : 0;
 
   const callRecords = records.filter((r) => r.type === "Call");
   const chatRecords = records.filter((r) => r.type === "Chat");
@@ -615,11 +629,11 @@ export function computeQmsAnalytics(
       issue_sev_na: issueSeverity.na,
       call_score:
         callRecords.length > 0
-          ? round1(avg(callRecords.map((r) => r.qualityPct)))
+          ? round1(avg(callRecords.map(qualityPctForAverage)))
           : 0,
       chat_score:
         chatRecords.length > 0
-          ? round1(avg(chatRecords.map((r) => r.qualityPct)))
+          ? round1(avg(chatRecords.map(qualityPctForAverage)))
           : 0,
       call_count: callRecords.length,
       chat_count: chatRecords.length,

@@ -39,7 +39,7 @@ const isoDateSchema = z.union([
 ]).optional();
 
 const createUserSchema = z.object({
-  name: z.string().min(1, "Name is required"),
+  name: z.string().min(1, "User name is required"),
   email: z.email("Invalid email"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   roleId: z.string().min(1, "Role is required"),
@@ -48,11 +48,11 @@ const createUserSchema = z.object({
 });
 
 const updateUserSchema = z.object({
-  id: z.string(),
-  name: z.string().min(1, "Name is required"),
-  email: z.email("Invalid email"),
+  id: z.string().min(1),
+  name: z.string().min(1, "User name is required").optional(),
+  email: z.email("Invalid email").optional(),
   password: z.string().optional(),
-  roleId: z.string().min(1, "Role is required"),
+  roleId: z.string().min(1, "Role is required").optional(),
   dateOfJoining: isoDateSchema,
   teamName: z.string().optional(),
 });
@@ -286,8 +286,7 @@ export async function createUser(formData: FormData) {
         passwordEncrypted: credentials.passwordEncrypted,
         roleId: parsed.data.roleId,
         dateOfJoining,
-        teamName:
-          isSupervisorRoleSlug(roleCheck.role.slug) ? teamName : null,
+        teamName,
         isActive: true,
         approvalStatus: "ACTIVE",
       },
@@ -309,27 +308,40 @@ export async function updateUser(formData: FormData) {
 
   const parsed = updateUserSchema.safeParse({
     id: formData.get("id"),
-    name: formData.get("name"),
-    email: formData.get("email"),
+    name: formData.has("name") ? formData.get("name") : undefined,
+    email: formData.has("email") ? formData.get("email") : undefined,
     password: formData.get("password") || undefined,
-    roleId: formData.get("roleId"),
-    dateOfJoining: formData.get("dateOfJoining") || undefined,
-    teamName: formData.get("teamName") || undefined,
+    roleId: formData.has("roleId") ? formData.get("roleId") : undefined,
+    dateOfJoining: formData.has("dateOfJoining")
+      ? formData.get("dateOfJoining") || ""
+      : undefined,
+    teamName: formData.has("teamName")
+      ? String(formData.get("teamName") ?? "")
+      : undefined,
   });
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  const email = parsed.data.email.toLowerCase();
-  const existing = await prisma.user.findFirst({
-    where: { email, NOT: { id: parsed.data.id } },
+  const existingUser = await prisma.user.findUnique({
+    where: { id: parsed.data.id },
+    select: {
+      name: true,
+      email: true,
+      roleId: true,
+      dateOfJoining: true,
+      teamName: true,
+      role: { select: { slug: true } },
+    },
   });
-  if (existing) {
-    return { error: "A user with this email already exists" };
+
+  if (!existingUser) {
+    return { error: "User not found" };
   }
 
-  const roleCheck = await validateRoleAssignment(parsed.data.roleId);
+  const nextRoleId = parsed.data.roleId ?? existingUser.roleId;
+  const roleCheck = await validateRoleAssignment(nextRoleId);
   if ("error" in roleCheck) {
     return { error: roleCheck.error };
   }
@@ -340,57 +352,81 @@ export async function updateUser(formData: FormData) {
   );
   if (roleGuard) return roleGuard;
 
-  const dateOfJoining = normalizeJoiningDate(parsed.data.dateOfJoining);
-  if (roleCheck.role.slug === SYSTEM_ROLE_SLUGS.AGENT && !dateOfJoining) {
+  const nextName = parsed.data.name ?? existingUser.name ?? "";
+  const nextEmail = parsed.data.email
+    ? parsed.data.email.toLowerCase()
+    : existingUser.email;
+  const nextJoining = formData.has("dateOfJoining")
+    ? normalizeJoiningDate(parsed.data.dateOfJoining)
+    : existingUser.dateOfJoining;
+  const nextTeamName = formData.has("teamName")
+    ? normalizeTeamName(parsed.data.teamName)
+    : existingUser.teamName;
+
+  if (parsed.data.email && nextEmail !== existingUser.email) {
+    const emailTaken = await prisma.user.findFirst({
+      where: { email: nextEmail, NOT: { id: parsed.data.id } },
+      select: { id: true },
+    });
+    if (emailTaken) {
+      return { error: "A user with this email already exists" };
+    }
+  }
+
+  if (roleCheck.role.slug === SYSTEM_ROLE_SLUGS.AGENT && !nextJoining) {
     return {
       error: "Date of joining is required for Agent users.",
     };
   }
 
-  const teamName = normalizeTeamName(parsed.data.teamName);
-  if (isSupervisorRoleSlug(roleCheck.role.slug) && !teamName) {
+  if (isSupervisorRoleSlug(roleCheck.role.slug) && !nextTeamName) {
     return {
       error: "Team name is required for Supervisor users.",
     };
   }
 
-  const existingUser = await prisma.user.findUnique({
-    where: { id: parsed.data.id },
-    select: {
-      name: true,
-      email: true,
-      roleId: true,
-      role: { select: { slug: true } },
-    },
-  });
-
-  if (!existingUser) {
-    return { error: "User not found" };
-  }
-
   const data: {
-    name: string;
-    email: string;
-    roleId: string;
-    dateOfJoining: string | null;
-    teamName: string | null;
+    name?: string;
+    email?: string;
+    roleId?: string;
+    dateOfJoining?: string | null;
+    teamName?: string | null;
     password?: string;
     passwordEncrypted?: string;
     sessionVersion?: { increment: number };
-  } = {
-    name: parsed.data.name,
-    email,
-    roleId: parsed.data.roleId,
-    dateOfJoining,
-    teamName:
-      isSupervisorRoleSlug(roleCheck.role.slug) ? teamName : null,
-  };
+  } = {};
+
+  if (parsed.data.name !== undefined && parsed.data.name !== existingUser.name) {
+    data.name = parsed.data.name;
+  }
+  if (parsed.data.email !== undefined && nextEmail !== existingUser.email) {
+    data.email = nextEmail;
+  }
+  if (parsed.data.roleId !== undefined && parsed.data.roleId !== existingUser.roleId) {
+    data.roleId = parsed.data.roleId;
+  }
+  if (
+    formData.has("dateOfJoining") &&
+    nextJoining !== (existingUser.dateOfJoining ?? null)
+  ) {
+    data.dateOfJoining = nextJoining;
+  }
+  if (formData.has("teamName") && nextTeamName !== (existingUser.teamName ?? null)) {
+    data.teamName = nextTeamName;
+  }
 
   if (parsed.data.password) {
+    if (parsed.data.password.length < 6) {
+      return { error: "Password must be at least 6 characters" };
+    }
     const credentials = await buildPasswordCredentials(parsed.data.password);
     data.password = credentials.password;
     data.passwordEncrypted = credentials.passwordEncrypted;
     data.sessionVersion = { increment: 1 };
+  }
+
+  if (Object.keys(data).length === 0) {
+    return { success: true as const, email: existingUser.email };
   }
 
   await prisma.user.update({
@@ -399,14 +435,18 @@ export async function updateUser(formData: FormData) {
   });
 
   const targetRoleSlug = roleCheck.role.slug;
-  if (targetRoleSlug === SYSTEM_ROLE_SLUGS.AGENT) {
+  if (
+    targetRoleSlug === SYSTEM_ROLE_SLUGS.AGENT &&
+    data.name &&
+    data.name !== existingUser.name
+  ) {
     const priorNames = await fetchUserAuditMatchNames({
       name: existingUser.name,
       email: existingUser.email,
     });
     const nextDisplay = resolveRoleUserName({
-      name: parsed.data.name,
-      email,
+      name: nextName,
+      email: nextEmail,
     });
 
     for (const priorName of priorNames) {
@@ -424,7 +464,7 @@ export async function updateUser(formData: FormData) {
   invalidateUserCaches(parsed.data.id);
   return {
     success: true,
-    email,
+    email: nextEmail,
     ...(parsed.data.password ? { password: parsed.data.password } : {}),
   };
 }

@@ -236,6 +236,7 @@ export function ExecutiveReport({ canExport = false }: { canExport?: boolean }) 
               <p className="platform-kpi__value platform-kpi__value--accent">
                 {data.stats.avgQuality}%
               </p>
+              <p className="platform-kpi__hint">incl. fatal as 0%</p>
             </article>
             <article className="platform-kpi">
               <p className="platform-kpi__label">Pass rate</p>

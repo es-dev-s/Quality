@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth-guards";
 import { PERMISSIONS } from "@/lib/permissions";
 import { scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
-import { PASS_RATE_QUALITY_THRESHOLD } from "@/lib/audit/metrics-config";
+import { PASS_RATE_QUALITY_THRESHOLD, qualityPctForAverage } from "@/lib/audit/metrics-config";
 import { reportDateRangeSchema } from "@/lib/validation/reports";
 import {
   AUDIT_EXPORT_SELECT,
@@ -48,7 +48,7 @@ export async function getReportData(startDate: string, endDate: string) {
   const total = rows.length;
   const avgQuality =
     total > 0
-      ? Math.round(rows.reduce((s, r) => s + r.qualityPct, 0) / total)
+      ? Math.round(rows.reduce((s, r) => s + qualityPctForAverage(r), 0) / total)
       : 0;
   const passCount = rows.filter(
     (r) => !r.hasFatal && r.qualityPct >= PASS_RATE_QUALITY_THRESHOLD

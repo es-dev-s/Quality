@@ -1,4 +1,7 @@
-import { PASS_RATE_QUALITY_THRESHOLD } from "@/lib/audit/metrics-config";
+import {
+  PASS_RATE_QUALITY_THRESHOLD,
+  qualityPctForAverage,
+} from "@/lib/audit/metrics-config";
 import { resolveMetricDate } from "@/lib/audit/metric-dates";
 
 export type DashboardAuditRecord = {
@@ -325,10 +328,11 @@ export function computePeriodStats(records: DashboardAuditRecord[]) {
   const fatals = records.filter((r) => r.hasFatal).length;
   const uniqueAgents = new Set(records.map((r) => r.agent)).size;
 
+  // Name is historical; FATAL audits now count as 0% in this average too.
   const avgQualityExclFatal =
     total > 0
       ? Math.round(
-          records.reduce((sum, r) => sum + r.qualityPct, 0) / total
+          records.reduce((sum, r) => sum + qualityPctForAverage(r), 0) / total
         )
       : 0;
 
@@ -394,8 +398,7 @@ export function computeScoreDistribution(
   ];
 
   for (const record of records) {
-    if (record.hasFatal) continue;
-    const q = record.qualityPct;
+    const q = qualityPctForAverage(record);
     if (q >= 95) buckets[0].count++;
     else if (q >= 90) buckets[1].count++;
     else if (q >= 75) buckets[2].count++;
@@ -414,7 +417,8 @@ export function computeScoreDistribution(
 function averageQualityPct(records: DashboardAuditRecord[]): number {
   if (records.length === 0) return 0;
   return Math.round(
-    records.reduce((sum, record) => sum + record.qualityPct, 0) / records.length
+    records.reduce((sum, record) => sum + qualityPctForAverage(record), 0) /
+      records.length
   );
 }
 
@@ -678,7 +682,7 @@ export function computeTopAgents(records: DashboardAuditRecord[]): TopAgentRow[]
     if (!byAgent[record.agent]) {
       byAgent[record.agent] = { sum: 0, cnt: 0 };
     }
-    byAgent[record.agent].sum += record.qualityPct;
+    byAgent[record.agent].sum += qualityPctForAverage(record);
     byAgent[record.agent].cnt += 1;
   }
 

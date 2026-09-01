@@ -1,5 +1,7 @@
+import { qualityPctForAverage } from "@/lib/audit/metrics-config";
 import {
-  canonicalCategoryLabel,
+  categoryLabelForInteraction,
+  pickCategoryDisplayName,
   pickDisplayName,
   resolveParameterGroupKey,
 } from "@/lib/audit/analytics-metric-keys";
@@ -92,7 +94,7 @@ export function computeLeaderboardAnalytics(
     for (const { cat, val } of keys) {
       if (!categories[cat][val]) categories[cat][val] = initBucket();
       const entry = categories[cat][val];
-      entry.q.push(record.qualityPct);
+      entry.q.push(qualityPctForAverage(record));
       entry.f.push(record.finalPct);
       entry.count += 1;
       if (record.hasFatal) {
@@ -117,11 +119,14 @@ export function computeLeaderboardAnalytics(
       const entry = paramTotals.get(key) ?? {
         scored: 0,
         max: 0,
-        cat: canonicalCategoryLabel(row.cat),
+        cat: categoryLabelForInteraction(row.cat, record.type),
         displayName: row.name?.trim() || row.id,
       };
       entry.displayName = pickDisplayName(entry.displayName, row.name);
-      entry.cat = canonicalCategoryLabel(row.cat || entry.cat);
+      entry.cat = pickCategoryDisplayName(
+        entry.cat,
+        categoryLabelForInteraction(row.cat || entry.cat, record.type)
+      );
       entry.scored += row.score;
       entry.max += row.max;
       paramTotals.set(key, entry);

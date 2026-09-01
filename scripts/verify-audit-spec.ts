@@ -1,4 +1,6 @@
 import { calculateResults } from "../lib/audit/calculate-results";
+import { computePeriodStats } from "../lib/audit/dashboard-metrics";
+import { qualityPctForAverage } from "../lib/audit/metrics-config";
 import { buildDefaultScores } from "../lib/audit/score-state";
 import { DEFAULT_INTERACTION_CONFIG, AGENTS, AUDITORS } from "../lib/audit/seed-data";
 import { getLobSubReasonOptions } from "../lib/audit/lob-flat-lists";
@@ -63,6 +65,16 @@ function verifyTemplate(template: AuditTemplate, expectedScoringParams: number) 
 
 assert(CALL_AUDIT_TEMPLATE.name === "Call Quality Audit", "call template name");
 assert(CHAT_AUDIT_TEMPLATE.name === "Chat Quality Audit", "chat template name");
+assert(
+  CALL_AUDIT_TEMPLATE.sections.some((s) => s.name === "Sales & Compliance"),
+  "call Sales & Compliance category"
+);
+assert(
+  CHAT_AUDIT_TEMPLATE.sections.some((s) => s.name === "Chat Compliance") &&
+    CHAT_AUDIT_TEMPLATE.sections.some((s) => s.name === "Chat Etiquette") &&
+    CHAT_AUDIT_TEMPLATE.sections.some((s) => s.name === "Chat Disposition"),
+  "chat categories use Chat prefix"
+);
 verifyTemplate(CALL_AUDIT_TEMPLATE, 23);
 verifyTemplate(CHAT_AUDIT_TEMPLATE, 21);
 
@@ -263,6 +275,74 @@ for (const [template, probingId, preferredId] of [
     `${preferredId} no longer shows EE — 4`
   );
 }
+
+assert(
+  qualityPctForAverage({ hasFatal: true, qualityPct: 92 }) === 0,
+  "FATAL quality average input is 0"
+);
+assert(
+  qualityPctForAverage({ hasFatal: false, qualityPct: 97 }) === 97,
+  "non-FATAL quality average keeps 97"
+);
+
+const mixedQualityAvg = computePeriodStats([
+  {
+    id: "good",
+    auditCode: "AUD-1",
+    agent: "A",
+    supervisor: null,
+    auditor: null,
+    lob: "CORE",
+    type: "Call",
+    businessType: "Sales",
+    callDate: "2026-09-01",
+    auditDate: "2026-09-01",
+    qualityPct: 97,
+    finalPct: 97,
+    hasFatal: false,
+    fatalList: [],
+  },
+  {
+    id: "fatal-1",
+    auditCode: "AUD-2",
+    agent: "B",
+    supervisor: null,
+    auditor: null,
+    lob: "CORE",
+    type: "Call",
+    businessType: "Sales",
+    callDate: "2026-09-01",
+    auditDate: "2026-09-01",
+    qualityPct: 92,
+    finalPct: 0,
+    hasFatal: true,
+    fatalList: ["Correct Resolution"],
+  },
+  {
+    id: "fatal-2",
+    auditCode: "AUD-3",
+    agent: "C",
+    supervisor: null,
+    auditor: null,
+    lob: "CORE",
+    type: "Call",
+    businessType: "Sales",
+    callDate: "2026-09-01",
+    auditDate: "2026-09-01",
+    qualityPct: 92,
+    finalPct: 0,
+    hasFatal: true,
+    fatalList: ["Correct Resolution"],
+  },
+]);
+assert(
+  mixedQualityAvg.avgQualityExclFatal === 32,
+  "1×97% + 2×FATAL averages to 32% quality (FATAL = 0)"
+);
+assert(
+  mixedQualityAvg.avgFinalInclFatal === 32,
+  "1×97% + 2×FATAL averages to 32% final"
+);
 
 if (errors.length) {
   console.error("VERIFICATION FAILED:\n", errors.join("\n"));

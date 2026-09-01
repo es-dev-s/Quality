@@ -46,7 +46,6 @@ export const AUDIT_DASHBOARD_SELECT = {
   lob: true,
   type: true,
   businessType: true,
-  auditType: true,
   callDate: true,
   auditDate: true,
   qualityPct: true,
@@ -81,6 +80,7 @@ export const USER_LIST_SELECT = {
   createdAt: true,
   dateOfJoining: true,
   roleId: true,
+  teamName: true,
   role: { select: { id: true, name: true, slug: true } },
   createdBy: { select: { id: true, name: true } },
 } satisfies Prisma.UserSelect;

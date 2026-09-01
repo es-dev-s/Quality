@@ -169,10 +169,6 @@ export function AuditTemplatesManager({
       <div className="tpl-manager__head">
         <div>
           <h2 className="tpl-manager__title">Form templates</h2>
-          <p className="tpl-manager__desc">
-            Build audit rubrics, assign them to roles, and control which users
-            see each form.
-          </p>
         </div>
         {canManage && (
           <Button size="sm" onClick={openNewEditor}>

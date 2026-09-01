@@ -123,6 +123,7 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
       return (
         user.email.toLowerCase().includes(q) ||
         (user.name ?? "").toLowerCase().includes(q) ||
+        (user.teamName ?? "").toLowerCase().includes(q) ||
         user.role.name.toLowerCase().includes(q)
       );
     });
@@ -198,9 +199,6 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
         <div className="admin-section-head">
           <div>
             <h2 className="admin-section-head__title">All Users</h2>
-            <p className="admin-section-head__desc">
-              Create users and assign them to roles
-            </p>
           </div>
           <Button onClick={openCreateDialog}>
             <Plus size={16} />
@@ -254,8 +252,9 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                         onChange={toggleAllVisible}
                       />
                     </th>
-                    <th className="col-name">Name</th>
+                    <th className="col-name">User name</th>
                     <th className="col-email">Email</th>
+                    <th>Team</th>
                     <th className="col-role">Role</th>
                     <th className="col-status">Status</th>
                     <th className="col-date">Created</th>
@@ -283,6 +282,7 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                         </div>
                       </td>
                       <td>{user.email}</td>
+                      <td>{user.teamName ?? "—"}</td>
                       <td>
                         <Badge variant="accent">{user.role.name}</Badge>
                       </td>

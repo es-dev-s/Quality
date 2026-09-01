@@ -42,11 +42,15 @@ export function buildHttpAuthCookies() {
 
 export const useSecureCookies = resolveUseSecureCookies();
 
-/** All Auth.js cookie names that may exist across HTTP/HTTPS deployments. */
-export const AUTH_COOKIE_NAMES = [
+/** Session JWT cookies that indicate an existing Auth.js login. */
+export const SESSION_TOKEN_COOKIE_NAMES = [
   "authjs.session-token",
   "__Secure-authjs.session-token",
   "__Host-authjs.session-token",
+] as const;
+
+export const AUTH_COOKIE_NAMES = [
+  ...SESSION_TOKEN_COOKIE_NAMES,
   "authjs.callback-url",
   "__Secure-authjs.callback-url",
   "authjs.csrf-token",

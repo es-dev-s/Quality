@@ -50,6 +50,7 @@ export function ParametersTab({ data, sortOrder }: ParametersTabProps) {
   const metricRows =
     dimension === "parameter" ? data.params : data.categories;
   const metricLabel = dimension === "parameter" ? "Parameter" : "Category";
+  const metricPlural = dimension === "parameter" ? "parameters" : "categories";
 
   const sorted = useMemo(
     () => sortByNumber(metricRows, (row) => row.score, sortOrder),
@@ -92,13 +93,15 @@ export function ParametersTab({ data, sortOrder }: ParametersTabProps) {
       <QmsCard className="qms-card--chart qms-card--param-scores">
         <div className="qms-param-scores__head">
           <QmsSectionTitle
-            title={`Quality ${metricLabel.toLowerCase()} scores`}
-            sub={`All ${metricLabel.toLowerCase()}s compared against the ${PASS_RATE_TARGET_PCT}% quality target`}
+            title={`Quality ${metricPlural} scores`}
+            sub={`All ${metricPlural} compared against the ${PASS_RATE_TARGET_PCT}% quality target`}
           />
           <div className="qms-param-scores__stats" aria-label="Score summary">
             <div className="qms-param-scores__stat">
               <span className="qms-param-scores__stat-value">{sorted.length}</span>
-              <span className="qms-param-scores__stat-label">{metricLabel}s</span>
+              <span className="qms-param-scores__stat-label">
+                {dimension === "parameter" ? "Parameters" : "Categories"}
+              </span>
             </div>
             <div className="qms-param-scores__stat">
               <span className="qms-param-scores__stat-value">{avgScore}%</span>
@@ -119,7 +122,7 @@ export function ParametersTab({ data, sortOrder }: ParametersTabProps) {
         <QmsChartFrame
           className="qms-chart--parameters"
           empty={sorted.length === 0}
-          emptyMessage={`No scored ${metricLabel.toLowerCase()}s in this date range.`}
+          emptyMessage={`No scored ${metricPlural} in this date range.`}
         >
           <ResponsiveContainer width="100%" height="100%" minHeight={400}>
             <BarChart

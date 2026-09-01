@@ -7,6 +7,15 @@ function errorMessage(error: unknown): string {
   return String(error);
 }
 
+/** Next.js data cache rejects payloads over 2MB — not a database outage. */
+export function isNextDataCacheOverflowError(error: unknown): boolean {
+  const message = errorMessage(error).toLowerCase();
+  return (
+    message.includes("over 2mb can not be cached") ||
+    message.includes("items over 2mb")
+  );
+}
+
 export function isRetryableDbError(error: unknown): boolean {
   const message = errorMessage(error).toLowerCase();
   return (
@@ -34,7 +43,11 @@ export async function withDbRetry<T>(
       return await fn();
     } catch (error) {
       lastError = error;
-      if (!isRetryableDbError(error) || attempt === attempts - 1) {
+      if (
+        isNextDataCacheOverflowError(error) ||
+        !isRetryableDbError(error) ||
+        attempt === attempts - 1
+      ) {
         throw error;
       }
       await sleep(baseDelayMs * (attempt + 1));

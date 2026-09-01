@@ -5,7 +5,7 @@ import { SettingsManagement } from "@/components/settings/settings-management";
 import { QmsEmpty } from "@/components/analytics/qms-primitives";
 import { getAgentsForManagement } from "@/lib/actions/agents";
 import { getConnectedUsersOverview } from "@/lib/actions/user-connections";
-import { getRoles, getUsers } from "@/lib/actions/admin";
+import { getRoles, getRolesForSelect, getUsers } from "@/lib/actions/admin";
 import { getTeamManagementData } from "@/lib/actions/user-provisioning";
 import { getInteractionConfigManagerData } from "@/lib/actions/interaction-config";
 import {
@@ -23,8 +23,6 @@ import {
   canManageUsers,
   canViewUserConnections,
 } from "@/lib/rbac";
-import { isSupervisorTierRole } from "@/lib/audit/supervisor-tier";
-
 type SettingsTab =
   | "agents"
   | "interaction"
@@ -78,6 +76,8 @@ function serializeUsers(
       isSystem: user.role.isSystem,
     },
     dateOfJoining: user.dateOfJoining,
+    teamName: user.teamName,
+    isActive: user.isActive,
     createdAt: user.createdAt.toISOString(),
   }));
 }
@@ -105,7 +105,6 @@ async function SettingsContent({
     const manageRoles = canManageRoles(session.user.role);
     const showTeam = canAccessTeamManagement(session.user.role);
     const canTransferAgents = canManageManagedUsers(session.user.role);
-    const requiresTransferApproval = isSupervisorTierRole(session.user.role.slug);
     const canManageInteraction = canManageSettings(session.user.role);
     const showConnections = canViewUserConnections(session.user.role);
     const initialTab = resolveInitialTab(
@@ -123,6 +122,7 @@ async function SettingsContent({
       agentsData,
       users,
       roles,
+      userFormRoles,
       teamData,
       connectedUsers,
     ] = await Promise.all([
@@ -138,6 +138,9 @@ async function SettingsContent({
       initialTab === "roles" && manageRoles
         ? getRoles()
         : Promise.resolve([]),
+      initialTab === "users" && manageUsers
+        ? getRolesForSelect()
+        : Promise.resolve([]),
       initialTab === "team" && showTeam
         ? getTeamManagementData()
         : Promise.resolve(null),
@@ -145,6 +148,18 @@ async function SettingsContent({
         ? getConnectedUsersOverview()
         : Promise.resolve([]),
     ]);
+
+    const serializedRoles =
+      roles.length > 0
+        ? serializeRoles(roles as Awaited<ReturnType<typeof getRoles>>)
+        : userFormRoles.map((role) => ({
+            id: role.id,
+            name: role.name,
+            slug: role.slug,
+            description: null as string | null,
+            isSystem: role.isSystem,
+            _count: { users: 0, scopes: role._count.scopes },
+          }));
 
     return (
       <SettingsManagement
@@ -154,15 +169,10 @@ async function SettingsContent({
         canAccessTeam={showTeam}
         teamData={teamData}
         users={serializeUsers(users)}
-        roles={
-          roles.length > 0
-            ? serializeRoles(roles as Awaited<ReturnType<typeof getRoles>>)
-            : []
-        }
+        roles={serializedRoles}
         agents={agentsData.agents}
         canManageAgents={canManageSettings(session.user.role)}
         canTransferAgents={canTransferAgents}
-        requiresTransferApproval={requiresTransferApproval}
         interactionConfig={interaction?.config ?? null}
         interactionUpdatedAt={interaction?.updatedAt ?? ""}
         interactionConfigVersion={interaction?.configVersion ?? 0}

@@ -260,8 +260,17 @@
 
 .notification-bell__title {
   margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   font-size: 0.875rem;
   font-weight: 600;
+}
+
+.notification-bell__window {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
 }
 
 .notification-bell__mark-all {

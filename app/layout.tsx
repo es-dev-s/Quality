@@ -35,7 +35,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="light h-full antialiased">
-      <body className="min-h-full" style={{ fontFamily: "var(--font-sans)" }}>
+      <body
+        className="min-h-full"
+        style={{ fontFamily: "var(--font-sans)" }}
+        suppressHydrationWarning
+      >
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

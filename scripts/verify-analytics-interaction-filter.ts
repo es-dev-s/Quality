@@ -11,8 +11,16 @@ import {
 import type { AnalyticsAuditRecord } from "@/lib/audit/analytics-metrics";
 import {
   canonicalCategoryKey,
+  canonicalCategoryLabel,
+  categoryLabelForInteraction,
   crossTemplateParameterGroupKey,
+  patchTemplateCategorySpelling,
+  pickCategoryDisplayName,
 } from "@/lib/audit/analytics-metric-keys";
+import {
+  CALL_AUDIT_TEMPLATE,
+  CHAT_AUDIT_TEMPLATE,
+} from "@/lib/audit/rubrics";
 
 function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message);
@@ -21,7 +29,8 @@ function assert(condition: boolean, message: string) {
 const callAudit: AnalyticsAuditRecord = {
   id: "1",
   agent: "Agent A",
-  supervisor: "Team 1",
+  supervisor: "Jane Supervisor",
+  teamName: "Team 1",
   auditor: "QA 1",
   type: "Call",
   businessType: "Sales",
@@ -35,6 +44,7 @@ const callAudit: AnalyticsAuditRecord = {
   feedbackSecurity: "NA",
   catScores: {
     "Sales $ Compliance": { scored: 8, max: 10 },
+    "Call Compliance": { scored: 2, max: 2 },
   },
   rows: [
     {
@@ -57,6 +67,7 @@ const chatAudit: AnalyticsAuditRecord = {
   finalPct: 90,
   catScores: {
     "Sales & Compliance": { scored: 9, max: 10 },
+    "Call Compliance": { scored: 2, max: 2 },
   },
   rows: [
     {
@@ -100,6 +111,50 @@ assert(
     canonicalCategoryKey("Sales & Compliance"),
   "Category keys normalize $ and &"
 );
+assert(
+  canonicalCategoryLabel("Sales $ Compliance") === "Sales & Compliance",
+  "Sales $ displays as Sales & Compliance"
+);
+assert(
+  canonicalCategoryKey("Call Compliance") ===
+    canonicalCategoryKey("Chat Compliance"),
+  "Call and Chat Compliance share a category key"
+);
+assert(
+  categoryLabelForInteraction("Call Compliance", "Chat") === "Chat Compliance",
+  "Chat audits rewrite Call Compliance"
+);
+assert(
+  categoryLabelForInteraction("Call Compliance", "Call") === "Call Compliance",
+  "Call audits keep Call Compliance"
+);
+assert(
+  pickCategoryDisplayName("Call Compliance", "Chat Compliance") ===
+    "Compliance",
+  "Mixed Call/Chat categories display without the channel prefix"
+);
+
+assert(
+  CHAT_AUDIT_TEMPLATE.sections.some((section) => section.name === "Chat Compliance") &&
+    !CHAT_AUDIT_TEMPLATE.sections.some((section) => section.name === "Call Compliance"),
+  "Chat rubric uses Chat Compliance"
+);
+assert(
+  CALL_AUDIT_TEMPLATE.sections.some((section) => section.name === "Sales & Compliance") &&
+    !CALL_AUDIT_TEMPLATE.sections.some((section) => section.name.includes("Sales $")),
+  "Call rubric uses Sales & Compliance"
+);
+assert(
+  patchTemplateCategorySpelling({
+    ...CHAT_AUDIT_TEMPLATE,
+    sections: CHAT_AUDIT_TEMPLATE.sections.map((section) =>
+      section.name === "Chat Compliance"
+        ? { ...section, name: "Call Compliance", params: section.params.map((param) => ({ ...param, cat: "Call Compliance" })) }
+        : section
+    ),
+  }).sections.some((section) => section.name === "Chat Compliance"),
+  "Template patch rewrites legacy chat Call Compliance"
+);
 
 assert(
   crossTemplateParameterGroupKey(callAudit.rows[0]) ===
@@ -126,6 +181,15 @@ assert(
   "Only one Sales & Compliance category row"
 );
 assert(
+  combined.categories.some((row) => row.name === "Compliance"),
+  "Combined Call + Chat Compliance displays as Compliance"
+);
+assert(
+  combined.categories.filter((row) => /^(call|chat)?\s*compliance$/i.test(row.name))
+    .length === 1,
+  "Only one Compliance category row"
+);
+assert(
   combined.params.some((row) => row.name === "Greeting"),
   "Combined parameters include Greeting"
 );
@@ -147,10 +211,62 @@ assert(
   callOnly.kpis.chat_count === 0 && callOnly.kpis.call_count === 1,
   "Call-only KPI counts"
 );
+assert(
+  callOnly.categories.some((row) => row.name === "Call Compliance"),
+  "Call-only keeps Call Compliance"
+);
+
+const chatOnly = applyAnalyticsFilters(records, {
+  period: "overall",
+  customRange: { from: "", to: "" },
+  includeFilters: { agent: "", teamName: "", auditor: "", businessType: "" },
+  interactionFilter: "chat",
+  referenceNow: new Date("2026-06-15"),
+});
+assert(
+  chatOnly.categories.some((row) => row.name === "Chat Compliance"),
+  "Chat-only rewrites Call Compliance"
+);
+assert(
+  !chatOnly.categories.some((row) => row.name === "Call Compliance"),
+  "Chat-only does not keep Call Compliance"
+);
 
 assert(
   DEFAULT_ANALYTICS_INTERACTION_FILTER === "both",
   "Default interaction filter is both"
+);
+
+const fatalA: AnalyticsAuditRecord = {
+  ...callAudit,
+  id: "f1",
+  supervisor: "Jane Supervisor",
+  teamName: "Night Shift",
+  hasFatal: true,
+};
+const fatalB: AnalyticsAuditRecord = {
+  ...callAudit,
+  id: "f2",
+  supervisor: "Bob Supervisor",
+  teamName: "Night Shift",
+  hasFatal: true,
+};
+const fatalView = applyAnalyticsFilters([fatalA, fatalB], {
+  period: "overall",
+  customRange: { from: "", to: "" },
+  includeFilters: { agent: "", teamName: "", auditor: "", businessType: "" },
+  interactionFilter: "both",
+  referenceNow: new Date("2026-06-15"),
+});
+assert(
+  fatalView.fatal_by_team.length === 1 &&
+    fatalView.fatal_by_team[0]?.team === "Night Shift" &&
+    fatalView.fatal_by_team[0]?.count === 2,
+  "Fatal incidents group by team name, not supervisor person name"
+);
+assert(
+  fatalView.teams.length === 1 && fatalView.teams[0]?.team === "Night Shift",
+  "Team stats use team name rather than user name"
 );
 
 console.log("verify-analytics-interaction-filter: OK");

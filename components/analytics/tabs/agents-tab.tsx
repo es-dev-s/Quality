@@ -58,8 +58,8 @@ export function AgentsTab({ data, sortOrder }: AgentsTabProps) {
       onChange={(id) => setView(id as "summary" | "parameter" | "category")}
       options={[
         { id: "summary", label: "Summary" },
-        { id: "parameter", label: "Parameter wise" },
-        { id: "category", label: "Category wise" },
+        { id: "parameter", label: "By parameter" },
+        { id: "category", label: "By category" },
       ]}
     />
   );
@@ -91,8 +91,8 @@ export function AgentsTab({ data, sortOrder }: AgentsTabProps) {
           sortOrder={sortOrder}
           title={
             view === "parameter"
-              ? "Agent — parameter wise"
-              : "Agent — category wise"
+              ? "Agent by parameter"
+              : "Agent by category"
           }
           sub="Average score per agent and rubric segment"
         />

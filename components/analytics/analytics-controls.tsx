@@ -34,8 +34,8 @@ export function QmsMetricDimensionToggle({
       value={value}
       onChange={(id) => onChange(id as "parameter" | "category")}
       options={[
-        { id: "parameter", label: "Parameter wise" },
-        { id: "category", label: "Category wise" },
+        { id: "parameter", label: "By parameter" },
+        { id: "category", label: "By category" },
       ]}
     />
   );

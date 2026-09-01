@@ -39,10 +39,11 @@ const isoDateSchema = z.union([
 ]);
 
 const requestUserSchema = z.object({
-  name: z.string().trim().min(1, "Name is required"),
+  name: z.string().trim().min(1, "User name is required"),
   email: z.email("Invalid email"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   dateOfJoining: isoDateSchema.optional(),
+  teamName: z.string().optional(),
 });
 
 const createSupervisorSchema = requestUserSchema.extend({
@@ -107,6 +108,11 @@ export type AgentAssignmentRow = {
 };
 
 function normalizeJoiningDate(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function normalizeTeamName(value: string | null | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
 }
@@ -529,6 +535,7 @@ export async function requestAgentUser(formData: FormData) {
     email: formData.get("email"),
     password: formData.get("password"),
     dateOfJoining: formData.get("dateOfJoining") || undefined,
+    teamName: formData.get("teamName") || undefined,
   });
 
   if (!parsed.success) {
@@ -557,6 +564,7 @@ export async function requestAgentUser(formData: FormData) {
         passwordHash: credentials.password,
         passwordEncrypted: credentials.passwordEncrypted,
         dateOfJoining,
+        teamName: normalizeTeamName(parsed.data.teamName),
         targetRoleSlug: SYSTEM_ROLE_SLUGS.AGENT,
         requestedById: session.user.id,
       },
@@ -617,6 +625,7 @@ export async function requestQualityAnalystUser(formData: FormData) {
     email: formData.get("email"),
     password: formData.get("password"),
     dateOfJoining: formData.get("dateOfJoining") || undefined,
+    teamName: formData.get("teamName") || undefined,
   });
 
   if (!parsed.success) {
@@ -639,6 +648,7 @@ export async function requestQualityAnalystUser(formData: FormData) {
         passwordHash: credentials.password,
         passwordEncrypted: credentials.passwordEncrypted,
         dateOfJoining: normalizeJoiningDate(parsed.data.dateOfJoining),
+        teamName: normalizeTeamName(parsed.data.teamName),
         targetRoleSlug: SYSTEM_ROLE_SLUGS.QUALITY_ANALYST,
         requestedById: session.user.id,
       },
@@ -734,6 +744,7 @@ export async function createMemberUser(formData: FormData) {
     email: formData.get("email"),
     password: formData.get("password"),
     dateOfJoining: formData.get("dateOfJoining") || undefined,
+    teamName: formData.get("teamName") || undefined,
   });
 
   if (!parsed.success) {
@@ -758,6 +769,7 @@ export async function createMemberUser(formData: FormData) {
         passwordEncrypted: credentials.passwordEncrypted,
         roleId: memberRoleId,
         dateOfJoining: normalizeJoiningDate(parsed.data.dateOfJoining),
+        teamName: normalizeTeamName(parsed.data.teamName),
         createdById: session.user.id,
         isActive: true,
         approvalStatus: "ACTIVE",
@@ -823,6 +835,14 @@ async function approveRequest(requestId: string, reviewerId: string, note?: stri
         throw new Error("REQUEST_MISSING_PASSWORD");
       }
 
+      const requester = await tx.user.findUnique({
+        where: { id: fresh.requestedById },
+        select: { teamName: true },
+      });
+      const teamName =
+        normalizeTeamName(fresh.teamName) ??
+        normalizeTeamName(requester?.teamName);
+
       const user = await tx.user.create({
         data: {
           name: fresh.name,
@@ -831,6 +851,7 @@ async function approveRequest(requestId: string, reviewerId: string, note?: stri
           passwordEncrypted: fresh.passwordEncrypted,
           roleId,
           dateOfJoining: fresh.dateOfJoining,
+          teamName,
           createdById: fresh.requestedById,
           isActive: true,
           approvalStatus: "ACTIVE",

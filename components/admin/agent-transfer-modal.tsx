@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Modal, ModalActions, FormStack } from "@/components/primitives/modal";
 import { Button } from "@/components/primitives/button";
-import { Label, Select } from "@/components/primitives/field";
+import { Label } from "@/components/primitives/field";
 import { FilterSelect } from "@/components/filters/filter-select";
 import { useToast } from "@/components/primitives/toast";
 import {
@@ -17,33 +17,68 @@ import {
 import type { AgentListItem } from "@/lib/actions/agents";
 
 type AgentTransferModalProps = {
-  agent: AgentListItem | null;
+  agent?: AgentListItem | null;
+  agents?: AgentListItem[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   requiresApproval?: boolean;
+  hideHistoryLink?: boolean;
 };
 
 export function AgentTransferModal({
-  agent,
+  agent = null,
+  agents = [],
   open,
   onOpenChange,
   requiresApproval = true,
+  hideHistoryLink = false,
 }: AgentTransferModalProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, startTransition] = useTransition();
+  const [selectedAgentId, setSelectedAgentId] = useState("");
   const [supervisors, setSupervisors] = useState<TransferTargetSupervisor[]>([]);
   const [targetId, setTargetId] = useState("");
   const [note, setNote] = useState("");
   const [auditCount, setAuditCount] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const lockedAgent = agent;
+  const resolvedAgent =
+    lockedAgent ?? agents.find((entry) => entry.id === selectedAgentId) ?? null;
+  const showAgentPicker = !lockedAgent && agents.length > 0;
+  const agentOptions = agents.map((entry) => ({
+    value: entry.id,
+    label: entry.pendingTransfer
+      ? `${entry.name} (pending transfer)`
+      : entry.teamName
+        ? `${entry.name} (${entry.teamName})`
+        : entry.name,
+    disabled: Boolean(entry.pendingTransfer),
+  }));
+
   useEffect(() => {
-    if (!open || !agent) {
+    if (!open) {
+      setSelectedAgentId("");
       setTargetId("");
       setNote("");
       setAuditCount(null);
       setLoadError(null);
+      setSupervisors([]);
+      return;
+    }
+
+    if (lockedAgent) {
+      setSelectedAgentId(lockedAgent.id);
+    }
+  }, [open, lockedAgent]);
+
+  useEffect(() => {
+    if (!open || !resolvedAgent) {
+      setTargetId("");
+      setAuditCount(null);
+      setLoadError(null);
+      setSupervisors([]);
       return;
     }
 
@@ -52,7 +87,7 @@ export function AgentTransferModal({
     startTransition(async () => {
       const [targets, count] = await Promise.all([
         listTransferTargetSupervisors(),
-        countPendingHistoryAuditsForAgent(agent.id),
+        countPendingHistoryAuditsForAgent(resolvedAgent.id),
       ]);
       if (cancelled) return;
 
@@ -69,15 +104,15 @@ export function AgentTransferModal({
     return () => {
       cancelled = true;
     };
-  }, [open, agent]);
+  }, [open, resolvedAgent?.id]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!agent || !targetId) return;
+    if (!resolvedAgent || !targetId || resolvedAgent.pendingTransfer) return;
 
     startTransition(async () => {
       const result = await transferAgentToSupervisor({
-        agentUserId: agent.id,
+        agentUserId: resolvedAgent.id,
         toSupervisorId: targetId,
         note: note.trim() || undefined,
       });
@@ -112,18 +147,36 @@ export function AgentTransferModal({
       title="Transfer agent"
       size="md"
       description={
-        agent
+        resolvedAgent
           ? requiresApproval
-            ? `Request to move ${agent.name} to another supervisor. A quality manager must approve before the transfer completes. Past audits stay with you as read-only history once approved.`
-            : `Move ${agent.name} to another supervisor. Past audits stay with you as read-only history.`
-          : undefined
+            ? `Request to move ${resolvedAgent.name} to another supervisor. A quality manager must approve before the transfer completes. Past audits stay with you as read-only history once approved.`
+            : `Move ${resolvedAgent.name} to another supervisor. Past audits stay with you as read-only history.`
+          : "Select an agent, then choose the supervisor they should move to."
       }
     >
-      {loadError ? (
-        <p className="ui-form-error">{loadError}</p>
-      ) : (
-        <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit}>
+          {loadError ? <p className="ui-form-error">{loadError}</p> : null}
           <FormStack>
+            {showAgentPicker ? (
+              <div>
+                <Label htmlFor="transfer-agent">Agent</Label>
+                <FilterSelect
+                  id="transfer-agent"
+                  value={selectedAgentId}
+                  onChange={(value) => {
+                    setSelectedAgentId(value);
+                    setTargetId("");
+                    setAuditCount(null);
+                  }}
+                  ariaLabel="Agent to transfer"
+                  options={[
+                    { value: "", label: "Select agent" },
+                    ...agentOptions,
+                  ]}
+                />
+              </div>
+            ) : null}
+
             <div>
               <Label htmlFor="transfer-target">New supervisor</Label>
               <FilterSelect
@@ -136,7 +189,7 @@ export function AgentTransferModal({
                   ...targetOptions,
                 ]}
               />
-              {targetOptions.length === 0 && !pending ? (
+              {resolvedAgent && targetOptions.length === 0 && !pending ? (
                 <p className="ui-hint">No other active supervisors available.</p>
               ) : null}
             </div>
@@ -175,7 +228,14 @@ export function AgentTransferModal({
             </Button>
             <Button
               type="submit"
-              disabled={pending || !targetId || targetOptions.length === 0}
+              disabled={
+                pending ||
+                Boolean(loadError) ||
+                !resolvedAgent ||
+                Boolean(resolvedAgent.pendingTransfer) ||
+                !targetId ||
+                targetOptions.length === 0
+              }
             >
               {pending
                 ? requiresApproval
@@ -187,12 +247,13 @@ export function AgentTransferModal({
             </Button>
           </ModalActions>
 
-          <p className="ui-hint" style={{ marginTop: 12 }}>
-            View transfers on{" "}
-            <Link href="/audit-transfer-history">Audit Transfer History</Link>.
-          </p>
+          {hideHistoryLink ? null : (
+            <p className="ui-hint" style={{ marginTop: 12 }}>
+              View transfers on{" "}
+              <Link href="/audit-transfer-history">Audit Transfer History</Link>.
+            </p>
+          )}
         </form>
-      )}
     </Modal>
   );
 }

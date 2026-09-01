@@ -48,6 +48,7 @@ export type AgentListItem = {
   email: string;
   profileName: string | null;
   hasProfileName: boolean;
+  teamName: string | null;
   dateOfJoining: string | null;
   auditCount: number;
   createdAt: string;
