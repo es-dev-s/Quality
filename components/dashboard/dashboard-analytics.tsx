@@ -18,6 +18,7 @@ import { FilterSelect } from "@/components/filters/filter-select";
 import { LoadingZone } from "@/components/primitives/loading-zone";
 import { cn } from "@/lib/utils";
 import { FatalOccurrencesModal } from "@/components/dashboard/fatal-occurrences-modal";
+import { useDashboardShell } from "@/components/dashboard/shell";
 import { HistoryFilterSection } from "@/components/audit/history-filter-section";
 import type { DashboardAuditData } from "@/lib/audit/audit-records";
 import {
@@ -30,6 +31,7 @@ import {
   auditorInitials,
   computeAgentTargets,
   computeAuditorTargets,
+  restrictAuditorTargetsToViewer,
   computePeriodStats,
   computeScoreDistribution,
   computeTopAgents,
@@ -50,6 +52,7 @@ import {
   type TrendGranularity,
 } from "@/lib/audit/dashboard-metrics";
 import {
+  agentNamesForSelectedTeam,
   buildAgentFilterSelectOptions,
   canFilterByAgent,
 } from "@/lib/audit/agent-filter-access";
@@ -104,6 +107,7 @@ export function DashboardAnalytics({
   canEditAudits = false,
   canEditSupervisorRemarks = false,
 }: DashboardAnalyticsProps) {
+  const { user } = useDashboardShell();
   const router = useRouter();
   const [isRefreshing, startRefresh] = useTransition();
   const [period, setPeriod] = useState<DashboardPeriod>("overall");
@@ -212,11 +216,28 @@ export function DashboardAnalytics({
   const resolvedMonthlyTarget =
     totalMonthlyTarget ?? agentTargets.cumulativeTarget;
 
-  const auditorTargets = useMemo(
-    () =>
-      computeAuditorTargets(scopedRecords, monthRecords, resolvedMonthlyTarget),
-    [scopedRecords, monthRecords, resolvedMonthlyTarget]
-  );
+  const auditorTargets = useMemo(() => {
+    const computed = computeAuditorTargets(
+      scopedRecords,
+      monthRecords,
+      resolvedMonthlyTarget
+    );
+    if (roleSlug !== SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
+      return computed;
+    }
+    return restrictAuditorTargetsToViewer(computed, {
+      name: user.name,
+      email: user.email,
+    });
+  }, [
+    scopedRecords,
+    monthRecords,
+    resolvedMonthlyTarget,
+    roleSlug,
+    user.name,
+    user.email,
+  ]);
+  const isQualityAnalyst = roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST;
 
   const topAgents = useMemo(() => computeTopAgents(filtered), [filtered]);
   const topFatals = useMemo(() => computeTopFatals(filtered), [filtered]);
@@ -251,7 +272,20 @@ export function DashboardAnalytics({
     key: K,
     value: DashboardIncludeFilters[K]
   ) {
-    setIncludeFilters((current) => ({ ...current, [key]: value }));
+    setIncludeFilters((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "teamName") {
+        const allowed = agentNamesForSelectedTeam(
+          filterOptions.agents,
+          filterOptions.agentsByTeam,
+          String(value)
+        );
+        if (next.agent && !allowed.includes(next.agent)) {
+          next.agent = "";
+        }
+      }
+      return next;
+    });
   }
 
   function clearFilters() {
@@ -328,8 +362,15 @@ export function DashboardAnalytics({
   const hasAnyDashboardFilters = dashboardFilterChips.length > 0;
 
   const agentFilterOptions = useMemo(
-    () => buildAgentFilterSelectOptions(filterOptions.agents),
-    [filterOptions.agents]
+    () =>
+      buildAgentFilterSelectOptions(
+        agentNamesForSelectedTeam(
+          filterOptions.agents,
+          filterOptions.agentsByTeam,
+          includeFilters.teamName
+        )
+      ),
+    [filterOptions.agents, filterOptions.agentsByTeam, includeFilters.teamName]
   );
 
   const teamFilterOptions = useMemo(
@@ -495,6 +536,17 @@ export function DashboardAnalytics({
 
         <FilterSidebarSection label="Segment">
           <FilterSidebarGrid>
+            <label className="dash-filter">
+              <span>Team name</span>
+              <FilterSelect
+                value={includeFilters.teamName}
+                onChange={(value) => updateFilter("teamName", value)}
+                options={teamFilterOptions}
+                ariaLabel="Filter by team"
+                searchable
+                searchPlaceholder="Search teams…"
+              />
+            </label>
             {showAgentFilter ? (
               <label className="dash-filter">
                 <span>Agent</span>
@@ -503,18 +555,11 @@ export function DashboardAnalytics({
                   onChange={(value) => updateFilter("agent", value)}
                   options={agentFilterOptions}
                   ariaLabel="Filter by agent"
+                  searchable
+                  searchPlaceholder="Search agents…"
                 />
               </label>
             ) : null}
-            <label className="dash-filter">
-              <span>Team name</span>
-              <FilterSelect
-                value={includeFilters.teamName}
-                onChange={(value) => updateFilter("teamName", value)}
-                options={teamFilterOptions}
-                ariaLabel="Filter by team"
-              />
-            </label>
             <label className="dash-filter">
               <span>Quality auditor</span>
               <FilterSelect
@@ -522,6 +567,8 @@ export function DashboardAnalytics({
                 onChange={(value) => updateFilter("auditor", value)}
                 options={auditorFilterOptions}
                 ariaLabel="Filter by auditor"
+                searchable
+                searchPlaceholder="Search auditors…"
               />
             </label>
             <label className="dash-filter">
@@ -547,13 +594,6 @@ export function DashboardAnalytics({
           <p className="dash-kpi__label">Total audits</p>
           <p className="dash-kpi__value">{stats.total}</p>
           <p className="dash-kpi__hint">in selected period</p>
-        </article>
-        <article className="dash-kpi">
-          <p className="dash-kpi__label">Avg quality score</p>
-          <p className={`dash-kpi__value ${scoreTone(stats.avgQualityExclFatal)}`}>
-            {stats.avgQualityExclFatal}%
-          </p>
-          <p className="dash-kpi__hint">incl. fatal as 0%</p>
         </article>
         <article className="dash-kpi">
           <p className="dash-kpi__label">Pass rate</p>
@@ -741,7 +781,9 @@ export function DashboardAnalytics({
             <div>
               <h2 className="dash-panel__title">Audit target — per auditor</h2>
               <p className="dash-panel__desc">
-                Total target ÷ active auditors = per-auditor allocation
+                {isQualityAnalyst
+                  ? "Your audits this month vs your monthly target"
+                  : "Total target ÷ active auditors = per-auditor allocation"}
               </p>
             </div>
             <label className="dash-target-input">
@@ -771,7 +813,9 @@ export function DashboardAnalytics({
 
           <div className="dash-target-summary dash-target-summary--auditor">
             <span>
-              Target per auditor ({auditorTargets.activeAuditors} auditors)
+              {isQualityAnalyst
+                ? "Your monthly target"
+                : `Target per auditor (${auditorTargets.activeAuditors} auditors)`}
             </span>
             <strong>{auditorTargets.perAuditorTarget} / month</strong>
           </div>

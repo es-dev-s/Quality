@@ -21,7 +21,7 @@ import {
   canViewKpi,
   canWriteAuditTemplates,
 } from "@/lib/rbac";
-import { PERMISSIONS } from "@/lib/permissions";
+import { PERMISSIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { hasScope } from "@/lib/rbac";
 import { useDashboardShell } from "@/components/dashboard/shell";
 
@@ -148,9 +148,16 @@ export function DashboardSidebar() {
   const showTemplateAdmin = canWriteAuditTemplates(user.role);
   const showImport = canImportData(user.role);
   const showKpi = canViewKpi(user.role);
-  const visibleMainNav = mainNav.filter((item) =>
-    hasScope(user.role, item.permission)
-  );
+  const visibleMainNav = mainNav.filter((item) => {
+    if (!hasScope(user.role, item.permission)) return false;
+    if (
+      item.href === "/audit-transfer-history" &&
+      user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
+    ) {
+      return false;
+    }
+    return true;
+  });
   const showFormsHub =
     hasScope(user.role, PERMISSIONS.AUDIT_FORM_READ) ||
     hasScope(user.role, PERMISSIONS.AUDIT_TEMPLATES_READ);

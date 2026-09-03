@@ -42,16 +42,9 @@ assert(qaShared.editable, "QA can edit Shared");
 assert(qaShared.selectValue === "Shared", "QA Shared dropdown shows Shared");
 
 const qaAck = getFeedbackStatusSelectConfig(qa, "Acknowledged");
-assert(qaAck.editable, "QA can reset Acknowledged");
-assert(qaAck.selectValue === "Acknowledged", "QA dropdown shows global Acknowledged");
-assert(
-  qaAck.options.some((option) => option.value === "Acknowledged" && option.disabled),
-  "QA current status shown as disabled option"
-);
-assert(
-  qaAck.options.some((option) => option.value === "Pending" && !option.disabled),
-  "QA can pick Pending from single dropdown"
-);
+assert(!qaAck.showSelect, "QA has no dropdown once agent acknowledged");
+assert(!qaAck.editable, "QA cannot edit Acknowledged");
+assert(qaAck.selectValue === "Acknowledged", "QA still displays Acknowledged");
 
 const agentPending = getFeedbackStatusSelectConfig(agent, "Pending");
 assert(!agentPending.editable, "Agent cannot edit Pending");
@@ -79,8 +72,8 @@ assert(
   "QA Shared→Pending allowed"
 );
 assert(
-  assertFeedbackStatusChangeAllowed(qa, "Acknowledged", "Pending") === null,
-  "QA Acknowledged→Pending allowed"
+  assertFeedbackStatusChangeAllowed(qa, "Acknowledged", "Pending") !== null,
+  "QA cannot change Acknowledged"
 );
 assert(
   assertFeedbackStatusChangeAllowed(qa, "Disputed", "Shared") === null,

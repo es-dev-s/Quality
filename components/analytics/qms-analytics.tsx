@@ -26,7 +26,10 @@ import {
   type AnalyticsIncludeFilters,
   type AnalyticsInteractionFilter,
 } from "@/lib/audit/analytics-filters";
-import { buildAgentFilterSelectOptions } from "@/lib/audit/agent-filter-access";
+import {
+  agentNamesForSelectedTeam,
+  buildAgentFilterSelectOptions,
+} from "@/lib/audit/agent-filter-access";
 import { summaryChipClass } from "@/lib/audit/analytics-metrics";
 import type { DashboardPeriod } from "@/lib/audit/dashboard-metrics";
 import { LoadingZone } from "@/components/primitives/loading-zone";
@@ -162,7 +165,20 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
     key: K,
     value: AnalyticsIncludeFilters[K]
   ) {
-    setIncludeFilters((current) => ({ ...current, [key]: value }));
+    setIncludeFilters((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "teamName") {
+        const allowed = agentNamesForSelectedTeam(
+          filterOptions.agents,
+          filterOptions.agentsByTeam,
+          String(value)
+        );
+        if (next.agent && !allowed.includes(next.agent)) {
+          next.agent = "";
+        }
+      }
+      return next;
+    });
   }
 
   function clearFilters() {
@@ -239,8 +255,15 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
   const hasAnyAnalyticsFilters = filterChips.length > 0;
 
   const agentFilterOptions = useMemo(
-    () => buildAgentFilterSelectOptions(filterOptions.agents),
-    [filterOptions.agents]
+    () =>
+      buildAgentFilterSelectOptions(
+        agentNamesForSelectedTeam(
+          filterOptions.agents,
+          filterOptions.agentsByTeam,
+          includeFilters.teamName
+        )
+      ),
+    [filterOptions.agents, filterOptions.agentsByTeam, includeFilters.teamName]
   );
 
   const teamFilterOptions = useMemo(
@@ -453,17 +476,6 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
 
         <FilterSidebarSection label="Segment">
           <FilterSidebarGrid>
-            {filterVisibility.agent ? (
-              <label className="dash-filter">
-                <span>Agent</span>
-                <FilterSelect
-                  value={includeFilters.agent}
-                  onChange={(value) => updateFilter("agent", value)}
-                  options={agentFilterOptions}
-                  ariaLabel="Filter by agent"
-                />
-              </label>
-            ) : null}
             {filterVisibility.teamName ? (
               <label className="dash-filter">
                 <span>Team</span>
@@ -472,6 +484,21 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
                   onChange={(value) => updateFilter("teamName", value)}
                   options={teamFilterOptions}
                   ariaLabel="Filter by team"
+                  searchable
+                  searchPlaceholder="Search teams…"
+                />
+              </label>
+            ) : null}
+            {filterVisibility.agent ? (
+              <label className="dash-filter">
+                <span>Agent</span>
+                <FilterSelect
+                  value={includeFilters.agent}
+                  onChange={(value) => updateFilter("agent", value)}
+                  options={agentFilterOptions}
+                  ariaLabel="Filter by agent"
+                  searchable
+                  searchPlaceholder="Search agents…"
                 />
               </label>
             ) : null}
@@ -483,6 +510,8 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
                   onChange={(value) => updateFilter("auditor", value)}
                   options={auditorFilterOptions}
                   ariaLabel="Filter by quality analyst"
+                  searchable
+                  searchPlaceholder="Search quality analysts…"
                 />
               </label>
             ) : null}

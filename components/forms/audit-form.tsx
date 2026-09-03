@@ -18,6 +18,7 @@ import {
   getSubReasonsForReason,
 } from "@/lib/audit/interaction-options";
 import { getScoreTone, toneClass } from "@/lib/audit/score-visual";
+import { selectionToneClass } from "@/lib/audit/selection-tone";
 import type { AuditReferenceOption } from "@/lib/actions/audit";
 import type { TemplateListItem } from "@/lib/actions/templates";
 import type {
@@ -695,6 +696,8 @@ export function AuditForm({
                       className="audit-control"
                       value={formData.supervisor}
                       disabled={pending}
+                      searchable
+                      searchPlaceholder="Search supervisors…"
                       onChange={(e) => handleSupervisorChange(e.target.value)}
                     >
                       <option value="">Select supervisor</option>
@@ -718,6 +721,8 @@ export function AuditForm({
                       className="audit-control"
                       value={formData.agent}
                       disabled={!formData.supervisor.trim() || pending}
+                      searchable
+                      searchPlaceholder="Search agents…"
                       onChange={(e) => updateForm({ agent: e.target.value })}
                     >
                       <option value="">
@@ -746,6 +751,8 @@ export function AuditForm({
                       id="auditor"
                       className="audit-control"
                       value={formData.auditor}
+                      searchable
+                      searchPlaceholder="Search quality analysts…"
                       onChange={(e) => updateForm({ auditor: e.target.value })}
                     >
                       <option value="">Select Quality Analyst</option>
@@ -1120,7 +1127,7 @@ export function AuditForm({
                           <Select
                             className={cn(
                               "audit-control audit-score-row__select",
-                              toneClass(tone, "audit-control")
+                              selectionToneClass(current)
                             )}
                             value={current}
                             onChange={(e) =>

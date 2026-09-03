@@ -92,6 +92,49 @@ if (!merged.agents.includes("Agent After Transfer")) {
   ok("dashboard/analytics filters include roster-only agents");
 }
 
+const teamScoped = extractFilterOptions([
+  {
+    id: "1",
+    auditCode: "A-1",
+    agent: "Agent A",
+    supervisor: "Team North",
+    auditor: "QA 1",
+    lob: "Sales",
+    type: "Call",
+    businessType: "Sales",
+    callDate: "2026-06-01",
+    auditDate: "2026-06-01",
+    qualityPct: 80,
+    finalPct: 80,
+    hasFatal: false,
+    fatalList: [],
+  },
+  {
+    id: "2",
+    auditCode: "A-2",
+    agent: "Agent B",
+    supervisor: "Team South",
+    auditor: "QA 1",
+    lob: "Sales",
+    type: "Call",
+    businessType: "Sales",
+    callDate: "2026-06-01",
+    auditDate: "2026-06-01",
+    qualityPct: 80,
+    finalPct: 80,
+    hasFatal: false,
+    fatalList: [],
+  },
+]);
+if (
+  teamScoped.agentsByTeam["Team North"]?.join(",") !== "Agent A" ||
+  teamScoped.agentsByTeam["Team South"]?.join(",") !== "Agent B"
+) {
+  fail("extractFilterOptions should map agents to their team");
+} else {
+  ok("dashboard filters map agents to the selected team");
+}
+
 console.log("");
 if (errors > 0) {
   console.error(`${errors} verification error(s).`);

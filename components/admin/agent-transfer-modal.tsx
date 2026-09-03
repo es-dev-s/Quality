@@ -169,6 +169,8 @@ export function AgentTransferModal({
                     setAuditCount(null);
                   }}
                   ariaLabel="Agent to transfer"
+                  searchable
+                  searchPlaceholder="Search agents…"
                   options={[
                     { value: "", label: "Select agent" },
                     ...agentOptions,
@@ -184,6 +186,8 @@ export function AgentTransferModal({
                 value={targetId}
                 onChange={setTargetId}
                 ariaLabel="New supervisor"
+                searchable
+                searchPlaceholder="Search supervisors…"
                 options={[
                   { value: "", label: "Select supervisor" },
                   ...targetOptions,

@@ -984,6 +984,8 @@ export function AuditLogsTable({
                     onChange={setAgent}
                     options={agentFilterOptions}
                     ariaLabel="Filter by agent"
+                    searchable
+                    searchPlaceholder="Search agents…"
                   />
                 </label>
               ) : null}

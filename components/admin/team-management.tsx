@@ -1270,6 +1270,8 @@ function AgentAssignmentPanel({
                   value={assignToId}
                   disabled={pending || assigneeOptions.length === 0}
                   options={assigneeSelectOptions}
+                  searchable
+                  searchPlaceholder="Search quality analysts…"
                   onChange={(e) => setAssignToId(e.target.value)}
                 />
               </Field>
@@ -1283,6 +1285,8 @@ function AgentAssignmentPanel({
                     value={agentId}
                     disabled={pending || selectableAgents.length === 0}
                     options={agentSelectOptions}
+                    searchable
+                    searchPlaceholder="Search agents…"
                     onChange={(e) => setAgentId(e.target.value)}
                   />
                   {selectableAgents.length === 0 ? (
@@ -1767,6 +1771,8 @@ function MemberAccessPanel({
             value={memberId}
             disabled={pending}
             options={memberSelectOptions}
+            searchable
+            searchPlaceholder="Search members…"
             onChange={(e) => setMemberId(e.target.value)}
           />
         </Field>

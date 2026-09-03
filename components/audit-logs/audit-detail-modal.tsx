@@ -15,6 +15,7 @@ import { AuditSourceBadge } from "@/components/audit/audit-source-badge";
 import { auditSourceLabel } from "@/lib/audit/audit-source";
 import { interactionContactFieldLabel, interactionReferenceSectionLabel } from "@/lib/audit/interaction-labels";
 import type { AuditRow } from "@/lib/audit/types";
+import { selectionToneClass } from "@/lib/audit/selection-tone";
 import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
 import { FEEDBACK_SEVERITY_LABEL } from "@/lib/audit/feedback";
 import { useStaleRequestGuard } from "@/lib/hooks/use-stale-request-guard";
@@ -335,7 +336,7 @@ export function AuditDetailModal({
               </section>
 
               {/* ── Feedback (full-width) ─────────────────────────── */}
-              <section className="adi-section">
+              <section className="adi-section adi-section--feedback">
                 <h3 className="adi-section__title">
                   <MessageSquare size={13} aria-hidden />
                   Feedback
@@ -440,6 +441,7 @@ export function AuditDetailModal({
                                       <span className="adi-cat__param-name">{row.name}</span>
                                       <span className={cn(
                                         "adi-cat__param-sel",
+                                        selectionToneClass(row.sel),
                                         row.fatal && "adi-cat__param-sel--fatal"
                                       )}>
                                         {row.sel}
@@ -475,7 +477,15 @@ export function AuditDetailModal({
                               <tr key={row.id} className={row.fatal ? "adi-param-table__row--fatal" : undefined}>
                                 <td className="adi-param-table__cat">{row.cat}</td>
                                 <td>{row.name}</td>
-                                <td className={cn(row.fatal && "adi-param-table__sel--fatal")}>{row.sel}</td>
+                                <td
+                                  className={cn(
+                                    "adi-param-table__sel",
+                                    selectionToneClass(row.sel),
+                                    row.fatal && "adi-param-table__sel--fatal"
+                                  )}
+                                >
+                                  {row.sel}
+                                </td>
                                 <td className="adi-param-table__score">{row.score}/{row.max}</td>
                               </tr>
                             ))}

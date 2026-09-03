@@ -79,6 +79,16 @@ function usesQaFeedbackWorkflow(
   );
 }
 
+function isQualityAnalystFeedbackActor(
+  role: SessionRole,
+  memberMode?: MemberFeedbackMode
+): boolean {
+  if (isMemberRole(role)) {
+    return memberMode === "qa";
+  }
+  return role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST;
+}
+
 function isQaFeedbackManagerRole(role: SessionRole): boolean {
   return (
     role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST ||
@@ -199,6 +209,18 @@ export function getFeedbackStatusSelectConfig(
   }
 
   if (usesQaFeedbackWorkflow(role, memberMode)) {
+    if (
+      isQualityAnalystFeedbackActor(role, memberMode) &&
+      current === "Acknowledged"
+    ) {
+      return {
+        showSelect: false,
+        editable: false,
+        options: [],
+        selectValue: current,
+        hint: "Agent acknowledged this audit. Status can no longer be changed.",
+      };
+    }
     return {
       showSelect: true,
       editable: true,
@@ -256,6 +278,12 @@ export function assertFeedbackStatusChangeAllowed(
   }
 
   if (role && usesQaFeedbackWorkflow(role, memberMode)) {
+    if (
+      isQualityAnalystFeedbackActor(role, memberMode) &&
+      previous === "Acknowledged"
+    ) {
+      return "Acknowledged status cannot be changed after the agent responds.";
+    }
     if (!QA_FEEDBACK_STATUSES.includes(next)) {
       return "Quality Analyst can only set Pending or Shared.";
     }

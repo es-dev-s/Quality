@@ -15,6 +15,8 @@ type FilterSelectProps = {
   options: FilterSelectOption[];
   ariaLabel: string;
   className?: string;
+  searchable?: boolean;
+  searchPlaceholder?: string;
 };
 
 /** Explicit-options select for filter sidebars (reliable vs. option-child parsing). */
@@ -25,6 +27,8 @@ export function FilterSelect({
   options,
   ariaLabel,
   className = "dash-select dash-select--filter",
+  searchable = false,
+  searchPlaceholder,
 }: FilterSelectProps) {
   return (
     <Select
@@ -33,6 +37,8 @@ export function FilterSelect({
       value={value}
       aria-label={ariaLabel}
       options={options}
+      searchable={searchable}
+      searchPlaceholder={searchPlaceholder}
       onChange={(event) => onChange(event.target.value)}
     />
   );

@@ -73,6 +73,15 @@ assert(
     null,
   "Member QA mode cannot acknowledge"
 );
+assert(
+  !getFeedbackStatusSelectConfig(member, "Acknowledged", "qa").showSelect,
+  "Member QA mode has no dropdown after agent acknowledged"
+);
+assert(
+  assertFeedbackStatusChangeAllowed(member, "Acknowledged", "Shared", "qa") !==
+    null,
+  "Member QA mode cannot change Acknowledged"
+);
 
 // Without memberMode, form-write must not auto-treat Member as QA.
 const bare = getFeedbackStatusSelectConfig(member, "Pending");

@@ -134,6 +134,8 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
               options={qmOptions}
               ariaLabel="Filter by quality manager"
               className="dash-select dash-select--filter kpi-filter__control"
+              searchable
+              searchPlaceholder="Search quality managers…"
             />
           </label>
 
@@ -146,6 +148,8 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
               options={qaOptions}
               ariaLabel="Filter by quality analyst"
               className="dash-select dash-select--filter kpi-filter__control"
+              searchable
+              searchPlaceholder="Search quality analysts…"
             />
           </label>
 

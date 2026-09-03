@@ -2103,6 +2103,16 @@
   background: var(--color-accent-soft);
 }
 
+.adi-section--feedback {
+  border-color: #e9d5ff;
+  background: #faf5ff;
+}
+
+.adi-section--feedback .adi-section__title {
+  border-bottom-color: #e9d5ff;
+  color: #6b21a8;
+}
+
 .adi-section__title {
   display: flex;
   align-items: center;
@@ -2422,13 +2432,14 @@
 
 .adi-cat__param-sel {
   font-size: 0.6875rem;
-  color: var(--color-muted-fg);
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
+  padding: 3px 8px;
+  border-radius: var(--radius);
+  text-align: center;
 }
 
 .adi-cat__param-sel--fatal {
-  color: var(--color-danger);
   font-weight: 700;
 }
 
@@ -2480,15 +2491,15 @@
 
 .adi-param-table tr:last-child td { border-bottom: none; }
 
-.adi-param-table tbody tr:hover td {
+.adi-param-table tbody tr:hover td:not([class*="sel-tone-"]) {
   background: var(--color-muted);
 }
 
-.adi-param-table__row--fatal td {
+.adi-param-table__row--fatal td:not([class*="sel-tone-"]) {
   background: #fff5f5;
 }
 
-.adi-param-table__row--fatal:hover td {
+.adi-param-table__row--fatal:hover td:not([class*="sel-tone-"]) {
   background: #ffeded;
 }
 
@@ -2498,8 +2509,12 @@
   white-space: nowrap;
 }
 
+.adi-param-table__sel {
+  text-align: center;
+  white-space: nowrap;
+}
+
 .adi-param-table__sel--fatal {
-  color: var(--color-danger);
   font-weight: 700;
 }
 
@@ -2567,7 +2582,10 @@
 
 .audit-logs__feedback--readonly {
   cursor: default;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  box-sizing: border-box;
 }
 
 .audit-logs__feedback-stack {
