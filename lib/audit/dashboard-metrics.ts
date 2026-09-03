@@ -312,6 +312,14 @@ export function filterCurrentMonth(
   return records.filter((r) => isSameMonth(recordMetricDate(r), now));
 }
 
+export function filterRecordsByAuditor(
+  records: DashboardAuditRecord[],
+  auditor: string
+): DashboardAuditRecord[] {
+  if (!auditor) return records;
+  return records.filter((record) => record.auditor === auditor);
+}
+
 /** Filter by an explicit from/to date range (both YYYY-MM-DD, both optional). */
 export function filterByCustomRange(
   records: DashboardAuditRecord[],

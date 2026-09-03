@@ -18,6 +18,7 @@ import { FilterSelect } from "@/components/filters/filter-select";
 import { LoadingZone } from "@/components/primitives/loading-zone";
 import { cn } from "@/lib/utils";
 import { FatalOccurrencesModal } from "@/components/dashboard/fatal-occurrences-modal";
+import { TargetCalendarFilter } from "@/components/dashboard/target-calendar-filter";
 import { useDashboardShell } from "@/components/dashboard/shell";
 import { HistoryFilterSection } from "@/components/audit/history-filter-section";
 import type { DashboardAuditData } from "@/lib/audit/audit-records";
@@ -45,6 +46,7 @@ import {
   filterByPeriod,
   filterByCustomRange,
   filterCurrentMonth,
+  filterRecordsByAuditor,
   hasActiveIncludeFilters,
   resolveTrendRangeBounds,
   type DashboardIncludeFilters,
@@ -124,10 +126,16 @@ export function DashboardAnalytics({
     null
   );
   const [selectedFatal, setSelectedFatal] = useState<string | null>(null);
+  const [targetAuditor, setTargetAuditor] = useState("");
+  const [auditorTargetRange, setAuditorTargetRange] = useState<DateRangeValue>({
+    from: "",
+    to: "",
+  });
   const filterSidebar = useFilterSidebar();
   const canEditAuditTargets =
     roleSlug === SYSTEM_ROLE_SLUGS.SUPERADMIN ||
     roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER;
+  const showTargetPanelFilters = canEditAuditTargets;
 
   const records = data.records ?? [];
   const referenceNow = useMemo(
@@ -186,6 +194,35 @@ export function DashboardAnalytics({
     [scopedRecords, referenceNow]
   );
 
+  const agentTargetRecords = useMemo(() => {
+    if (!showTargetPanelFilters || !targetAuditor) {
+      return { all: scopedRecords, month: monthRecords };
+    }
+    const byAuditor = filterRecordsByAuditor(monthRecords, targetAuditor);
+    return { all: byAuditor, month: byAuditor };
+  }, [scopedRecords, monthRecords, showTargetPanelFilters, targetAuditor]);
+
+  const auditorTargetSource = useMemo(() => {
+    if (
+      showTargetPanelFilters &&
+      (auditorTargetRange.from || auditorTargetRange.to)
+    ) {
+      const ranged = filterByCustomRange(
+        scopedRecords,
+        auditorTargetRange.from,
+        auditorTargetRange.to
+      );
+      return { all: ranged, counts: ranged };
+    }
+    return { all: scopedRecords, counts: monthRecords };
+  }, [
+    scopedRecords,
+    monthRecords,
+    showTargetPanelFilters,
+    auditorTargetRange.from,
+    auditorTargetRange.to,
+  ]);
+
   const stats = useMemo(() => computePeriodStats(filtered), [filtered]);
   const monthStats = useMemo(
     () => computePeriodStats(monthRecords),
@@ -209,8 +246,13 @@ export function DashboardAnalytics({
   );
 
   const agentTargets = useMemo(
-    () => computeAgentTargets(scopedRecords, monthRecords, agentTarget),
-    [scopedRecords, monthRecords, agentTarget]
+    () =>
+      computeAgentTargets(
+        agentTargetRecords.all,
+        agentTargetRecords.month,
+        agentTarget
+      ),
+    [agentTargetRecords, agentTarget]
   );
 
   const resolvedMonthlyTarget =
@@ -218,8 +260,8 @@ export function DashboardAnalytics({
 
   const auditorTargets = useMemo(() => {
     const computed = computeAuditorTargets(
-      scopedRecords,
-      monthRecords,
+      auditorTargetSource.all,
+      auditorTargetSource.counts,
       resolvedMonthlyTarget
     );
     if (roleSlug !== SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
@@ -230,8 +272,7 @@ export function DashboardAnalytics({
       email: user.email,
     });
   }, [
-    scopedRecords,
-    monthRecords,
+    auditorTargetSource,
     resolvedMonthlyTarget,
     roleSlug,
     user.name,
@@ -715,10 +756,31 @@ export function DashboardAnalytics({
             <div>
               <h2 className="dash-panel__title">Audit target — per agent</h2>
               <p className="dash-panel__desc">
-                Cumulative audits this month vs target per agent
+                {showTargetPanelFilters && targetAuditor
+                  ? `Audits this month by ${targetAuditor} vs target per agent`
+                  : "Cumulative audits this month vs target per agent"}
               </p>
             </div>
-            <label className="dash-target-input">
+            <div className="dash-target-head-actions">
+              {showTargetPanelFilters ? (
+                <div className="dash-target-auditor-filter">
+                  <FilterSelect
+                    value={targetAuditor}
+                    onChange={setTargetAuditor}
+                    options={[
+                      { value: "", label: "All quality auditors" },
+                      ...filterOptions.auditors.map((auditor) => ({
+                        value: auditor,
+                        label: auditor,
+                      })),
+                    ]}
+                    searchable
+                    searchPlaceholder="Search quality auditors…"
+                    ariaLabel="Filter agent targets by quality auditor"
+                  />
+                </div>
+              ) : null}
+              <label className="dash-target-input">
               <span>Target/month:</span>
               <input
                 type="number"
@@ -739,10 +801,15 @@ export function DashboardAnalytics({
                 }}
               />
             </label>
+            </div>
           </div>
 
           <div className="dash-target-summary dash-target-summary--agent">
-            <span>Cumulative this month</span>
+            <span>
+              {showTargetPanelFilters && targetAuditor
+                ? `Audits this month by ${targetAuditor}`
+                : "Cumulative this month"}
+            </span>
             <strong>
               {agentTargets.cumulativeAchieved} / {agentTargets.cumulativeTarget}{" "}
               ({agentTargets.cumulativePct}%)
@@ -751,7 +818,11 @@ export function DashboardAnalytics({
 
           <div className="dash-target-list">
             {agentTargets.agents.length === 0 ? (
-              <p className="dash-empty">No agents in audit history yet.</p>
+              <p className="dash-empty">
+                {showTargetPanelFilters && targetAuditor
+                  ? "No agents audited by this quality auditor yet."
+                  : "No agents in audit history yet."}
+              </p>
             ) : (
               agentTargets.agents.map((agent) => (
                 <div key={agent.name} className="dash-target-row">
@@ -783,32 +854,48 @@ export function DashboardAnalytics({
               <p className="dash-panel__desc">
                 {isQualityAnalyst
                   ? "Your audits this month vs your monthly target"
-                  : "Total target ÷ active auditors = per-auditor allocation"}
+                  : showTargetPanelFilters &&
+                      (auditorTargetRange.from || auditorTargetRange.to)
+                    ? "Audits in the selected dates vs allocated target"
+                    : "Total target ÷ active auditors = per-auditor allocation"}
               </p>
             </div>
-            <label className="dash-target-input">
-              <span>Total monthly target:</span>
-              <input
-                type="number"
-                min={1}
-                max={99999}
-                value={resolvedMonthlyTarget}
-                disabled={!canEditAuditTargets}
-                readOnly={!canEditAuditTargets}
-                title={
-                  canEditAuditTargets
-                    ? "Set total monthly audit target for auditors"
-                    : "Only Quality Manager and Superadmin can change this"
-                }
-                aria-label="Total monthly audit target for auditors"
-                onChange={(e) => {
-                  if (!canEditAuditTargets) return;
-                  setTotalMonthlyTarget(
-                    Math.max(1, Number(e.target.value) || 1)
-                  );
-                }}
-              />
-            </label>
+            <div className="dash-target-head-actions">
+              {showTargetPanelFilters ? (
+                <TargetCalendarFilter
+                  value={auditorTargetRange}
+                  onChange={setAuditorTargetRange}
+                  monthlyTarget={resolvedMonthlyTarget}
+                  canEditMonthlyTarget={canEditAuditTargets}
+                  onMonthlyTargetChange={setTotalMonthlyTarget}
+                />
+              ) : null}
+              {showTargetPanelFilters ? null : (
+                <label className="dash-target-input">
+                  <span>Total monthly target:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={99999}
+                    value={resolvedMonthlyTarget}
+                    disabled={!canEditAuditTargets}
+                    readOnly={!canEditAuditTargets}
+                    title={
+                      canEditAuditTargets
+                        ? "Set total monthly audit target for auditors"
+                        : "Only Quality Manager and Superadmin can change this"
+                    }
+                    aria-label="Total monthly audit target for auditors"
+                    onChange={(e) => {
+                      if (!canEditAuditTargets) return;
+                      setTotalMonthlyTarget(
+                        Math.max(1, Number(e.target.value) || 1)
+                      );
+                    }}
+                  />
+                </label>
+              )}
+            </div>
           </div>
 
           <div className="dash-target-summary dash-target-summary--auditor">
@@ -822,7 +909,12 @@ export function DashboardAnalytics({
 
           <div className="dash-target-list">
             {auditorTargets.auditors.length === 0 ? (
-              <p className="dash-empty">No auditors in audit history yet.</p>
+              <p className="dash-empty">
+                {showTargetPanelFilters &&
+                (auditorTargetRange.from || auditorTargetRange.to)
+                  ? "No auditors in the selected dates."
+                  : "No auditors in audit history yet."}
+              </p>
             ) : (
               auditorTargets.auditors.map((auditor) => (
                 <div

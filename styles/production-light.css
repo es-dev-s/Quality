@@ -318,45 +318,45 @@
 .adi-cat__param-sel.sel-tone-ee,
 .audit-control.sel-tone-ee,
 .ui-custom-select__trigger.sel-tone-ee {
-  background-color: #bbf7d0 !important;
-  color: #166534 !important;
-  border-color: #86efac;
+  background-color: #eaf7ee !important;
+  color: #2f6f4e !important;
+  border-color: #c9e8d2;
 }
 
 .adi-param-table td.sel-tone-me,
 .adi-cat__param-sel.sel-tone-me,
 .audit-control.sel-tone-me,
 .ui-custom-select__trigger.sel-tone-me {
-  background-color: #bfdbfe !important;
-  color: #1e40af !important;
-  border-color: #93c5fd;
+  background-color: #fff6d4 !important;
+  color: #8a6d12 !important;
+  border-color: #f3e2a0;
 }
 
 .adi-param-table td.sel-tone-be,
 .adi-cat__param-sel.sel-tone-be,
 .audit-control.sel-tone-be,
 .ui-custom-select__trigger.sel-tone-be {
-  background-color: #fed7aa !important;
-  color: #9a3412 !important;
-  border-color: #fdba74;
+  background-color: #fce8e8 !important;
+  color: #9b1c1c !important;
+  border-color: #f3c6c6;
 }
 
 .adi-param-table td.sel-tone-y,
 .adi-cat__param-sel.sel-tone-y,
 .audit-control.sel-tone-y,
 .ui-custom-select__trigger.sel-tone-y {
-  background-color: #99f6e4 !important;
-  color: #115e59 !important;
-  border-color: #5eead4;
+  background-color: #eaf7ee !important;
+  color: #2f6f4e !important;
+  border-color: #c9e8d2;
 }
 
 .adi-param-table td.sel-tone-n,
 .adi-cat__param-sel.sel-tone-n,
 .audit-control.sel-tone-n,
 .ui-custom-select__trigger.sel-tone-n {
-  background-color: #fecaca !important;
-  color: #991b1b !important;
-  border-color: #fca5a5;
+  background-color: #fce8e8 !important;
+  color: #9b1c1c !important;
+  border-color: #f3c6c6;
 }
 
 .adi-param-table td.sel-tone-fatal,
@@ -369,13 +369,9 @@
 }
 
 .adi-param-table td.sel-tone-na,
-.adi-param-table td.sel-tone-neutral,
 .adi-cat__param-sel.sel-tone-na,
-.adi-cat__param-sel.sel-tone-neutral,
 .audit-control.sel-tone-na,
-.audit-control.sel-tone-neutral,
-.ui-custom-select__trigger.sel-tone-na,
-.ui-custom-select__trigger.sel-tone-neutral {
+.ui-custom-select__trigger.sel-tone-na {
   background-color: #e2e8f0 !important;
   color: #475569 !important;
   border-color: #cbd5e1;
