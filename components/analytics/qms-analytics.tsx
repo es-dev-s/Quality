@@ -343,12 +343,6 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
                 <span style={{ fontWeight: 500, opacity: 0.75 }}> (filtered)</span>
               ) : null}
             </span>
-            <span
-              className="qms-summary-chip qms-summary-chip--muted qms-summary-chip--scope"
-              title={scopeDescription}
-            >
-              {scopeDescription}
-            </span>
             <div className="pf-bar__chips">
               <FilterChipBar inline showClearButton={false} chips={filterChips} />
             </div>
