@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { Bell } from "lucide-react";
+import { AuditDetailModal } from "@/components/audit-logs/audit-detail-modal";
 import { Button } from "@/components/primitives/button";
 import { useToast } from "@/components/primitives/toast";
 import {
@@ -171,14 +172,31 @@ function formatWhen(iso: string): string {
   });
 }
 
-export function NotificationBell() {
+export function NotificationBell({
+  canEditAudits = false,
+  canEditSupervisorRemarks = false,
+}: {
+  canEditAudits?: boolean;
+  canEditSupervisorRemarks?: boolean;
+}) {
   const { items, unreadCount, loading, markRead, markAllRead } =
     useNotifications();
   const [open, setOpen] = useState(false);
+  const [viewAuditId, setViewAuditId] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const visibleItems = items.filter((item) =>
     isNotificationWithinRetention(item.createdAt)
   );
+
+  function openNotification(item: NotificationItem) {
+    if (!item.readAt) {
+      void markRead(item.id);
+    }
+    setOpen(false);
+    if (item.auditId) {
+      setViewAuditId(item.auditId);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -243,35 +261,63 @@ export function NotificationBell() {
                 days.
               </p>
             ) : (
-              visibleItems.map((item) => (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  className={cn(
-                    "notification-bell__item",
-                    !item.readAt && "notification-bell__item--unread"
-                  )}
-                  role="menuitem"
-                  onClick={() => {
-                    if (!item.readAt) {
-                      void markRead(item.id);
-                    }
-                    setOpen(false);
-                  }}
-                >
-                  <span className="notification-bell__item-title">
-                    {item.title}
-                  </span>
-                  <span className="notification-bell__item-body">{item.body}</span>
-                  <span className="notification-bell__item-time">
-                    {formatWhen(item.createdAt)}
-                  </span>
-                </Link>
-              ))
+              visibleItems.map((item) =>
+                item.auditId ? (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={cn(
+                      "notification-bell__item",
+                      !item.readAt && "notification-bell__item--unread"
+                    )}
+                    role="menuitem"
+                    onClick={() => openNotification(item)}
+                  >
+                    <span className="notification-bell__item-title">
+                      {item.title}
+                    </span>
+                    <span className="notification-bell__item-body">
+                      {item.body}
+                    </span>
+                    <span className="notification-bell__item-time">
+                      {formatWhen(item.createdAt)}
+                    </span>
+                  </button>
+                ) : (
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    className={cn(
+                      "notification-bell__item",
+                      !item.readAt && "notification-bell__item--unread"
+                    )}
+                    role="menuitem"
+                    onClick={() => openNotification(item)}
+                  >
+                    <span className="notification-bell__item-title">
+                      {item.title}
+                    </span>
+                    <span className="notification-bell__item-body">
+                      {item.body}
+                    </span>
+                    <span className="notification-bell__item-time">
+                      {formatWhen(item.createdAt)}
+                    </span>
+                  </Link>
+                )
+              )
             )}
           </div>
         </div>
       ) : null}
+
+      <AuditDetailModal
+        auditId={viewAuditId}
+        canEditAudits={canEditAudits}
+        canEditSupervisorRemarks={canEditSupervisorRemarks}
+        elevated
+        onClose={() => setViewAuditId(null)}
+      />
     </div>
   );
 }
