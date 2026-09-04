@@ -54,6 +54,15 @@ function supervisorSubmittedClause(): Prisma.AuditSubmissionWhereInput {
   };
 }
 
+/** Audits submitted by a Quality Manager. */
+function qualityManagerSubmittedClause(): Prisma.AuditSubmissionWhereInput {
+  return {
+    submittedBy: {
+      role: { slug: SYSTEM_ROLE_SLUGS.QUALITY_MANAGER },
+    },
+  };
+}
+
 /**
  * Hide supervisor-submitted audits from roles that should not see them.
  * Only Quality Manager (roster-scoped) and Superadmin may view those rows.
@@ -66,17 +75,31 @@ function excludeSupervisorSubmitted(
   };
 }
 
+/**
+ * Hide Quality Manager–submitted audits from the audited agent
+ * (same visibility rule as supervisor-submitted audits).
+ */
+function excludeQualityManagerSubmitted(
+  where: Prisma.AuditSubmissionWhereInput
+): Prisma.AuditSubmissionWhereInput {
+  return {
+    AND: [where, { NOT: qualityManagerSubmittedClause() }],
+  };
+}
+
 /** Agent visibility for a specific user id (used by Agent role and Member grants). */
 export async function buildAgentScopeWhere(
   userId: string
 ): Promise<Prisma.AuditSubmissionWhereInput> {
   const matchNames = await fetchAgentUserAuditMatchNames(userId);
   const agentFilter = caseInsensitiveIn(matchNames);
-  return excludeSupervisorSubmitted(
-    orClauses([
-      { submittedById: userId },
-      ...(agentFilter ? [{ agent: agentFilter }] : []),
-    ])
+  return excludeQualityManagerSubmitted(
+    excludeSupervisorSubmitted(
+      orClauses([
+        { submittedById: userId },
+        ...(agentFilter ? [{ agent: agentFilter }] : []),
+      ])
+    )
   );
 }
 
