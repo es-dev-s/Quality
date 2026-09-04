@@ -43,7 +43,8 @@ export function invalidateUserCaches(userId: string, event?: SSEEvent) {
 export function invalidateAgentAssignmentCaches(
   actorId: string,
   assignedToId: string,
-  event?: SSEEvent
+  event?: SSEEvent,
+  extraUserIds: string[] = []
 ) {
   invalidateCacheTags(
     [
@@ -51,6 +52,7 @@ export function invalidateAgentAssignmentCaches(
       CACHE_TAGS.AGENTS,
       CACHE_TAGS.userAgents(actorId),
       CACHE_TAGS.userAgents(assignedToId),
+      ...extraUserIds.map((userId) => CACHE_TAGS.userAgents(userId)),
     ],
     event
   );

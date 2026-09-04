@@ -4,17 +4,20 @@ import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { SUPERVISOR_TIER_ROLE_SLUGS } from "@/lib/audit/supervisor-tier";
 import { prisma } from "@/lib/prisma";
 import { withActiveUserFilter } from "@/lib/user-active-filter";
-import type { FatalRecipientRole } from "@/lib/notifications/types";
 
-export type FatalAuditRecipientContext = {
+export type DisputeRecipientRole = "supervisor" | "manager" | "analyst";
+
+export type DisputeAuditRecipientContext = {
   agent: string;
   supervisor: string | null;
+  auditor: string | null;
+  submittedById: string;
   excludeUserId: string;
 };
 
-export type FatalAuditRecipient = {
+export type DisputeAuditRecipient = {
   userId: string;
-  role: FatalRecipientRole;
+  role: DisputeRecipientRole;
 };
 
 function normalizeDisplayName(value: string): string {
@@ -111,27 +114,11 @@ async function findManagerUserIdsForAgent(agentUserId: string): Promise<string[]
   return managers.map((user) => user.id);
 }
 
-async function findActiveSuperAdminIds(excludeUserId: string): Promise<string[]> {
-  const users = await prisma.user.findMany({
-    where: withActiveUserFilter({
-      role: { slug: SYSTEM_ROLE_SLUGS.SUPERADMIN },
-      id: { not: excludeUserId },
-    }),
-    select: { id: true },
-  });
-  return users.map((user) => user.id);
-}
-
-/** Agent, supervisor, aligned quality managers, and Super Admins for a fatal audit. */
-export async function resolveFatalAuditRecipients(
-  ctx: FatalAuditRecipientContext
-): Promise<FatalAuditRecipient[]> {
-  const recipients = new Map<string, FatalRecipientRole>();
-
-  const agentUserId = await findAgentUserId(ctx.agent);
-  if (agentUserId && agentUserId !== ctx.excludeUserId) {
-    recipients.set(agentUserId, "agent");
-  }
+/** Supervisor, Quality Manager, and Quality Analyst when an agent disputes. */
+export async function resolveDisputeAuditRecipients(
+  ctx: DisputeAuditRecipientContext
+): Promise<DisputeAuditRecipient[]> {
+  const recipients = new Map<string, DisputeRecipientRole>();
 
   const supervisorUserId = await (async () => {
     for (const roleSlug of SUPERVISOR_TIER_ROLE_SLUGS) {
@@ -144,6 +131,7 @@ export async function resolveFatalAuditRecipients(
     recipients.set(supervisorUserId, "supervisor");
   }
 
+  const agentUserId = await findAgentUserId(ctx.agent);
   if (agentUserId) {
     const managerIds = await findManagerUserIdsForAgent(agentUserId);
     for (const managerId of managerIds) {
@@ -153,11 +141,16 @@ export async function resolveFatalAuditRecipients(
     }
   }
 
-  const superAdminIds = await findActiveSuperAdminIds(ctx.excludeUserId);
-  for (const superAdminId of superAdminIds) {
-    if (!recipients.has(superAdminId)) {
-      recipients.set(superAdminId, "superadmin");
-    }
+  if (ctx.submittedById && ctx.submittedById !== ctx.excludeUserId) {
+    recipients.set(ctx.submittedById, "analyst");
+  }
+
+  const auditorId = await findActiveUserIdByRoleAndName(
+    SYSTEM_ROLE_SLUGS.QUALITY_ANALYST,
+    ctx.auditor
+  );
+  if (auditorId && auditorId !== ctx.excludeUserId) {
+    recipients.set(auditorId, "analyst");
   }
 
   return [...recipients.entries()].map(([userId, role]) => ({ userId, role }));

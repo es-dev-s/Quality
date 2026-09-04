@@ -101,6 +101,17 @@ export function canManageUsers(role?: SessionRole | null): boolean {
   return hasScope(role, PERMISSIONS.ADMIN_USERS);
 }
 
+export function canRevealUserPasswords(role?: SessionRole | null): boolean {
+  return hasScope(role, PERMISSIONS.USER_READ_SENSITIVE);
+}
+
+export function canEditAuditTargets(role?: SessionRole | null): boolean {
+  if (!role) return false;
+  return (
+    isSuperAdmin(role) || role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
+  );
+}
+
 export function canProvisionAgents(role?: SessionRole | null): boolean {
   return hasScope(role, PERMISSIONS.USERS_PROVISION_AGENT);
 }

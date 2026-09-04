@@ -1,7 +1,7 @@
 "use server";
 
 import { requireAuth } from "@/lib/auth";
-import { mapNotificationRow } from "@/lib/notifications/dispatch-fatal-audit";
+import { mapNotificationRow } from "@/lib/notifications/map-row";
 import {
   NOTIFICATION_LIST_MAX,
   notificationRetentionCutoff,

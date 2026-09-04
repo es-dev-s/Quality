@@ -1,7 +1,6 @@
 import { resolveFatalAuditRecipients } from "@/lib/notifications/resolve-fatal-recipients";
-import type { NotificationItem } from "@/lib/notifications/types";
-import { prisma } from "@/lib/prisma";
-import { broadcastToUser } from "@/lib/sse-broadcast";
+import { persistAndBroadcastNotification } from "@/lib/notifications/persist";
+import { NOTIFICATION_TYPES } from "@/lib/notifications/constants";
 
 export type DispatchFatalAuditInput = {
   auditId: string;
@@ -13,33 +12,6 @@ export type DispatchFatalAuditInput = {
   fatalList: string[];
   submittedById: string;
 };
-
-function mapRow(row: {
-  id: string;
-  type: string;
-  title: string;
-  body: string;
-  auditId: string | null;
-  auditCode: string | null;
-  readAt: Date | null;
-  createdAt: Date;
-}): NotificationItem {
-  return {
-    id: row.id,
-    type: row.type,
-    title: row.title,
-    body: row.body,
-    auditId: row.auditId,
-    auditCode: row.auditCode,
-    readAt: row.readAt?.toISOString() ?? null,
-    createdAt: row.createdAt.toISOString(),
-    href: row.auditCode
-      ? `/audit-logs?search=${encodeURIComponent(row.auditCode)}`
-      : row.auditId
-        ? `/audit-logs?search=${encodeURIComponent(row.auditId)}`
-        : "/audit-logs",
-  };
-}
 
 function buildFatalNotificationCopy(input: DispatchFatalAuditInput): {
   title: string;
@@ -73,33 +45,25 @@ export async function dispatchFatalAuditNotifications(
 
   const copy = buildFatalNotificationCopy(input);
 
-  await Promise.all(
-    recipients.map(async ({ userId, role }) => {
-      const created = await prisma.notification.create({
-        data: {
-          userId,
-          type: "fatal_audit",
-          title: copy.title,
-          body: copy.body,
-          auditId: input.auditId,
-          auditCode: input.auditCode,
-          meta: {
-            role,
-            interactionType: input.type,
-            fatalList: input.fatalList,
-          },
+  const results = await Promise.all(
+    recipients.map(({ userId, role }) =>
+      persistAndBroadcastNotification({
+        userId,
+        type: NOTIFICATION_TYPES.FATAL_AUDIT,
+        title: copy.title,
+        body: copy.body,
+        auditId: input.auditId,
+        auditCode: input.auditCode,
+        meta: {
+          role,
+          interactionType: input.type,
+          fatalList: input.fatalList,
         },
-      });
-
-      const notification = mapRow(created);
-      broadcastToUser(userId, {
-        type: "notification:new",
-        notification,
-      });
-    })
+      })
+    )
   );
 
-  return recipients.length;
+  return results.filter(Boolean).length;
 }
 
-export { mapRow as mapNotificationRow };
+export { mapNotificationRow } from "@/lib/notifications/map-row";

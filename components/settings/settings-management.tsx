@@ -88,6 +88,8 @@ type SettingsManagementProps = {
 
   canManageUsers: boolean;
 
+  canRevealPasswords?: boolean;
+
   canManageRoles: boolean;
 
   canAccessTeam: boolean;
@@ -125,6 +127,8 @@ export function SettingsManagement({
   initialTab = "agents",
 
   canManageUsers,
+
+  canRevealPasswords = false,
 
   canManageRoles,
 
@@ -181,7 +185,7 @@ export function SettingsManagement({
       (tab === "interaction" && canManageInteraction) ||
       (tab === "team" && canAccessTeam) ||
       (tab === "connected" && canViewConnections) ||
-      (tab === "users" && canManageUsers) ||
+      (tab === "users" && (canManageUsers || canRevealPasswords)) ||
       (tab === "roles" && canManageRoles);
     if (!allowed) {
       goToTab("agents");
@@ -193,6 +197,7 @@ export function SettingsManagement({
     canAccessTeam,
     canViewConnections,
     canManageUsers,
+    canRevealPasswords,
     canManageRoles,
   ]);
 
@@ -377,7 +382,7 @@ export function SettingsManagement({
 
         )}
 
-        {canManageUsers && (
+        {(canManageUsers || canRevealPasswords) && (
 
           <button
 
@@ -471,7 +476,7 @@ export function SettingsManagement({
 
               canTransferAgents={canTransferAgents}
 
-              onOpenUsersTab={canManageUsers ? () => goToTab("users") : undefined}
+              onOpenUsersTab={(canManageUsers || canRevealPasswords) ? () => goToTab("users") : undefined}
 
               onOpenTeamTab={canAccessTeam ? () => goToTab("team") : undefined}
 
@@ -563,7 +568,7 @@ export function SettingsManagement({
 
 
 
-        {canManageUsers && (
+        {(canManageUsers || canRevealPasswords) && (
 
           <div
 
@@ -577,7 +582,7 @@ export function SettingsManagement({
 
             {tab === "users" && (
 
-              <UsersTable users={users} roles={roleOptions} embedded />
+              <UsersTable users={users} roles={roleOptions} embedded passwordAccessOnly={!canManageUsers} />
 
             )}
 

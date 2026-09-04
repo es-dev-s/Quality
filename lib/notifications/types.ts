@@ -10,4 +10,8 @@ export type NotificationItem = {
   href: string;
 };
 
-export type FatalRecipientRole = "agent" | "supervisor" | "manager";
+export type FatalRecipientRole =
+  | "agent"
+  | "supervisor"
+  | "manager"
+  | "superadmin";

@@ -53,9 +53,15 @@ type UsersTableProps = {
   users: User[];
   roles: Role[];
   embedded?: boolean;
+  passwordAccessOnly?: boolean;
 };
 
-export function UsersTable({ users, roles, embedded = false }: UsersTableProps) {
+export function UsersTable({
+  users,
+  roles,
+  embedded = false,
+  passwordAccessOnly = false,
+}: UsersTableProps) {
   const router = useRouter();
   const { toast, toastPasswordReveal } = useToast();
   const { busy: pending, run: runBusy } = useBusyAction();
@@ -173,7 +179,7 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
     });
   }
 
-  const tableHeaderActions = (
+  const tableHeaderActions = passwordAccessOnly ? undefined : (
     <Button size="sm" onClick={openCreateDialog}>
       <Plus size={16} />
       Add User
@@ -182,13 +188,17 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
 
   const emptyState =
     users.length === 0 ? (
-      <>
-        <p>No users yet. Create your first platform user to get started.</p>
-        <Button onClick={openCreateDialog}>
-          <Plus size={16} />
-          Add User
-        </Button>
-      </>
+      passwordAccessOnly ? (
+        <p>No managed users are available to view passwords for.</p>
+      ) : (
+        <>
+          <p>No users yet. Create your first platform user to get started.</p>
+          <Button onClick={openCreateDialog}>
+            <Plus size={16} />
+            Add User
+          </Button>
+        </>
+      )
     ) : (
       <p>No users match your search or filters. Try adjusting them.</p>
     );
@@ -198,22 +208,28 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
       {!embedded && (
         <div className="admin-section-head">
           <div>
-            <h2 className="admin-section-head__title">All Users</h2>
+            <h2 className="admin-section-head__title">
+              {passwordAccessOnly ? "Users" : "All Users"}
+            </h2>
           </div>
-          <Button onClick={openCreateDialog}>
-            <Plus size={16} />
-            Add User
-          </Button>
+          {passwordAccessOnly ? null : (
+            <Button onClick={openCreateDialog}>
+              <Plus size={16} />
+              Add User
+            </Button>
+          )}
         </div>
       )}
 
       <div className={embedded ? "settings-tab-layout__body" : undefined}>
+        {passwordAccessOnly ? null : (
         <BulkActionBar
           selectedCount={selectedCount}
           onClear={clearSelection}
           onDelete={() => setBulkDeleteOpen(true)}
           isPending={pending}
         />
+        )}
 
         <div className={embedded ? "loading-zone--fill" : undefined}>
           <DataTablePanel
@@ -237,9 +253,10 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
             headerActions={embedded ? tableHeaderActions : undefined}
             emptyState={emptyState}
             renderTable={(slice) => (
-              <table className="ui-table ui-table--selectable platform-report-table settings-table">
+              <table className={passwordAccessOnly ? "ui-table platform-report-table settings-table" : "ui-table ui-table--selectable platform-report-table settings-table"}>
                 <thead>
                   <tr>
+                    {passwordAccessOnly ? null : (
                     <th className="ui-table__check-col">
                       <input
                         type="checkbox"
@@ -252,6 +269,7 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                         onChange={toggleAllVisible}
                       />
                     </th>
+                    )}
                     <th className="col-name">User name</th>
                     <th className="col-email">Email</th>
                     <th>Team</th>
@@ -264,6 +282,7 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                 <tbody>
                   {slice.map((user) => (
                     <tr key={user.id} className="settings-table__row">
+                      {passwordAccessOnly ? null : (
                       <td className="ui-table__check-col">
                         <input
                           type="checkbox"
@@ -273,6 +292,7 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                           onChange={() => toggleOne(user.id)}
                         />
                       </td>
+                      )}
                       <td>
                         <div className="user-cell">
                           <span className="user-cell__avatar">
@@ -298,6 +318,7 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                         {formatRelativeTime(new Date(user.createdAt))}
                       </td>
                       <TableRowActionsCell ariaLabel={`Actions for ${user.email}`}>
+                        {passwordAccessOnly ? null : (
                         <TableRowAction
                           disabled={pending}
                           onClick={() => {
@@ -323,6 +344,7 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                           <Power size={14} aria-hidden />
                           {user.isActive === false ? "Activate" : "Deactivate"}
                         </TableRowAction>
+                        )}
                         <TableRowAction
                           disabled={pending}
                           onClick={() => {
@@ -341,8 +363,10 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                           }}
                         >
                           <KeyRound size={14} aria-hidden />
-                          Password
+                          {passwordAccessOnly ? "View password" : "Password"}
                         </TableRowAction>
+                        {passwordAccessOnly ? null : (
+                        <>
                         <TableRowAction
                           onClick={() => {
                             setEditingUser(user);
@@ -360,6 +384,8 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                           <Trash2 size={14} aria-hidden />
                           Delete
                         </TableRowAction>
+                        </>
+                        )}
                       </TableRowActionsCell>
                     </tr>
                   ))}
@@ -399,6 +425,8 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
         </FilterSidebarSection>
       </FilterSidebar>
 
+      {passwordAccessOnly ? null : (
+        <>
       <UserFormDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
@@ -432,6 +460,8 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
         loading={pending}
         onConfirm={() => deleteTarget && runDelete([deleteTarget.id], { single: true })}
       />
+        </>
+      )}
     </div>
   );
 }

@@ -14,6 +14,9 @@ type KpiScoreboardProps = {
   agentCount: number;
   qmName?: string | null;
   qmRosterSize?: number | null;
+  canEditTarget?: boolean;
+  onTargetChange?: (value: number) => void;
+  onTargetCommit?: (value: number) => void;
 };
 
 function valueOf(
@@ -29,6 +32,9 @@ export function KpiScoreboard({
   agentCount,
   qmName = null,
   qmRosterSize = null,
+  canEditTarget = false,
+  onTargetChange,
+  onTargetCommit,
 }: KpiScoreboardProps) {
   const hasData = Boolean(summary);
   const scopeLine = qmName
@@ -47,9 +53,32 @@ export function KpiScoreboard({
         </div>
         <div className="kpi-scoreboard__meta-block">
           <p className="kpi-scoreboard__meta">{scopeLine}</p>
-          <p className="kpi-scoreboard__meta">
-            Target <strong>{targetPerAgent}</strong>/agent
-          </p>
+          <label className="kpi-scoreboard__meta kpi-scoreboard__target">
+            Target
+            <input
+              type="number"
+              min={1}
+              max={999}
+              value={targetPerAgent}
+              disabled={!canEditTarget}
+              readOnly={!canEditTarget}
+              aria-label="Audit target per agent"
+              title={
+                canEditTarget
+                  ? "Set monthly audit target per agent"
+                  : "Audit target per agent"
+              }
+              onChange={(event) => {
+                if (!canEditTarget || !onTargetChange) return;
+                onTargetChange(Math.max(1, Number(event.target.value) || 1));
+              }}
+              onBlur={() => {
+                if (!canEditTarget || !onTargetCommit) return;
+                onTargetCommit(targetPerAgent);
+              }}
+            />
+            /agent
+          </label>
         </div>
       </div>
 

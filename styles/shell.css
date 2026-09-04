@@ -321,6 +321,31 @@
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--color-text-primary);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.notification-bell__tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+}
+
+.notification-bell__tag--fatal {
+  color: var(--color-error);
+  background: color-mix(in srgb, var(--color-error) 16%, var(--color-bg-elevated));
+}
+
+.notification-bell__tag--dispute {
+  color: var(--color-text-on-error, #fff);
+  background: var(--color-error);
 }
 
 .notification-bell__item-body {

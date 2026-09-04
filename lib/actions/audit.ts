@@ -51,6 +51,7 @@ import {
   parseAuditPageLimit,
 } from "@/lib/cached-queries/audit-submissions";
 import { dispatchFatalAuditNotifications } from "@/lib/notifications/dispatch-fatal-audit";
+import { dispatchDisputeAuditNotifications } from "@/lib/notifications/dispatch-dispute-audit";
 import {
   AUDIT_EXPORT_SELECT,
   mapSubmissionToExportRow,
@@ -64,6 +65,9 @@ import { canFilterByAgent } from "@/lib/audit/agent-filter-access";
 import { dataScopeFromSession } from "@/lib/audit/data-scope";
 import { resolveAuditSourceKind } from "@/lib/audit/audit-source";
 import { ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
+import { readAuditTargets } from "@/lib/kpi/audit-targets";
+import { KPI_DEFAULT_AGENT_TARGET } from "@/lib/kpi/records";
+import { resolveTeamNameSnapshot } from "@/lib/audit/resolve-team-name";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
 import {
   defaultAuditFeedback,
@@ -286,6 +290,11 @@ export async function saveAuditSubmission(
 
   const record = result.record;
 
+  const teamNameSnapshot = await resolveTeamNameSnapshot(
+    record.agent,
+    record.supervisor || null
+  );
+
   const submissionData = {
     auditCode: record.id,
     templateId: template.id,
@@ -321,6 +330,7 @@ export async function saveAuditSubmission(
     rows: record.rows,
     record: record as unknown as object,
     submissionKey: submissionKey ?? null,
+    teamNameSnapshot,
   };
 
   let createdId: string | undefined;
@@ -872,6 +882,10 @@ export async function updateAuditSubmission(
   }
 
   const record = result.record;
+  const teamNameSnapshot = await resolveTeamNameSnapshot(
+    record.agent,
+    record.supervisor || null
+  );
 
   try {
     const updated = await prisma.auditSubmission.updateMany({
@@ -908,6 +922,7 @@ export async function updateAuditSubmission(
         catScores: record.catScores,
         rows: record.rows,
         record: record as unknown as object,
+        teamNameSnapshot,
       },
     });
 
@@ -986,6 +1001,11 @@ export async function updateAuditFeedback(
     where: await scopedAuditByIdWhere(session, parsed.data.id),
     select: {
       id: true,
+      auditCode: true,
+      agent: true,
+      supervisor: true,
+      auditor: true,
+      submittedById: true,
       isHistory: true,
       feedbackSecurity: true,
       feedbackStatus: true,
@@ -1093,6 +1113,20 @@ export async function updateAuditFeedback(
       feedbackStatusAt: feedback.feedbackStatusAt || null,
     },
   });
+
+  if (previousStatus !== "Disputed" && nextStatusParsed === "Disputed") {
+    void dispatchDisputeAuditNotifications({
+      auditId: existing.id,
+      auditCode: existing.auditCode,
+      agent: existing.agent,
+      supervisor: existing.supervisor,
+      auditor: existing.auditor,
+      submittedById: existing.submittedById,
+      disputedById: session.user.id,
+    }).catch((error) => {
+      console.error("dispatchDisputeAuditNotifications failed:", error);
+    });
+  }
 
   return {
     success: true as const,
@@ -1240,11 +1274,12 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
   try {
     const cacheScope = cacheScopeFromSession(session);
     const ctx = dataScopeFromSession(session);
-    const [submissions, rosterAgentNames] = await Promise.all([
+    const [submissions, rosterAgentNames, targets] = await Promise.all([
       withDbRetry(() => getCachedDashboardRecords(cacheScope)()),
       canFilterByAgent(session.user.role.slug)
         ? fetchAgentRosterNames(ctx.userId, ctx.role.slug)
         : Promise.resolve([] as string[]),
+      readAuditTargets(),
     ]);
 
     return {
@@ -1268,6 +1303,8 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
       rosterAgentNames,
       fetchedAt: new Date().toISOString(),
       dbError: null as string | null,
+      agentTarget: targets.perAgent,
+      totalMonthlyTarget: targets.totalMonthly,
     };
   } catch (error) {
     console.error("getDashboardAuditData failed:", error);
@@ -1279,6 +1316,8 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
       dbError: cacheOverflow
         ? "Dashboard could not load this many audits from cache. Refresh and try again."
         : "Unable to reach the database. Use the Supabase session pooler (pooler.supabase.com:5432) in DATABASE_URL or DATABASE_URL_SESSION — not db.*.supabase.co.",
+      agentTarget: KPI_DEFAULT_AGENT_TARGET,
+      totalMonthlyTarget: null,
     };
   }
 }

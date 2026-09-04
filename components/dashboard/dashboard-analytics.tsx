@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Award, RefreshCw } from "lucide-react";
 import { FilterChipBar } from "@/components/filters/filter-chip-bar";
@@ -55,6 +55,12 @@ import {
 } from "@/lib/audit/agent-filter-access";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
+import {
+  setAuditTargetPerAgent,
+  setAuditTargetTotalMonthly,
+} from "@/lib/actions/audit-targets";
+import { useToast } from "@/components/primitives/toast";
+import { KPI_DEFAULT_AGENT_TARGET } from "@/lib/kpi/records";
 
 type DashboardAnalyticsProps = {
   data: DashboardAuditData;
@@ -77,7 +83,7 @@ const TREND_OPTIONS: { id: TrendGranularity; label: string }[] = [
   { id: "month", label: "Month by month" },
 ];
 
-const DEFAULT_AGENT_TARGET = 20;
+const DEFAULT_AGENT_TARGET = KPI_DEFAULT_AGENT_TARGET;
 
 function scoreTone(score: number): string {
   if (score >= 90) return "dash-kpi__value--success";
@@ -105,6 +111,7 @@ export function DashboardAnalytics({
   canEditSupervisorRemarks = false,
 }: DashboardAnalyticsProps) {
   const router = useRouter();
+  const { toast } = useToast();
   const [isRefreshing, startRefresh] = useTransition();
   const [period, setPeriod] = useState<DashboardPeriod>("overall");
   const [customRange, setCustomRange] = useState<DateRangeValue>({ from: "", to: "" });
@@ -115,10 +122,14 @@ export function DashboardAnalytics({
   const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
     defaultAuditHistoryFilter(data.records ?? [])
   );
-  const [agentTarget, setAgentTarget] = useState(DEFAULT_AGENT_TARGET);
-  const [totalMonthlyTarget, setTotalMonthlyTarget] = useState<number | null>(
-    null
+  const [agentTarget, setAgentTarget] = useState(
+    data.agentTarget ?? DEFAULT_AGENT_TARGET
   );
+  const [totalMonthlyTarget, setTotalMonthlyTarget] = useState<number | null>(
+    data.totalMonthlyTarget ?? null
+  );
+  const agentTargetSaveSeq = useRef(0);
+  const totalTargetSaveSeq = useRef(0);
   const [selectedFatal, setSelectedFatal] = useState<string | null>(null);
   const filterSidebar = useFilterSidebar();
   const canEditAuditTargets =
@@ -245,6 +256,42 @@ export function DashboardAnalytics({
     startRefresh(() => {
       router.refresh();
     });
+  }
+
+  function persistAgentTarget(raw: number) {
+    const next = Math.max(1, Math.min(999, Math.round(raw) || 1));
+    setAgentTarget(next);
+    if (!canEditAuditTargets) return;
+    const seq = ++agentTargetSaveSeq.current;
+    void (async () => {
+      const result = await setAuditTargetPerAgent(next);
+      if (seq !== agentTargetSaveSeq.current) return;
+      if ("error" in result && result.error) {
+        toast(result.error, "error");
+        return;
+      }
+      if ("success" in result && result.success) {
+        setAgentTarget(result.perAgent);
+      }
+    })();
+  }
+
+  function persistTotalMonthlyTarget(raw: number) {
+    const next = Math.max(1, Math.min(99_999, Math.round(raw) || 1));
+    setTotalMonthlyTarget(next);
+    if (!canEditAuditTargets) return;
+    const seq = ++totalTargetSaveSeq.current;
+    void (async () => {
+      const result = await setAuditTargetTotalMonthly(next);
+      if (seq !== totalTargetSaveSeq.current) return;
+      if ("error" in result && result.error) {
+        toast(result.error, "error");
+        return;
+      }
+      if ("success" in result && result.success) {
+        setTotalMonthlyTarget(result.totalMonthly);
+      }
+    })();
   }
 
   function updateFilter<K extends keyof DashboardIncludeFilters>(
@@ -697,6 +744,10 @@ export function DashboardAnalytics({
                   if (!canEditAuditTargets) return;
                   setAgentTarget(Math.max(1, Number(e.target.value) || 1));
                 }}
+                onBlur={() => {
+                  if (!canEditAuditTargets) return;
+                  persistAgentTarget(agentTarget);
+                }}
               />
             </label>
           </div>
@@ -764,6 +815,11 @@ export function DashboardAnalytics({
                   setTotalMonthlyTarget(
                     Math.max(1, Number(e.target.value) || 1)
                   );
+                }}
+                onBlur={() => {
+                  if (!canEditAuditTargets) return;
+                  if (totalMonthlyTarget == null) return;
+                  persistTotalMonthlyTarget(totalMonthlyTarget);
                 }}
               />
             </label>

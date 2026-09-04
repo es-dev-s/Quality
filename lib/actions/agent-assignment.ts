@@ -98,6 +98,38 @@ async function assertAssigneeIsQualityAnalyst(userId: string) {
   return null;
 }
 
+async function replaceAgentAssignment(params: {
+  agentId: string;
+  assignToUserId: string;
+  assignedById: string;
+}): Promise<{ previousAssigneeId: string | null; created: boolean }> {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.agentAssignment.findUnique({
+      where: { agentId: params.agentId },
+      select: { assignedToId: true },
+    });
+
+    await tx.agentAssignment.upsert({
+      where: { agentId: params.agentId },
+      create: {
+        agentId: params.agentId,
+        assignedToId: params.assignToUserId,
+        assignedById: params.assignedById,
+      },
+      update: {
+        assignedToId: params.assignToUserId,
+        assignedById: params.assignedById,
+        assignedAt: new Date(),
+      },
+    });
+
+    return {
+      previousAssigneeId: existing?.assignedToId ?? null,
+      created: !existing,
+    };
+  });
+}
+
 export async function assignAgentToUser(agentId: string, assignToUserId: string) {
   const auth = await requirePermissionResult(PERMISSIONS.AGENT_ASSIGN);
   if (auth.error) return { error: auth.error };
@@ -120,27 +152,29 @@ export async function assignAgentToUser(agentId: string, assignToUserId: string)
   );
   if (assigneeError) return { error: assigneeError };
 
-  try {
-    await prisma.agentAssignment.create({
-      data: {
-        agentId: parsed.data.agentId,
-        assignedToId: parsed.data.assignToUserId,
-        assignedById: session.user.id,
-      },
-    });
-  } catch (error) {
-    if (isPrismaUniqueViolation(error)) {
-      return { error: "This agent is already assigned to that user." };
-    }
-    throw error;
+  const { previousAssigneeId, created } = await replaceAgentAssignment({
+    agentId: parsed.data.agentId,
+    assignToUserId: parsed.data.assignToUserId,
+    assignedById: session.user.id,
+  });
+
+  if (!created && previousAssigneeId === parsed.data.assignToUserId) {
+    return { success: true as const, unchanged: true as const };
   }
 
   revalidateAssignmentPaths();
-  invalidateAgentAssignmentCaches(session.user.id, parsed.data.assignToUserId, {
-    type: "agent:assigned",
-    agentId: parsed.data.agentId,
-    assignedToId: parsed.data.assignToUserId,
-  });
+  invalidateAgentAssignmentCaches(
+    session.user.id,
+    parsed.data.assignToUserId,
+    {
+      type: "agent:assigned",
+      agentId: parsed.data.agentId,
+      assignedToId: parsed.data.assignToUserId,
+    },
+    previousAssigneeId && previousAssigneeId !== parsed.data.assignToUserId
+      ? [previousAssigneeId]
+      : []
+  );
   return { success: true as const };
 }
 
@@ -181,13 +215,17 @@ export async function assignAgentsToUser(
     }
 
     try {
-      await prisma.agentAssignment.create({
-        data: {
-          agentId,
-          assignedToId: parsed.data.assignToUserId,
-          assignedById: session.user.id,
-        },
+      const { previousAssigneeId, created } = await replaceAgentAssignment({
+        agentId,
+        assignToUserId: parsed.data.assignToUserId,
+        assignedById: session.user.id,
       });
+
+      if (!created && previousAssigneeId === parsed.data.assignToUserId) {
+        skipped += 1;
+        continue;
+      }
+
       assigned += 1;
       invalidateAgentAssignmentCaches(
         session.user.id,
@@ -196,7 +234,10 @@ export async function assignAgentsToUser(
           type: "agent:assigned",
           agentId,
           assignedToId: parsed.data.assignToUserId,
-        }
+        },
+        previousAssigneeId && previousAssigneeId !== parsed.data.assignToUserId
+          ? [previousAssigneeId]
+          : []
       );
     } catch (error) {
       if (isPrismaUniqueViolation(error)) {
@@ -234,16 +275,11 @@ export async function removeAgentFromUser(
   }
 
   const existing = await prisma.agentAssignment.findUnique({
-    where: {
-      agentId_assignedToId: {
-        agentId: parsed.data.agentId,
-        assignedToId: parsed.data.assignToUserId,
-      },
-    },
-    select: { assignedById: true },
+    where: { agentId: parsed.data.agentId },
+    select: { assignedById: true, assignedToId: true },
   });
 
-  if (!existing) {
+  if (!existing || existing.assignedToId !== parsed.data.assignToUserId) {
     return { error: "Assignment not found." };
   }
 
@@ -255,12 +291,7 @@ export async function removeAgentFromUser(
   }
 
   await prisma.agentAssignment.delete({
-    where: {
-      agentId_assignedToId: {
-        agentId: parsed.data.agentId,
-        assignedToId: parsed.data.assignToUserId,
-      },
-    },
+    where: { agentId: parsed.data.agentId },
   });
 
   revalidateAssignmentPaths();

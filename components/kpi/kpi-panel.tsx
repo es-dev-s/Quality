@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { FilterSelect } from "@/components/filters/filter-select";
 import { FilterClearButton } from "@/components/filters/filter-clear-button";
 import {
@@ -8,8 +8,10 @@ import {
   type DateRangeValue,
 } from "@/components/primitives/date-range-picker";
 import { KpiScoreboard } from "@/components/kpi/kpi-scoreboard";
+import { useToast } from "@/components/primitives/toast";
 import { computeKpiRows } from "@/lib/kpi/compute-kpi";
 import type { KpiPageData } from "@/lib/kpi/records";
+import { setAuditTargetPerAgent } from "@/lib/actions/audit-targets";
 import {
   DEFAULT_KPI_FILTERS,
   KPI_TIME_OPTIONS,
@@ -35,7 +37,10 @@ function toSelectOptions(
 }
 
 export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
+  const { toast } = useToast();
   const [filters, setFilters] = useState<KpiFiltersState>(DEFAULT_KPI_FILTERS);
+  const [targetPerAgent, setTargetPerAgent] = useState(data.targetPerAgent);
+  const targetSaveSeq = useRef(0);
 
   const qualityManagers = filterOptions.qualityManagers ?? [];
   const qualityAnalysts = filterOptions.qualityAnalysts ?? [];
@@ -65,13 +70,13 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
         records: data.records,
         filters,
         rosterAgentNames: data.rosterAgentNames,
-        targetPerAgent: data.targetPerAgent,
+        targetPerAgent,
         qmAgentNamesByQm,
       }),
     [
       data.records,
       data.rosterAgentNames,
-      data.targetPerAgent,
+      targetPerAgent,
       qmAgentNamesByQm,
       filters,
     ]
@@ -107,6 +112,23 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
 
   function clearFilters() {
     setFilters(DEFAULT_KPI_FILTERS);
+  }
+
+  function persistTarget(value: number) {
+    const next = Math.max(1, Math.min(999, Math.round(value) || 1));
+    setTargetPerAgent(next);
+    const seq = ++targetSaveSeq.current;
+    void (async () => {
+      const result = await setAuditTargetPerAgent(next);
+      if (seq !== targetSaveSeq.current) return;
+      if ("error" in result && result.error) {
+        toast(result.error, "error");
+        return;
+      }
+      if ("success" in result && result.success) {
+        setTargetPerAgent(result.perAgent);
+      }
+    })();
   }
 
   return (
@@ -171,10 +193,13 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
 
       <KpiScoreboard
         summary={summary}
-        targetPerAgent={data.targetPerAgent}
+        targetPerAgent={targetPerAgent}
         agentCount={agentCount}
         qmName={filters.qm || null}
         qmRosterSize={qmRosterSize}
+        canEditTarget
+        onTargetChange={setTargetPerAgent}
+        onTargetCommit={persistTarget}
       />
     </section>
   );

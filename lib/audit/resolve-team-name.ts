@@ -30,13 +30,20 @@ export async function fetchPersonTeamNameMap(): Promise<Map<string, string>> {
 }
 
 /**
- * Team label for analytics: live User.teamName of the supervisor, else the agent.
- * Never falls back to a person's name — that belongs in people charts, not team charts.
+ * Team label for analytics: frozen snapshot first, then live User.teamName
+ * of the supervisor, else the agent. Never falls back to a person's name.
  */
 export function resolveRecordTeamName(
-  record: { agent: string; supervisor: string | null },
+  record: {
+    agent: string;
+    supervisor: string | null;
+    teamNameSnapshot?: string | null;
+  },
   teamByPerson: Map<string, string>
 ): string {
+  const snapshot = record.teamNameSnapshot?.trim();
+  if (snapshot) return snapshot;
+
   const supervisor = record.supervisor?.trim();
   if (supervisor) {
     const team = teamByPerson.get(personKey(supervisor));
@@ -50,4 +57,13 @@ export function resolveRecordTeamName(
   }
 
   return "Unassigned";
+}
+
+export async function resolveTeamNameSnapshot(
+  agent: string,
+  supervisor: string | null
+): Promise<string | null> {
+  const teamByPerson = await fetchPersonTeamNameMap();
+  const label = resolveRecordTeamName({ agent, supervisor }, teamByPerson);
+  return label === "Unassigned" ? null : label;
 }
