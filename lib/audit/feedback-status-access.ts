@@ -79,16 +79,6 @@ function usesQaFeedbackWorkflow(
   );
 }
 
-function isQualityAnalystFeedbackActor(
-  role: SessionRole,
-  memberMode?: MemberFeedbackMode
-): boolean {
-  if (isMemberRole(role)) {
-    return memberMode === "qa";
-  }
-  return role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST;
-}
-
 function isQaFeedbackManagerRole(role: SessionRole): boolean {
   return (
     role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST ||
@@ -209,10 +199,7 @@ export function getFeedbackStatusSelectConfig(
   }
 
   if (usesQaFeedbackWorkflow(role, memberMode)) {
-    if (
-      isQualityAnalystFeedbackActor(role, memberMode) &&
-      current === "Acknowledged"
-    ) {
+    if (current === "Acknowledged") {
       return {
         showSelect: false,
         editable: false,
@@ -278,10 +265,7 @@ export function assertFeedbackStatusChangeAllowed(
   }
 
   if (role && usesQaFeedbackWorkflow(role, memberMode)) {
-    if (
-      isQualityAnalystFeedbackActor(role, memberMode) &&
-      previous === "Acknowledged"
-    ) {
+    if (previous === "Acknowledged") {
       return "Acknowledged status cannot be changed after the agent responds.";
     }
     if (!QA_FEEDBACK_STATUSES.includes(next)) {

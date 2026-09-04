@@ -882,7 +882,6 @@
   gap: var(--space-5);
   min-height: 0;
   flex: 1;
-  overflow: hidden;
 }
 
 .team-assignments--empty {
@@ -964,17 +963,12 @@
   padding: var(--space-3) var(--space-4) var(--space-4);
   flex: 1;
   min-height: 0;
-  overflow: hidden;
 }
 
 .team-assignments__compose-body {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 .team-assignments__compose-lead,
@@ -1084,8 +1078,6 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: min(280px, 32vh);
-  overflow: auto;
   padding: var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -1145,7 +1137,6 @@
   justify-content: flex-end;
   flex-shrink: 0;
   padding-top: var(--space-3);
-  margin-top: auto;
   border-top: 1px solid var(--color-divider);
   background: var(--color-bg);
 }
@@ -1162,8 +1153,6 @@
   gap: var(--space-3);
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 .team-assignments__list-head {
@@ -1625,6 +1614,54 @@
 .team-management--embedded .team-assignments__list--solo {
   flex: 1;
   min-height: 0;
+}
+
+.settings-page__panel:has(.team-management--assignments-page) {
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.team-management--assignments-page.settings-tab-layout {
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.team-management--assignments-page .settings-tab-layout__head {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--color-bg);
+}
+
+.team-management--assignments-page .team-management__body,
+.team-management--assignments-page .settings-tab-layout__body,
+.team-management--assignments-page .loading-zone--fill,
+.team-management--assignments-page .loading-zone--fill > .loading-zone__content,
+.team-management--assignments-page .team-management__panel-body--bare,
+.team-management--assignments-page .team-assignments,
+.team-management--assignments-page .team-assignments__shell,
+.team-management--assignments-page .team-assignments__compose,
+.team-management--assignments-page .team-assignments__list--solo {
+  flex: none;
+  min-height: auto;
+  height: auto;
+  overflow: visible;
+}
+
+.team-management--assignments-page .team-assignments__compose,
+.team-management--assignments-page .team-assignments__list,
+.team-management--assignments-page .team-assignments__shell {
+  overflow: visible;
+}
+
+.team-management--assignments-page .team-assignments__shell {
+  min-height: min(72vh, 44rem);
+}
+
+.team-management--assignments-page .platform-report-table__scroll {
+  max-height: none;
+  overflow: visible;
 }
 
 @media (max-width: 768px) {

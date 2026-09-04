@@ -1439,7 +1439,7 @@ function AgentAssignmentPanel({
             ) : (
               <DataTablePanel
                 pagination={assignmentPagination}
-                fillViewport={fillViewport}
+                fillViewport={false}
                 className="team-assignments__table-panel"
                 summaryLabel={`${filteredAssignments.length} of ${
                   agentAssignments.length
@@ -2314,7 +2314,14 @@ export function TeamManagement({
     <div
       className={
         embedded
-          ? "settings-tab-layout team-management team-management--embedded"
+          ? [
+              "settings-tab-layout",
+              "team-management",
+              "team-management--embedded",
+              subTab === "assignments" ? "team-management--assignments-page" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")
           : "team-management"
       }
     >

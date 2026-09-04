@@ -26,6 +26,7 @@ function assert(condition: boolean, message: string) {
 }
 
 const qa = role(SYSTEM_ROLE_SLUGS.QUALITY_ANALYST);
+const qm = role(SYSTEM_ROLE_SLUGS.QUALITY_MANAGER);
 const agent = role(SYSTEM_ROLE_SLUGS.AGENT);
 
 const qaPending = getFeedbackStatusSelectConfig(qa, "Pending");
@@ -82,6 +83,18 @@ assert(
 assert(
   assertFeedbackStatusChangeAllowed(qa, "Pending", "Acknowledged") !== null,
   "QA cannot set Acknowledged"
+);
+
+const qmAck = getFeedbackStatusSelectConfig(qm, "Acknowledged");
+assert(!qmAck.showSelect, "QM has no dropdown once agent acknowledged");
+assert(!qmAck.editable, "QM cannot edit Acknowledged");
+assert(
+  assertFeedbackStatusChangeAllowed(qm, "Acknowledged", "Pending") !== null,
+  "QM cannot change Acknowledged"
+);
+assert(
+  assertFeedbackStatusChangeAllowed(qm, "Pending", "Shared") === null,
+  "QM Pending→Shared allowed"
 );
 assert(
   assertFeedbackStatusChangeAllowed(agent, "Shared", "Acknowledged") === null,
