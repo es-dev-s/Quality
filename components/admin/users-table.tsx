@@ -237,7 +237,7 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
             headerActions={embedded ? tableHeaderActions : undefined}
             emptyState={emptyState}
             renderTable={(slice) => (
-              <table className="ui-table ui-table--selectable platform-report-table settings-table">
+              <table className="ui-table ui-table--selectable platform-report-table settings-table settings-users-table">
                 <thead>
                   <tr>
                     <th className="ui-table__check-col">
@@ -254,7 +254,7 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                     </th>
                     <th className="col-name">User name</th>
                     <th className="col-email">Email</th>
-                    <th>Team</th>
+                    <th className="col-team">Team</th>
                     <th className="col-role">Role</th>
                     <th className="col-status">Status</th>
                     <th className="col-date">Created</th>
@@ -273,7 +273,7 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                           onChange={() => toggleOne(user.id)}
                         />
                       </td>
-                      <td>
+                      <td className="col-name">
                         <div className="user-cell">
                           <span className="user-cell__avatar">
                             {(user.name ?? user.email).slice(0, 2).toUpperCase()}
@@ -281,12 +281,14 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                           <span className="user-cell__name">{user.name ?? "—"}</span>
                         </div>
                       </td>
-                      <td>{user.email}</td>
-                      <td>{user.teamName ?? "—"}</td>
-                      <td>
-                        <Badge variant="accent">{user.role.name}</Badge>
+                      <td className="col-email">{user.email}</td>
+                      <td className="col-team">{user.teamName ?? "—"}</td>
+                      <td className="col-role">
+                        <Badge variant="accent" title={user.role.name}>
+                          {user.role.name}
+                        </Badge>
                       </td>
-                      <td>
+                      <td className="col-status">
                         <Badge
                           variant={user.isActive === false ? "default" : "success"}
                           dot
@@ -294,7 +296,10 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                           {user.isActive === false ? "Inactive" : "Active"}
                         </Badge>
                       </td>
-                      <td title={new Date(user.createdAt).toLocaleString()}>
+                      <td
+                        className="col-date"
+                        title={new Date(user.createdAt).toLocaleString()}
+                      >
                         {formatRelativeTime(new Date(user.createdAt))}
                       </td>
                       <TableRowActionsCell ariaLabel={`Actions for ${user.email}`}>

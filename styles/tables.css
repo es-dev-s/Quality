@@ -108,6 +108,10 @@
   width: 140px;
 }
 
+.col-team {
+  width: 140px;
+}
+
 .col-actions {
   width: 1%;
   min-width: 7.5rem;
@@ -352,6 +356,72 @@
 .settings-table__row-action:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Settings → Users: keep Team/Role/Status in a compact, header-aligned layout */
+.settings-users-table th.col-name,
+.settings-users-table td.col-name {
+  width: 11.5rem;
+}
+
+.settings-users-table th.col-email,
+.settings-users-table td.col-email {
+  width: auto;
+}
+
+.settings-users-table th.col-team,
+.settings-users-table td.col-team {
+  width: 8.5rem;
+}
+
+.settings-users-table th.col-role,
+.settings-users-table td.col-role {
+  width: 12.5rem;
+}
+
+.settings-users-table th.col-status,
+.settings-users-table td.col-status {
+  width: 7.5rem;
+}
+
+.settings-users-table th.col-date,
+.settings-users-table td.col-date {
+  width: 7rem;
+}
+
+.settings-users-table th.col-role,
+.settings-users-table td.col-role,
+.settings-users-table th.col-status,
+.settings-users-table td.col-status {
+  text-align: left;
+}
+
+.settings-users-table td.col-role,
+.settings-users-table td.col-status {
+  overflow: visible;
+}
+
+.settings-users-table td.col-role {
+  white-space: normal;
+}
+
+.settings-users-table td.col-status {
+  white-space: nowrap;
+}
+
+.settings-users-table td.col-role .ui-badge {
+  display: inline-flex;
+  max-width: 100%;
+  height: auto;
+  min-height: 20px;
+  white-space: normal;
+  line-height: 1.25;
+  text-align: left;
+}
+
+.settings-users-table td.col-status .ui-badge {
+  display: inline-flex;
+  max-width: 100%;
 }
 
 @media (hover: none) {
