@@ -5,7 +5,10 @@ import {
   type SystemRoleSlug,
 } from "@/lib/permissions";
 import { isSuperAdmin } from "@/lib/rbac";
-import { resolveRoleUserName } from "@/lib/audit/role-users";
+import {
+  fetchQualityAnalystRoleUsers,
+  resolveRoleUserName,
+} from "@/lib/audit/role-users";
 import { fetchAgentRosterNames } from "@/lib/audit/agent-roster";
 import {
   isSupervisorTierRole,
@@ -76,14 +79,40 @@ function excludeSupervisorSubmitted(
 }
 
 /**
- * Hide Quality Manager–submitted audits from the audited agent
- * (same visibility rule as supervisor-submitted audits).
+ * Hide audits the Quality Manager themselves made.
+ * Keep rows attributed to a Quality Analyst (auditor name), including older
+ * QA logs that were saved under a QM submitter.
  */
-function excludeQualityManagerSubmitted(
+async function excludeQualityManagerSubmitted(
+  where: Prisma.AuditSubmissionWhereInput
+): Promise<Prisma.AuditSubmissionWhereInput> {
+  const qaUsers = await fetchQualityAnalystRoleUsers({ includeInactive: true });
+  const qaLabels = qaUsers.flatMap((user) =>
+    [user.profileName, user.name, user.email].filter(
+      (value): value is string => Boolean(value?.trim())
+    )
+  );
+  const qaAuditor = caseInsensitiveIn(qaLabels);
+
+  return {
+    AND: [
+      where,
+      {
+        OR: [
+          { NOT: qualityManagerSubmittedClause() },
+          ...(qaAuditor ? [{ auditor: qaAuditor }] : []),
+        ],
+      },
+    ],
+  };
+}
+
+/** Hide audits that have not been released from Pending feedback. */
+function excludePendingFeedback(
   where: Prisma.AuditSubmissionWhereInput
 ): Prisma.AuditSubmissionWhereInput {
   return {
-    AND: [where, { NOT: qualityManagerSubmittedClause() }],
+    AND: [where, { NOT: { feedbackStatus: "Pending" } }],
   };
 }
 
@@ -93,12 +122,14 @@ export async function buildAgentScopeWhere(
 ): Promise<Prisma.AuditSubmissionWhereInput> {
   const matchNames = await fetchAgentUserAuditMatchNames(userId);
   const agentFilter = caseInsensitiveIn(matchNames);
-  return excludeQualityManagerSubmitted(
-    excludeSupervisorSubmitted(
-      orClauses([
-        { submittedById: userId },
-        ...(agentFilter ? [{ agent: agentFilter }] : []),
-      ])
+  return excludePendingFeedback(
+    await excludeQualityManagerSubmitted(
+      excludeSupervisorSubmitted(
+        orClauses([
+          { submittedById: userId },
+          ...(agentFilter ? [{ agent: agentFilter }] : []),
+        ])
+      )
     )
   );
 }

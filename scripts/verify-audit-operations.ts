@@ -145,10 +145,14 @@ function verifyRoleAccessMatrix() {
       );
     }
 
-    if (canDelete && slug !== SYSTEM_ROLE_SLUGS.SUPERADMIN) {
+    if (
+      canDelete &&
+      slug !== SYSTEM_ROLE_SLUGS.SUPERADMIN &&
+      slug !== SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
+    ) {
       fail(
         `RBAC delete ${slug}`,
-        "canDeleteAuditLogs should be super-admin only"
+        "canDeleteAuditLogs should be Superadmin or Quality Manager only"
       );
     }
   }

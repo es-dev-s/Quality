@@ -11,6 +11,7 @@ import {
 } from "@/lib/auth-guards";
 import { PERMISSIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import {
+  canDeleteAuditLogs,
   canEditFeedbackFully,
   canEditSupervisorRemarks,
   canExportAuditData,
@@ -1154,7 +1155,7 @@ export async function updateSupervisorRemarks(
 
 export async function deleteAuditSubmissions(ids: string[]) {
   const session = await requireAuth();
-  if (!isSuperAdmin(session.user.role)) {
+  if (!canDeleteAuditLogs(session.user.role)) {
     return permissionError();
   }
 
@@ -1182,7 +1183,7 @@ export async function deleteAuditSubmissions(ids: string[]) {
 
   try {
     const result = await prisma.auditSubmission.deleteMany({
-      where: { id: { in: uniqueIds } },
+      where: await scopedAuditWhere(session, { id: { in: uniqueIds } }),
     });
 
     if (result.count === 0) {
