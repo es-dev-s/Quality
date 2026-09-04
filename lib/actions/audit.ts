@@ -1264,6 +1264,7 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
         hasFatal: s.hasFatal,
         fatalList: parseFatalList(s.fatalList),
         isHistory: s.isHistory,
+        auditSource: resolveAuditSourceKind(s.submittedBy.role?.slug),
       })),
       rosterAgentNames,
       fetchedAt: new Date().toISOString(),

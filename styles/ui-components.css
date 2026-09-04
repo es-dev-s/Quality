@@ -551,6 +551,39 @@
   cursor: not-allowed;
 }
 
+.password-field--in-input {
+  position: relative;
+  display: block;
+}
+
+.password-field--in-input .password-field__input {
+  width: 100%;
+  padding-right: 2.5rem;
+}
+
+.password-field--in-input .password-field__icon-btn {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+}
+
+.password-field--in-input .password-field__icon-btn:hover:not(:disabled) {
+  background: transparent;
+  color: var(--color-text-primary);
+}
+
+.password-field--in-input .password-field__icon-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
 .password-field__generate {
   white-space: nowrap;
 }

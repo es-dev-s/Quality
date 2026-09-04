@@ -46,7 +46,7 @@ import {
   filterByPeriod,
   filterByCustomRange,
   filterCurrentMonth,
-  filterRecordsByAuditor,
+  filterRecordsByAuditSource,
   hasActiveIncludeFilters,
   resolveTrendRangeBounds,
   type DashboardIncludeFilters,
@@ -60,6 +60,10 @@ import {
 } from "@/lib/audit/agent-filter-access";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
+import {
+  auditSourceFilterLabel,
+  type AuditSourceKind,
+} from "@/lib/audit/audit-source";
 
 type DashboardAnalyticsProps = {
   data: DashboardAuditData;
@@ -83,6 +87,34 @@ const TREND_OPTIONS: { id: TrendGranularity; label: string }[] = [
 ];
 
 const DEFAULT_AGENT_TARGET = 20;
+
+const AGENT_TARGET_SOURCE_OPTIONS: { value: AuditSourceKind | ""; label: string }[] = [
+  { value: "", label: auditSourceFilterLabel("all") },
+  { value: "supervisor", label: "Supervisor audits" },
+  { value: "qa", label: "QA audits" },
+];
+
+function agentTargetSourceCopy(source: AuditSourceKind | "") {
+  if (source === "supervisor") {
+    return {
+      desc: "Supervisor audits this month vs target per agent",
+      summary: "Supervisor audits this month",
+      empty: "No agents with supervisor audits this month yet.",
+    };
+  }
+  if (source === "qa") {
+    return {
+      desc: "QA audits this month vs target per agent",
+      summary: "QA audits this month",
+      empty: "No agents with QA audits this month yet.",
+    };
+  }
+  return {
+    desc: "Cumulative audits this month vs target per agent",
+    summary: "Cumulative this month",
+    empty: "No agents in audit history yet.",
+  };
+}
 
 function scoreTone(score: number): string {
   if (score >= 90) return "dash-kpi__value--success";
@@ -126,7 +158,9 @@ export function DashboardAnalytics({
     null
   );
   const [selectedFatal, setSelectedFatal] = useState<string | null>(null);
-  const [targetAuditor, setTargetAuditor] = useState("");
+  const [targetAuditSource, setTargetAuditSource] = useState<
+    AuditSourceKind | ""
+  >("");
   const [auditorTargetRange, setAuditorTargetRange] = useState<DateRangeValue>({
     from: "",
     to: "",
@@ -195,12 +229,12 @@ export function DashboardAnalytics({
   );
 
   const agentTargetRecords = useMemo(() => {
-    if (!showTargetPanelFilters || !targetAuditor) {
+    if (!showTargetPanelFilters || !targetAuditSource) {
       return { all: scopedRecords, month: monthRecords };
     }
-    const byAuditor = filterRecordsByAuditor(monthRecords, targetAuditor);
-    return { all: byAuditor, month: byAuditor };
-  }, [scopedRecords, monthRecords, showTargetPanelFilters, targetAuditor]);
+    const bySource = filterRecordsByAuditSource(monthRecords, targetAuditSource);
+    return { all: bySource, month: bySource };
+  }, [scopedRecords, monthRecords, showTargetPanelFilters, targetAuditSource]);
 
   const auditorTargetSource = useMemo(() => {
     if (
@@ -279,6 +313,9 @@ export function DashboardAnalytics({
     user.email,
   ]);
   const isQualityAnalyst = roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST;
+  const agentTargetCopy = agentTargetSourceCopy(
+    showTargetPanelFilters ? targetAuditSource : ""
+  );
 
   const topAgents = useMemo(() => computeTopAgents(filtered), [filtered]);
   const topFatals = useMemo(() => computeTopFatals(filtered), [filtered]);
@@ -755,28 +792,18 @@ export function DashboardAnalytics({
           <div className="dash-panel__head dash-panel__head--split">
             <div>
               <h2 className="dash-panel__title">Audit target — per agent</h2>
-              <p className="dash-panel__desc">
-                {showTargetPanelFilters && targetAuditor
-                  ? `Audits this month by ${targetAuditor} vs target per agent`
-                  : "Cumulative audits this month vs target per agent"}
-              </p>
+              <p className="dash-panel__desc">{agentTargetCopy.desc}</p>
             </div>
             <div className="dash-target-head-actions">
               {showTargetPanelFilters ? (
                 <div className="dash-target-auditor-filter">
                   <FilterSelect
-                    value={targetAuditor}
-                    onChange={setTargetAuditor}
-                    options={[
-                      { value: "", label: "All quality auditors" },
-                      ...filterOptions.auditors.map((auditor) => ({
-                        value: auditor,
-                        label: auditor,
-                      })),
-                    ]}
-                    searchable
-                    searchPlaceholder="Search quality auditors…"
-                    ariaLabel="Filter agent targets by quality auditor"
+                    value={targetAuditSource}
+                    onChange={(value) =>
+                      setTargetAuditSource(value as AuditSourceKind | "")
+                    }
+                    options={AGENT_TARGET_SOURCE_OPTIONS}
+                    ariaLabel="Filter agent targets by audit source"
                   />
                 </div>
               ) : null}
@@ -805,11 +832,7 @@ export function DashboardAnalytics({
           </div>
 
           <div className="dash-target-summary dash-target-summary--agent">
-            <span>
-              {showTargetPanelFilters && targetAuditor
-                ? `Audits this month by ${targetAuditor}`
-                : "Cumulative this month"}
-            </span>
+            <span>{agentTargetCopy.summary}</span>
             <strong>
               {agentTargets.cumulativeAchieved} / {agentTargets.cumulativeTarget}{" "}
               ({agentTargets.cumulativePct}%)
@@ -818,11 +841,7 @@ export function DashboardAnalytics({
 
           <div className="dash-target-list">
             {agentTargets.agents.length === 0 ? (
-              <p className="dash-empty">
-                {showTargetPanelFilters && targetAuditor
-                  ? "No agents audited by this quality auditor yet."
-                  : "No agents in audit history yet."}
-              </p>
+              <p className="dash-empty">{agentTargetCopy.empty}</p>
             ) : (
               agentTargets.agents.map((agent) => (
                 <div key={agent.name} className="dash-target-row">

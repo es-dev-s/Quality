@@ -3,6 +3,7 @@ import {
   qualityPctForAverage,
 } from "@/lib/audit/metrics-config";
 import { resolveMetricDate } from "@/lib/audit/metric-dates";
+import type { AuditSourceKind } from "@/lib/audit/audit-source";
 
 export type DashboardAuditRecord = {
   id: string;
@@ -20,6 +21,7 @@ export type DashboardAuditRecord = {
   hasFatal: boolean;
   fatalList: string[];
   isHistory?: boolean;
+  auditSource?: AuditSourceKind;
 };
 
 export type FatalOccurrenceRow = {
@@ -318,6 +320,14 @@ export function filterRecordsByAuditor(
 ): DashboardAuditRecord[] {
   if (!auditor) return records;
   return records.filter((record) => record.auditor === auditor);
+}
+
+export function filterRecordsByAuditSource(
+  records: DashboardAuditRecord[],
+  source: AuditSourceKind | ""
+): DashboardAuditRecord[] {
+  if (!source) return records;
+  return records.filter((record) => record.auditSource === source);
 }
 
 /** Filter by an explicit from/to date range (both YYYY-MM-DD, both optional). */
