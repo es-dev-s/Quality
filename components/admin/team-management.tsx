@@ -1085,7 +1085,7 @@ function AgentAssignmentPanel({
             toast(result.error, "error");
             return;
           }
-          toast("Agent assigned.", "success");
+          toast("Agent assigned. Previous QA access was removed.", "success");
           onChanged();
           setView("active");
         } catch {
@@ -1117,8 +1117,8 @@ function AgentAssignmentPanel({
         const skipped = result.skipped ?? 0;
         const message =
           skipped > 0
-            ? `${assigned} agent${assigned === 1 ? "" : "s"} assigned. ${skipped} skipped (already assigned or unavailable).`
-            : `${assigned} agent${assigned === 1 ? "" : "s"} assigned.`;
+            ? `${assigned} agent${assigned === 1 ? "" : "s"} assigned. ${skipped} already with this analyst.`
+            : `${assigned} agent${assigned === 1 ? "" : "s"} assigned. Previous QA access was removed.`;
 
         toast(message, "success");
         setSelectedAgentIds([]);

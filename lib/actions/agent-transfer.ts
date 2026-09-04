@@ -169,6 +169,25 @@ async function executeAgentTransfer(
 
   const agentNameFilter = caseInsensitiveIn([agentDisplayName]);
 
+  const fromSupervisor = await tx.user.findUnique({
+    where: { id: fromSupervisorId },
+    select: { teamName: true },
+  });
+  const previousTeamName = fromSupervisor?.teamName?.trim() || null;
+
+  if (previousTeamName) {
+    await tx.auditSubmission.updateMany({
+      where: {
+        isHistory: false,
+        teamNameSnapshot: null,
+        ...(agentNameFilter
+          ? { agent: agentNameFilter }
+          : { agent: agentDisplayName }),
+      },
+      data: { teamNameSnapshot: previousTeamName },
+    });
+  }
+
   const tagResult = await tx.auditSubmission.updateMany({
     where: {
       isHistory: false,

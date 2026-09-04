@@ -74,6 +74,7 @@ async function fetchAnalyticsRecords(
       reason: true,
       fatalList: true,
       isHistory: true,
+      teamNameSnapshot: true,
       rows: true,
       catScores: true,
     },
@@ -100,7 +101,11 @@ async function fetchAnalyticsRecords(
     fatalList: s.fatalList,
     isHistory: s.isHistory,
     teamName: resolveRecordTeamName(
-      { agent: s.agent, supervisor: s.supervisor },
+      {
+        agent: s.agent,
+        supervisor: s.supervisor,
+        teamNameSnapshot: s.teamNameSnapshot,
+      },
       teamByPerson
     ),
     rows: parseRows(s.rows),

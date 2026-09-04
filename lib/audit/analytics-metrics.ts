@@ -40,7 +40,7 @@ export type AnalyticsAuditRecord = {
   isHistory: boolean;
   reason?: string | null;
   fatalList?: unknown;
-  /** Live team from User.teamName (supervisor, then agent). Not the person name. */
+  /** Frozen snapshot first, then live User.teamName (supervisor, then agent). Not the person name. */
   teamName?: string | null;
   rows: AuditRow[];
   catScores: Record<string, CategoryScore>;

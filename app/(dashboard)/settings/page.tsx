@@ -21,6 +21,7 @@ import {
   canManageRoles,
   canManageSettings,
   canManageUsers,
+  canRevealUserPasswords,
   canViewUserConnections,
 } from "@/lib/rbac";
 type SettingsTab =
@@ -102,6 +103,8 @@ async function SettingsContent({
     const params = await searchParams;
     const session = await requirePageAccess("/settings");
     const manageUsers = canManageUsers(session.user.role);
+    const revealPasswords = canRevealUserPasswords(session.user.role);
+    const showUsersTab = manageUsers || revealPasswords;
     const manageRoles = canManageRoles(session.user.role);
     const showTeam = canAccessTeamManagement(session.user.role);
     const canTransferAgents = canManageManagedUsers(session.user.role);
@@ -112,7 +115,7 @@ async function SettingsContent({
       canManageInteraction,
       showTeam,
       showConnections,
-      manageUsers,
+      showUsersTab,
       manageRoles
     );
 
@@ -132,13 +135,13 @@ async function SettingsContent({
       initialTab === "agents"
         ? getAgentsForManagement()
         : Promise.resolve({ agents: [], canManage: false }),
-      initialTab === "users" && manageUsers
+      initialTab === "users" && showUsersTab
         ? getUsers()
         : Promise.resolve([]),
       initialTab === "roles" && manageRoles
         ? getRoles()
         : Promise.resolve([]),
-      initialTab === "users" && manageUsers
+      initialTab === "users" && showUsersTab
         ? getRolesForSelect()
         : Promise.resolve([]),
       initialTab === "team" && showTeam
@@ -165,6 +168,7 @@ async function SettingsContent({
       <SettingsManagement
         initialTab={initialTab}
         canManageUsers={manageUsers}
+        canRevealPasswords={revealPasswords}
         canManageRoles={manageRoles}
         canAccessTeam={showTeam}
         teamData={teamData}

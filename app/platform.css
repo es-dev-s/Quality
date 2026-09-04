@@ -4063,6 +4063,31 @@
   font-weight: 700;
 }
 
+.kpi-scoreboard__target {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kpi-scoreboard__target input {
+  width: 4.25rem;
+  padding: 2px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+  color: var(--color-fg);
+  font: inherit;
+  font-weight: 700;
+  text-align: right;
+}
+
+.kpi-scoreboard__target input:disabled,
+.kpi-scoreboard__target input:read-only {
+  border-color: transparent;
+  background: transparent;
+  cursor: default;
+}
+
 .kpi-scoreboard__cards {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

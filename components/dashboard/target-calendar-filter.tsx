@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Calendar, ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { DateRangeValue } from "@/components/primitives/date-range-picker";
+import { Z_INDEX } from "@/lib/ui/z-index";
 import { cn } from "@/lib/utils";
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const CALENDAR_WIDTH = 288;
 
 type TargetCalendarFilterProps = {
   value: DateRangeValue;
@@ -13,6 +16,7 @@ type TargetCalendarFilterProps = {
   monthlyTarget: number;
   onMonthlyTargetChange: (value: number) => void;
   canEditMonthlyTarget: boolean;
+  showMonthlyTarget?: boolean;
 };
 
 function pad(n: number) {
@@ -46,12 +50,8 @@ function formatShort(value: string) {
   });
 }
 
-function rangeText(from: string, to: string) {
-  if (!from && !to) return "";
-  if (from && to && from !== to) {
-    return `${formatShort(from)} – ${formatShort(to)}`;
-  }
-  return formatShort(from || to);
+function orderedRange(a: string, b: string) {
+  return a <= b ? { from: a, to: b } : { from: b, to: a };
 }
 
 export function TargetCalendarFilter({
@@ -60,38 +60,78 @@ export function TargetCalendarFilter({
   monthlyTarget,
   onMonthlyTargetChange,
   canEditMonthlyTarget,
+  showMonthlyTarget = true,
 }: TargetCalendarFilterProps) {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [hoverIso, setHoverIso] = useState<string | null>(null);
+  const [anchorIso, setAnchorIso] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
+    null
+  );
   const [view, setView] = useState(() => {
     const start = parseIso(value.from) ?? new Date();
     return { year: start.getFullYear(), month: start.getMonth() };
   });
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
   const active = Boolean(value.from || value.to);
-  const pickingEnd = Boolean(value.from && value.to && value.from === value.to);
+  const pickingEnd = Boolean(anchorIso);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  function positionMenu() {
+    const trigger = rootRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const left = Math.min(
+      Math.max(8, rect.right - CALENDAR_WIDTH),
+      window.innerWidth - CALENDAR_WIDTH - 8
+    );
+    setMenuPos({ top: rect.bottom + 8, left });
+  }
 
   useEffect(() => {
     if (!open) return;
-    const start = parseIso(value.from) ?? new Date();
+    const start = parseIso(anchorIso || value.from) ?? new Date();
     setView({ year: start.getFullYear(), month: start.getMonth() });
     setHoverIso(null);
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps -- only snap month when opening
+    positionMenu();
+
+    function onScrollOrResize() {
+      positionMenu();
+    }
+
+    window.addEventListener("resize", onScrollOrResize);
+    document.addEventListener("scroll", onScrollOrResize, true);
+    return () => {
+      window.removeEventListener("resize", onScrollOrResize);
+      document.removeEventListener("scroll", onScrollOrResize, true);
+    };
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps -- snap month only when opening
 
   useEffect(() => {
     if (!open) return;
 
     function onMouseDown(event: MouseEvent) {
       const target = event.target as Node;
-      if (rootRef.current?.contains(target)) return;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) {
+        return;
+      }
       setOpen(false);
+      setAnchorIso(null);
+      setHoverIso(null);
     }
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.stopPropagation();
         setOpen(false);
+        setAnchorIso(null);
+        setHoverIso(null);
       }
     }
 
@@ -104,13 +144,15 @@ export function TargetCalendarFilter({
   }, [open]);
 
   const preview = useMemo(() => {
-    if (pickingEnd && hoverIso) {
-      return hoverIso < value.from
-        ? { from: hoverIso, to: value.from }
-        : { from: value.from, to: hoverIso };
+    if (anchorIso) {
+      const end = hoverIso || anchorIso;
+      return orderedRange(anchorIso, end);
     }
     return { from: value.from, to: value.to || value.from };
-  }, [pickingEnd, hoverIso, value.from, value.to]);
+  }, [anchorIso, hoverIso, value.from, value.to]);
+
+  const displayFrom = preview.from;
+  const displayTo = preview.to;
 
   const cells = useMemo(() => {
     const first = new Date(view.year, view.month, 1);
@@ -151,7 +193,7 @@ export function TargetCalendarFilter({
     for (let day = 1; day <= daysInMonth; day++) {
       const iso = toIso(view.year, view.month, day);
       const isStart = Boolean(from && iso === from);
-      const isEnd = Boolean(from && to && iso === to);
+      const isEnd = Boolean(to && iso === to);
       const inRange = Boolean(from && to && iso >= from && iso <= to);
       items.push({
         key: iso,
@@ -162,7 +204,7 @@ export function TargetCalendarFilter({
         isStart,
         isEnd,
         inRange,
-        isPreview: Boolean(pickingEnd && hoverIso && inRange),
+        isPreview: Boolean(pickingEnd && inRange),
       });
     }
 
@@ -179,27 +221,17 @@ export function TargetCalendarFilter({
     }
 
     return items;
-  }, [view.year, view.month, preview.from, preview.to, pickingEnd, hoverIso]);
+  }, [view.year, view.month, preview.from, preview.to, pickingEnd]);
 
   function pickDay(iso: string) {
-    const hasCompleteRange = Boolean(
-      value.from && value.to && value.from !== value.to
-    );
-    if (!value.from || hasCompleteRange) {
-      onChange({ from: iso, to: iso });
-      setHoverIso(null);
+    if (!anchorIso) {
+      setAnchorIso(iso);
+      setHoverIso(iso);
       return;
     }
-    if (iso === value.from) {
-      onChange({ from: iso, to: iso });
-      setHoverIso(null);
-      return;
-    }
-    if (iso < value.from) {
-      onChange({ from: iso, to: value.from });
-    } else {
-      onChange({ from: value.from, to: iso });
-    }
+    const next = orderedRange(anchorIso, iso);
+    onChange(next);
+    setAnchorIso(null);
     setHoverIso(null);
   }
 
@@ -208,138 +240,200 @@ export function TargetCalendarFilter({
     setView({ year: next.getFullYear(), month: next.getMonth() });
   }
 
-  const selectedLabel = rangeText(value.from, value.to);
-  const hoverLabel =
-    pickingEnd && hoverIso ? rangeText(preview.from, preview.to) : "";
+  function toggleOpen() {
+    setOpen((current) => {
+      const next = !current;
+      if (!next) {
+        setAnchorIso(null);
+        setHoverIso(null);
+      }
+      return next;
+    });
+  }
 
-  return (
-    <div ref={rootRef} className="dash-target-cal">
-      <div className="dash-target-cal__tools">
-        {selectedLabel ? (
-          <span className="dash-target-cal__range">{selectedLabel}</span>
-        ) : null}
+  const prompt = pickingEnd
+    ? "Select end date"
+    : displayFrom
+      ? `${formatShort(displayFrom)}${
+          displayTo && displayTo !== displayFrom
+            ? ` – ${formatShort(displayTo)}`
+            : ""
+        }`
+      : "Select start date";
+
+  const calendar = open && menuPos ? (
+    <div
+      ref={menuRef}
+      id={menuId}
+      className="dash-mini-cal dash-mini-cal--portal"
+      role="dialog"
+      aria-label="Choose date range"
+      style={{
+        top: menuPos.top,
+        left: menuPos.left,
+        zIndex: Z_INDEX.dropdownPortal,
+      }}
+    >
+      <div className="dash-mini-cal__top">
+        <span className="dash-mini-cal__selected">{prompt}</span>
         <button
           type="button"
           className={cn(
-            "dash-target-cal__btn",
-            active && "dash-target-cal__btn--active",
-            open && "dash-target-cal__btn--open"
+            "dash-mini-cal__clear",
+            !active && !pickingEnd && "dash-mini-cal__clear--hidden"
           )}
-          aria-label="Filter auditor targets by date"
-          aria-expanded={open}
-          aria-controls={menuId}
-          title={selectedLabel || "Filter by date"}
-          onClick={() => setOpen((current) => !current)}
+          tabIndex={active || pickingEnd ? 0 : -1}
+          onClick={() => {
+            onChange({ from: "", to: "" });
+            setAnchorIso(null);
+            setHoverIso(null);
+          }}
         >
-          <Calendar size={16} aria-hidden />
+          <X size={12} aria-hidden />
+          Clear
         </button>
       </div>
-      {open ? (
-        <div
-          id={menuId}
-          className="dash-mini-cal"
-          role="dialog"
-          aria-label="Choose dates"
+      <div className="dash-mini-cal__nav">
+        <button
+          type="button"
+          className="dash-mini-cal__nav-btn"
+          aria-label="Previous month"
+          onClick={() => shiftMonth(-1)}
         >
-          <div className="dash-mini-cal__top">
-            <span className="dash-mini-cal__selected">
-              {hoverLabel || selectedLabel || "Pick a date"}
-            </span>
+          <ChevronLeft size={16} />
+        </button>
+        <p className="dash-mini-cal__month">
+          {monthLabel(view.year, view.month)}
+        </p>
+        <button
+          type="button"
+          className="dash-mini-cal__nav-btn"
+          aria-label="Next month"
+          onClick={() => shiftMonth(1)}
+        >
+          <ChevronRight size={16} />
+        </button>
+      </div>
+      <div className="dash-mini-cal__week" aria-hidden>
+        {WEEKDAYS.map((day) => (
+          <span key={day}>{day}</span>
+        ))}
+      </div>
+      <div
+        className="dash-mini-cal__grid"
+        onMouseLeave={() => pickingEnd && setHoverIso(anchorIso)}
+      >
+        {cells.map((cell) =>
+          cell.inMonth && cell.iso ? (
             <button
+              key={cell.key}
               type="button"
               className={cn(
-                "dash-mini-cal__clear",
-                !active && "dash-mini-cal__clear--hidden"
+                "dash-mini-cal__day",
+                cell.isToday && "dash-mini-cal__day--today",
+                cell.inRange && "dash-mini-cal__day--range",
+                cell.isPreview && "dash-mini-cal__day--preview",
+                cell.isStart && "dash-mini-cal__day--start",
+                cell.isEnd && "dash-mini-cal__day--end"
               )}
-              tabIndex={active ? 0 : -1}
-              onClick={() => {
-                onChange({ from: "", to: "" });
-                setHoverIso(null);
-              }}
+              onMouseEnter={() => pickingEnd && setHoverIso(cell.iso!)}
+              onClick={() => pickDay(cell.iso!)}
             >
-              <X size={12} aria-hidden />
-              Clear
+              {cell.day}
             </button>
-          </div>
-          <div className="dash-mini-cal__nav">
-            <button
-              type="button"
-              className="dash-mini-cal__nav-btn"
-              aria-label="Previous month"
-              onClick={() => shiftMonth(-1)}
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <p className="dash-mini-cal__month">
-              {monthLabel(view.year, view.month)}
-            </p>
-            <button
-              type="button"
-              className="dash-mini-cal__nav-btn"
-              aria-label="Next month"
-              onClick={() => shiftMonth(1)}
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-          <div className="dash-mini-cal__week" aria-hidden>
-            {WEEKDAYS.map((day) => (
-              <span key={day}>{day}</span>
-            ))}
-          </div>
-          <div
-            className="dash-mini-cal__grid"
-            onMouseLeave={() => setHoverIso(null)}
-          >
-            {cells.map((cell) =>
-              cell.inMonth && cell.iso ? (
-                <button
-                  key={cell.key}
-                  type="button"
-                  className={cn(
-                    "dash-mini-cal__day",
-                    cell.isToday && "dash-mini-cal__day--today",
-                    cell.inRange && "dash-mini-cal__day--range",
-                    cell.isPreview && "dash-mini-cal__day--preview",
-                    cell.isStart && "dash-mini-cal__day--start",
-                    cell.isEnd && "dash-mini-cal__day--end"
-                  )}
-                  onMouseEnter={() => pickingEnd && setHoverIso(cell.iso!)}
-                  onClick={() => pickDay(cell.iso!)}
-                >
-                  {cell.day}
-                </button>
-              ) : (
-                <span
-                  key={cell.key}
-                  className="dash-mini-cal__day dash-mini-cal__day--empty"
-                />
-              )
-            )}
-          </div>
-          <label className="dash-mini-cal__target">
-            <span>Total monthly target</span>
-            <input
-              type="number"
-              min={1}
-              max={99999}
-              value={monthlyTarget}
-              disabled={!canEditMonthlyTarget}
-              readOnly={!canEditMonthlyTarget}
-              title={
-                canEditMonthlyTarget
-                  ? "Set total monthly audit target for auditors"
-                  : "Only Quality Manager and Superadmin can change this"
-              }
-              aria-label="Total monthly audit target for auditors"
-              onChange={(e) => {
-                if (!canEditMonthlyTarget) return;
-                onMonthlyTargetChange(Math.max(1, Number(e.target.value) || 1));
-              }}
+          ) : (
+            <span
+              key={cell.key}
+              className="dash-mini-cal__day dash-mini-cal__day--empty"
             />
-          </label>
-        </div>
+          )
+        )}
+      </div>
+      {showMonthlyTarget ? (
+        <label className="dash-mini-cal__target">
+          <span>Total monthly target</span>
+          <input
+            type="number"
+            min={1}
+            max={99999}
+            value={monthlyTarget}
+            disabled={!canEditMonthlyTarget}
+            readOnly={!canEditMonthlyTarget}
+            title={
+              canEditMonthlyTarget
+                ? "Set total monthly audit target for auditors"
+                : "Only Quality Manager and Superadmin can change this"
+            }
+            aria-label="Total monthly audit target for auditors"
+            onChange={(e) => {
+              if (!canEditMonthlyTarget) return;
+              onMonthlyTargetChange(Math.max(1, Number(e.target.value) || 1));
+            }}
+          />
+        </label>
       ) : null}
+    </div>
+  ) : null;
+
+  return (
+    <div ref={rootRef} className="dash-target-cal">
+      <button
+        type="button"
+        className={cn(
+          "dash-target-cal__dates",
+          (active || pickingEnd) && "dash-target-cal__dates--active"
+        )}
+        aria-label="Filter auditor targets by date range"
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={toggleOpen}
+      >
+        <span
+          className={cn(
+            "dash-target-cal__date",
+            !displayFrom && "dash-target-cal__date--empty"
+          )}
+        >
+          <em>From</em>
+          <strong>{displayFrom ? formatShort(displayFrom) : "Select"}</strong>
+        </span>
+        <span className="dash-target-cal__sep" aria-hidden>
+          →
+        </span>
+        <span
+          className={cn(
+            "dash-target-cal__date",
+            (!displayTo ||
+              (pickingEnd && (!hoverIso || hoverIso === anchorIso))) &&
+              "dash-target-cal__date--empty"
+          )}
+        >
+          <em>To</em>
+          <strong>
+            {pickingEnd && (!hoverIso || hoverIso === anchorIso)
+              ? "Select"
+              : displayTo
+                ? formatShort(displayTo)
+                : "Select"}
+          </strong>
+        </span>
+      </button>
+      <button
+        type="button"
+        className={cn(
+          "dash-target-cal__btn",
+          active && "dash-target-cal__btn--active",
+          open && "dash-target-cal__btn--open"
+        )}
+        aria-label="Open date calendar"
+        aria-expanded={open}
+        aria-controls={menuId}
+        title="Filter by date"
+        onClick={toggleOpen}
+      >
+        <Calendar size={16} aria-hidden />
+      </button>
+      {mounted && calendar ? createPortal(calendar, document.body) : null}
     </div>
   );
 }

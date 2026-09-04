@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Award, RefreshCw } from "lucide-react";
 import { FilterChipBar } from "@/components/filters/filter-chip-bar";
@@ -61,6 +61,12 @@ import {
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
 import { type AuditSourceKind } from "@/lib/audit/audit-source";
+import {
+  setAuditTargetPerAgent,
+  setAuditTargetTotalMonthly,
+} from "@/lib/actions/audit-targets";
+import { useToast } from "@/components/primitives/toast";
+import { KPI_DEFAULT_AGENT_TARGET } from "@/lib/kpi/records";
 
 type DashboardAnalyticsProps = {
   data: DashboardAuditData;
@@ -83,7 +89,7 @@ const TREND_OPTIONS: { id: TrendGranularity; label: string }[] = [
   { id: "month", label: "Month by month" },
 ];
 
-const DEFAULT_AGENT_TARGET = 20;
+const DEFAULT_AGENT_TARGET = KPI_DEFAULT_AGENT_TARGET;
 
 const AGENT_TARGET_SOURCE_OPTIONS: { value: AuditSourceKind | ""; label: string }[] = [
   { value: "", label: "Audit source" },
@@ -140,6 +146,7 @@ export function DashboardAnalytics({
 }: DashboardAnalyticsProps) {
   const { user } = useDashboardShell();
   const router = useRouter();
+  const { toast } = useToast();
   const [isRefreshing, startRefresh] = useTransition();
   const [period, setPeriod] = useState<DashboardPeriod>("overall");
   const [customRange, setCustomRange] = useState<DateRangeValue>({ from: "", to: "" });
@@ -150,10 +157,14 @@ export function DashboardAnalytics({
   const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
     defaultAuditHistoryFilter(data.records ?? [])
   );
-  const [agentTarget, setAgentTarget] = useState(DEFAULT_AGENT_TARGET);
-  const [totalMonthlyTarget, setTotalMonthlyTarget] = useState<number | null>(
-    null
+  const [agentTarget, setAgentTarget] = useState(
+    data.agentTarget ?? DEFAULT_AGENT_TARGET
   );
+  const [totalMonthlyTarget, setTotalMonthlyTarget] = useState<number | null>(
+    data.totalMonthlyTarget ?? null
+  );
+  const agentTargetSaveSeq = useRef(0);
+  const totalTargetSaveSeq = useRef(0);
   const [selectedFatal, setSelectedFatal] = useState<string | null>(null);
   const [targetAuditSource, setTargetAuditSource] = useState<
     AuditSourceKind | ""
@@ -166,7 +177,6 @@ export function DashboardAnalytics({
   const canEditAuditTargets =
     roleSlug === SYSTEM_ROLE_SLUGS.SUPERADMIN ||
     roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER;
-  const showTargetPanelFilters = canEditAuditTargets;
 
   const records = data.records ?? [];
   const referenceNow = useMemo(
@@ -234,10 +244,7 @@ export function DashboardAnalytics({
   }, [scopedRecords, monthRecords, targetAuditSource]);
 
   const auditorTargetSource = useMemo(() => {
-    if (
-      showTargetPanelFilters &&
-      (auditorTargetRange.from || auditorTargetRange.to)
-    ) {
+    if (auditorTargetRange.from || auditorTargetRange.to) {
       const ranged = filterByCustomRange(
         scopedRecords,
         auditorTargetRange.from,
@@ -249,7 +256,6 @@ export function DashboardAnalytics({
   }, [
     scopedRecords,
     monthRecords,
-    showTargetPanelFilters,
     auditorTargetRange.from,
     auditorTargetRange.to,
   ]);
@@ -339,6 +345,42 @@ export function DashboardAnalytics({
     startRefresh(() => {
       router.refresh();
     });
+  }
+
+  function persistAgentTarget(raw: number) {
+    const next = Math.max(1, Math.min(999, Math.round(raw) || 1));
+    setAgentTarget(next);
+    if (!canEditAuditTargets) return;
+    const seq = ++agentTargetSaveSeq.current;
+    void (async () => {
+      const result = await setAuditTargetPerAgent(next);
+      if (seq !== agentTargetSaveSeq.current) return;
+      if ("error" in result && result.error) {
+        toast(result.error, "error");
+        return;
+      }
+      if ("success" in result && result.success) {
+        setAgentTarget(result.perAgent);
+      }
+    })();
+  }
+
+  function persistTotalMonthlyTarget(raw: number) {
+    const next = Math.max(1, Math.min(99_999, Math.round(raw) || 1));
+    setTotalMonthlyTarget(next);
+    if (!canEditAuditTargets) return;
+    const seq = ++totalTargetSaveSeq.current;
+    void (async () => {
+      const result = await setAuditTargetTotalMonthly(next);
+      if (seq !== totalTargetSaveSeq.current) return;
+      if ("error" in result && result.error) {
+        toast(result.error, "error");
+        return;
+      }
+      if ("success" in result && result.success) {
+        setTotalMonthlyTarget(result.totalMonthly);
+      }
+    })();
   }
 
   function updateFilter<K extends keyof DashboardIncludeFilters>(
@@ -819,6 +861,10 @@ export function DashboardAnalytics({
                   if (!canEditAuditTargets) return;
                   setAgentTarget(Math.max(1, Number(e.target.value) || 1));
                 }}
+                onBlur={() => {
+                  if (!canEditAuditTargets) return;
+                  persistAgentTarget(agentTarget);
+                }}
               />
             </label>
             </div>
@@ -864,25 +910,25 @@ export function DashboardAnalytics({
             <div>
               <h2 className="dash-panel__title">Audit target — per auditor</h2>
               <p className="dash-panel__desc">
-                {isQualityAnalyst
-                  ? "Your audits this month vs your monthly target"
-                  : showTargetPanelFilters &&
-                      (auditorTargetRange.from || auditorTargetRange.to)
-                    ? "Audits in the selected dates vs allocated target"
+                {auditorTargetRange.from || auditorTargetRange.to
+                  ? isQualityAnalyst
+                    ? "Your audits in the selected dates vs your monthly target"
+                    : "Audits in the selected dates vs allocated target"
+                  : isQualityAnalyst
+                    ? "Your audits this month vs your monthly target"
                     : "Total target ÷ active auditors = per-auditor allocation"}
               </p>
             </div>
             <div className="dash-target-head-actions">
-              {showTargetPanelFilters ? (
-                <TargetCalendarFilter
-                  value={auditorTargetRange}
-                  onChange={setAuditorTargetRange}
-                  monthlyTarget={resolvedMonthlyTarget}
-                  canEditMonthlyTarget={canEditAuditTargets}
-                  onMonthlyTargetChange={setTotalMonthlyTarget}
-                />
-              ) : null}
-              {showTargetPanelFilters ? null : (
+              <TargetCalendarFilter
+                value={auditorTargetRange}
+                onChange={setAuditorTargetRange}
+                monthlyTarget={resolvedMonthlyTarget}
+                canEditMonthlyTarget={canEditAuditTargets}
+                showMonthlyTarget={canEditAuditTargets}
+                onMonthlyTargetChange={setTotalMonthlyTarget}
+              />
+              {canEditAuditTargets ? null : (
                 <label className="dash-target-input">
                   <span>Total monthly target:</span>
                   <input
@@ -922,8 +968,7 @@ export function DashboardAnalytics({
           <div className="dash-target-list">
             {auditorTargets.auditors.length === 0 ? (
               <p className="dash-empty">
-                {showTargetPanelFilters &&
-                (auditorTargetRange.from || auditorTargetRange.to)
+                {auditorTargetRange.from || auditorTargetRange.to
                   ? "No auditors in the selected dates."
                   : "No auditors in audit history yet."}
               </p>

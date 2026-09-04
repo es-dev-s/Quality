@@ -116,4 +116,6 @@ export type DashboardAuditData = {
   rosterAgentNames: string[];
   fetchedAt: string;
   dbError: string | null;
+  agentTarget: number;
+  totalMonthlyTarget: number | null;
 };

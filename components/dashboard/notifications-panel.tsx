@@ -26,6 +26,7 @@ import {
   NOTIFICATION_RETENTION_DAYS,
 } from "@/lib/notifications/retention";
 import type { NotificationItem } from "@/lib/notifications/types";
+import { NOTIFICATION_TYPES } from "@/lib/notifications/constants";
 import { useRealtime } from "@/lib/hooks/use-realtime";
 import { isNotificationSSEEvent } from "@/lib/sse-events";
 import { cn } from "@/lib/utils";
@@ -161,6 +162,22 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   );
 }
 
+function notificationTag(type: string): { label: string; className: string } | null {
+  if (type === NOTIFICATION_TYPES.FATAL_AUDIT) {
+    return {
+      label: "FATAL",
+      className: "notification-bell__tag notification-bell__tag--fatal",
+    };
+  }
+  if (type === NOTIFICATION_TYPES.DISPUTE_RAISED) {
+    return {
+      label: "DISPUTE RAISED",
+      className: "notification-bell__tag notification-bell__tag--dispute",
+    };
+  }
+  return null;
+}
+
 function formatWhen(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -261,29 +278,40 @@ export function NotificationBell({
                 days.
               </p>
             ) : (
-              visibleItems.map((item) =>
-                item.auditId ? (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={cn(
-                      "notification-bell__item",
-                      !item.readAt && "notification-bell__item--unread"
-                    )}
-                    role="menuitem"
-                    onClick={() => openNotification(item)}
-                  >
-                    <span className="notification-bell__item-title">
-                      {item.title}
-                    </span>
-                    <span className="notification-bell__item-body">
-                      {item.body}
-                    </span>
-                    <span className="notification-bell__item-time">
-                      {formatWhen(item.createdAt)}
-                    </span>
-                  </button>
-                ) : (
+              visibleItems.map((item) => {
+                const tag = notificationTag(item.type);
+
+                // If this notification is associated with an auditId, show as a button to open a modal.
+                if (item.auditId) {
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={cn(
+                        "notification-bell__item",
+                        !item.readAt && "notification-bell__item--unread"
+                      )}
+                      role="menuitem"
+                      onClick={() => openNotification(item)}
+                    >
+                      <span className="notification-bell__item-title">
+                        {tag ? (
+                          <span className={tag.className}>{tag.label}</span>
+                        ) : null}
+                        {item.title}
+                      </span>
+                      <span className="notification-bell__item-body">
+                        {item.body}
+                      </span>
+                      <span className="notification-bell__item-time">
+                        {formatWhen(item.createdAt)}
+                      </span>
+                    </button>
+                  );
+                }
+
+                // Otherwise, render a navigational link and mark as read when opened
+                return (
                   <Link
                     key={item.id}
                     href={item.href}
@@ -292,20 +320,26 @@ export function NotificationBell({
                       !item.readAt && "notification-bell__item--unread"
                     )}
                     role="menuitem"
-                    onClick={() => openNotification(item)}
+                    onClick={() => {
+                      if (!item.readAt) {
+                        void markRead(item.id);
+                      }
+                      setOpen(false);
+                    }}
                   >
                     <span className="notification-bell__item-title">
+                      {tag ? (
+                        <span className={tag.className}>{tag.label}</span>
+                      ) : null}
                       {item.title}
                     </span>
-                    <span className="notification-bell__item-body">
-                      {item.body}
-                    </span>
+                    <span className="notification-bell__item-body">{item.body}</span>
                     <span className="notification-bell__item-time">
                       {formatWhen(item.createdAt)}
                     </span>
                   </Link>
-                )
-              )
+                );
+              })
             )}
           </div>
         </div>
