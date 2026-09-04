@@ -53,9 +53,16 @@ type UsersTableProps = {
   users: User[];
   roles: Role[];
   embedded?: boolean;
+  /** Reveal passwords only — hide create, edit, activate, and delete. */
+  passwordAccessOnly?: boolean;
 };
 
-export function UsersTable({ users, roles, embedded = false }: UsersTableProps) {
+export function UsersTable({
+  users,
+  roles,
+  embedded = false,
+  passwordAccessOnly = false,
+}: UsersTableProps) {
   const router = useRouter();
   const { toast, toastPasswordReveal } = useToast();
   const { busy: pending, run: runBusy } = useBusyAction();
@@ -173,7 +180,7 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
     });
   }
 
-  const tableHeaderActions = (
+  const tableHeaderActions = passwordAccessOnly ? undefined : (
     <Button size="sm" onClick={openCreateDialog}>
       <Plus size={16} />
       Add User
@@ -182,13 +189,17 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
 
   const emptyState =
     users.length === 0 ? (
-      <>
-        <p>No users yet. Create your first platform user to get started.</p>
-        <Button onClick={openCreateDialog}>
-          <Plus size={16} />
-          Add User
-        </Button>
-      </>
+      passwordAccessOnly ? (
+        <p>No users to show.</p>
+      ) : (
+        <>
+          <p>No users yet. Create your first platform user to get started.</p>
+          <Button onClick={openCreateDialog}>
+            <Plus size={16} />
+            Add User
+          </Button>
+        </>
+      )
     ) : (
       <p>No users match your search or filters. Try adjusting them.</p>
     );
@@ -200,20 +211,24 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
           <div>
             <h2 className="admin-section-head__title">All Users</h2>
           </div>
-          <Button onClick={openCreateDialog}>
-            <Plus size={16} />
-            Add User
-          </Button>
+          {passwordAccessOnly ? null : (
+            <Button onClick={openCreateDialog}>
+              <Plus size={16} />
+              Add User
+            </Button>
+          )}
         </div>
       )}
 
       <div className={embedded ? "settings-tab-layout__body" : undefined}>
-        <BulkActionBar
-          selectedCount={selectedCount}
-          onClear={clearSelection}
-          onDelete={() => setBulkDeleteOpen(true)}
-          isPending={pending}
-        />
+        {passwordAccessOnly ? null : (
+          <BulkActionBar
+            selectedCount={selectedCount}
+            onClear={clearSelection}
+            onDelete={() => setBulkDeleteOpen(true)}
+            isPending={pending}
+          />
+        )}
 
         <div className={embedded ? "loading-zone--fill" : undefined}>
           <DataTablePanel
@@ -240,18 +255,20 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
               <table className="ui-table ui-table--selectable platform-report-table settings-table settings-users-table">
                 <thead>
                   <tr>
-                    <th className="ui-table__check-col">
-                      <input
-                        type="checkbox"
-                        aria-label="Select all users on this page"
-                        checked={allVisibleSelected}
-                        ref={(el) => {
-                          if (el) el.indeterminate = someVisibleSelected;
-                        }}
-                        disabled={pending || slice.length === 0}
-                        onChange={toggleAllVisible}
-                      />
-                    </th>
+                    {passwordAccessOnly ? null : (
+                      <th className="ui-table__check-col">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all users on this page"
+                          checked={allVisibleSelected}
+                          ref={(el) => {
+                            if (el) el.indeterminate = someVisibleSelected;
+                          }}
+                          disabled={pending || slice.length === 0}
+                          onChange={toggleAllVisible}
+                        />
+                      </th>
+                    )}
                     <th className="col-name">User name</th>
                     <th className="col-email">Email</th>
                     <th className="col-team">Team</th>
@@ -264,15 +281,17 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                 <tbody>
                   {slice.map((user) => (
                     <tr key={user.id} className="settings-table__row">
-                      <td className="ui-table__check-col">
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${user.email}`}
-                          checked={isSelected(user.id)}
-                          disabled={pending}
-                          onChange={() => toggleOne(user.id)}
-                        />
-                      </td>
+                      {passwordAccessOnly ? null : (
+                        <td className="ui-table__check-col">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${user.email}`}
+                            checked={isSelected(user.id)}
+                            disabled={pending}
+                            onChange={() => toggleOne(user.id)}
+                          />
+                        </td>
+                      )}
                       <td className="col-name">
                         <div className="user-cell">
                           <span className="user-cell__avatar">
@@ -303,31 +322,33 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                         {formatRelativeTime(new Date(user.createdAt))}
                       </td>
                       <TableRowActionsCell ariaLabel={`Actions for ${user.email}`}>
-                        <TableRowAction
-                          disabled={pending}
-                          onClick={() => {
-                            void runBusy(async () => {
-                              const result = await setUserActive(
-                                user.id,
-                                user.isActive === false
-                              );
-                              if ("error" in result && result.error) {
-                                toast(result.error, "error");
-                                return;
-                              }
-                              toast(
-                                user.isActive === false
-                                  ? "User activated."
-                                  : "User deactivated.",
-                                "success"
-                              );
-                              router.refresh();
-                            });
-                          }}
-                        >
-                          <Power size={14} aria-hidden />
-                          {user.isActive === false ? "Activate" : "Deactivate"}
-                        </TableRowAction>
+                        {passwordAccessOnly ? null : (
+                          <TableRowAction
+                            disabled={pending}
+                            onClick={() => {
+                              void runBusy(async () => {
+                                const result = await setUserActive(
+                                  user.id,
+                                  user.isActive === false
+                                );
+                                if ("error" in result && result.error) {
+                                  toast(result.error, "error");
+                                  return;
+                                }
+                                toast(
+                                  user.isActive === false
+                                    ? "User activated."
+                                    : "User deactivated.",
+                                  "success"
+                                );
+                                router.refresh();
+                              });
+                            }}
+                          >
+                            <Power size={14} aria-hidden />
+                            {user.isActive === false ? "Activate" : "Deactivate"}
+                          </TableRowAction>
+                        )}
                         <TableRowAction
                           disabled={pending}
                           onClick={() => {
@@ -348,23 +369,27 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
                           <KeyRound size={14} aria-hidden />
                           Password
                         </TableRowAction>
-                        <TableRowAction
-                          onClick={() => {
-                            setEditingUser(user);
-                            setDialogOpen(true);
-                          }}
-                        >
-                          <Pencil size={14} aria-hidden />
-                          Edit
-                        </TableRowAction>
-                        <TableRowAction
-                          variant="danger"
-                          disabled={pending}
-                          onClick={() => setDeleteTarget(user)}
-                        >
-                          <Trash2 size={14} aria-hidden />
-                          Delete
-                        </TableRowAction>
+                        {passwordAccessOnly ? null : (
+                          <>
+                            <TableRowAction
+                              onClick={() => {
+                                setEditingUser(user);
+                                setDialogOpen(true);
+                              }}
+                            >
+                              <Pencil size={14} aria-hidden />
+                              Edit
+                            </TableRowAction>
+                            <TableRowAction
+                              variant="danger"
+                              disabled={pending}
+                              onClick={() => setDeleteTarget(user)}
+                            >
+                              <Trash2 size={14} aria-hidden />
+                              Delete
+                            </TableRowAction>
+                          </>
+                        )}
                       </TableRowActionsCell>
                     </tr>
                   ))}
@@ -404,12 +429,14 @@ export function UsersTable({ users, roles, embedded = false }: UsersTableProps) 
         </FilterSidebarSection>
       </FilterSidebar>
 
-      <UserFormDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        user={editingUser}
-        roles={roles}
-      />
+      {passwordAccessOnly ? null : (
+        <UserFormDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          user={editingUser}
+          roles={roles}
+        />
+      )}
 
       <ConfirmModal
         open={bulkDeleteOpen}
