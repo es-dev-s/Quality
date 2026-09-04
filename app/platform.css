@@ -882,6 +882,7 @@
   gap: var(--space-5);
   min-height: 0;
   flex: 1;
+  overflow: hidden;
 }
 
 .team-assignments--empty {
@@ -895,6 +896,7 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
+  flex-shrink: 0;
 }
 
 .team-assignments__stat {
@@ -946,6 +948,7 @@
   border-bottom: 1px solid var(--color-divider);
   background: var(--color-bg-secondary);
   border-radius: 0;
+  flex-shrink: 0;
 }
 
 .team-assignments__compose,
@@ -959,7 +962,19 @@
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4) var(--space-4);
-  flex: 0 0 auto;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.team-assignments__compose-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .team-assignments__compose-lead,
@@ -1069,7 +1084,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: min(360px, 42vh);
+  max-height: min(280px, 32vh);
   overflow: auto;
   padding: var(--space-2);
   border: 1px solid var(--color-border);
@@ -1128,8 +1143,11 @@
 .team-assignments__compose-actions {
   display: flex;
   justify-content: flex-end;
-  padding-top: var(--space-1);
+  flex-shrink: 0;
+  padding-top: var(--space-3);
+  margin-top: auto;
   border-top: 1px solid var(--color-divider);
+  background: var(--color-bg);
 }
 
 .team-assignments__list {
@@ -1144,6 +1162,8 @@
   gap: var(--space-3);
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .team-assignments__list-head {

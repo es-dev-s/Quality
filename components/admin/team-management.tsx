@@ -1255,6 +1255,7 @@ function AgentAssignmentPanel({
             className="team-assignments__compose"
             aria-labelledby="team-assign-compose-title"
           >
+            <div className="team-assignments__compose-body">
             <p id="team-assign-compose-title" className="team-assignments__compose-lead">
               {view === "single"
                 ? "Link one approved agent to a quality analyst."
@@ -1404,6 +1405,7 @@ function AgentAssignmentPanel({
                 ) : null}
               </Field>
             ) : null}
+            </div>
 
             <div className="team-assignments__compose-actions">
               <Button type="button" disabled={assignDisabled} onClick={handleAssign}>

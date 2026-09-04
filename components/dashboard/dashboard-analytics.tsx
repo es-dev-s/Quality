@@ -60,10 +60,7 @@ import {
 } from "@/lib/audit/agent-filter-access";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
-import {
-  auditSourceFilterLabel,
-  type AuditSourceKind,
-} from "@/lib/audit/audit-source";
+import { type AuditSourceKind } from "@/lib/audit/audit-source";
 
 type DashboardAnalyticsProps = {
   data: DashboardAuditData;
@@ -89,7 +86,7 @@ const TREND_OPTIONS: { id: TrendGranularity; label: string }[] = [
 const DEFAULT_AGENT_TARGET = 20;
 
 const AGENT_TARGET_SOURCE_OPTIONS: { value: AuditSourceKind | ""; label: string }[] = [
-  { value: "", label: auditSourceFilterLabel("all") },
+  { value: "", label: "Audit source" },
   { value: "supervisor", label: "Supervisor audits" },
   { value: "qa", label: "QA audits" },
 ];
@@ -229,12 +226,12 @@ export function DashboardAnalytics({
   );
 
   const agentTargetRecords = useMemo(() => {
-    if (!showTargetPanelFilters || !targetAuditSource) {
+    if (!targetAuditSource) {
       return { all: scopedRecords, month: monthRecords };
     }
     const bySource = filterRecordsByAuditSource(monthRecords, targetAuditSource);
     return { all: bySource, month: bySource };
-  }, [scopedRecords, monthRecords, showTargetPanelFilters, targetAuditSource]);
+  }, [scopedRecords, monthRecords, targetAuditSource]);
 
   const auditorTargetSource = useMemo(() => {
     if (
@@ -313,9 +310,7 @@ export function DashboardAnalytics({
     user.email,
   ]);
   const isQualityAnalyst = roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST;
-  const agentTargetCopy = agentTargetSourceCopy(
-    showTargetPanelFilters ? targetAuditSource : ""
-  );
+  const agentTargetCopy = agentTargetSourceCopy(targetAuditSource);
 
   const topAgents = useMemo(() => computeTopAgents(filtered), [filtered]);
   const topFatals = useMemo(() => computeTopFatals(filtered), [filtered]);
@@ -795,18 +790,16 @@ export function DashboardAnalytics({
               <p className="dash-panel__desc">{agentTargetCopy.desc}</p>
             </div>
             <div className="dash-target-head-actions">
-              {showTargetPanelFilters ? (
-                <div className="dash-target-auditor-filter">
-                  <FilterSelect
-                    value={targetAuditSource}
-                    onChange={(value) =>
-                      setTargetAuditSource(value as AuditSourceKind | "")
-                    }
-                    options={AGENT_TARGET_SOURCE_OPTIONS}
-                    ariaLabel="Filter agent targets by audit source"
-                  />
-                </div>
-              ) : null}
+              <div className="dash-target-auditor-filter">
+                <FilterSelect
+                  value={targetAuditSource}
+                  onChange={(value) =>
+                    setTargetAuditSource(value as AuditSourceKind | "")
+                  }
+                  options={AGENT_TARGET_SOURCE_OPTIONS}
+                  ariaLabel="Audit source"
+                />
+              </div>
               <label className="dash-target-input">
               <span>Target/month:</span>
               <input
