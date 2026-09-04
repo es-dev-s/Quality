@@ -23,9 +23,11 @@ const DEFAULT_AGGREGATION_OPTIONS: AnalyticsAggregationOptions = {
 
 export type AnalyticsAuditRecord = {
   id: string;
+  auditCode?: string;
   agent: string;
   supervisor: string | null;
   auditor: string | null;
+  lob?: string;
   type: string;
   businessType: string;
   callDate: string;
@@ -436,9 +438,46 @@ function computeEntityMetricBreakdown(
   });
 }
 
-function analyticsTeamLabel(record: AnalyticsAuditRecord): string {
+export function analyticsTeamLabel(record: AnalyticsAuditRecord): string {
   const team = record.teamName?.trim();
   return team || "Unassigned";
+}
+
+export function getAnalyticsFatalOccurrences(
+  records: AnalyticsAuditRecord[],
+  team: string | null = null
+): {
+  id: string;
+  auditCode: string;
+  agent: string;
+  supervisor: string | null;
+  auditor: string | null;
+  lob: string;
+  type: string;
+  callDate: string;
+  auditDate: string;
+  qualityPct: number;
+  finalPct: number;
+}[] {
+  return records
+    .filter((record) => {
+      if (!record.hasFatal) return false;
+      if (team && analyticsTeamLabel(record) !== team) return false;
+      return true;
+    })
+    .map((record) => ({
+      id: record.id,
+      auditCode: record.auditCode?.trim() || record.id.slice(-8).toUpperCase(),
+      agent: record.agent,
+      supervisor: record.supervisor,
+      auditor: record.auditor,
+      lob: record.lob?.trim() || record.businessType || "—",
+      type: record.type,
+      callDate: record.callDate,
+      auditDate: record.auditDate,
+      qualityPct: record.qualityPct,
+      finalPct: record.finalPct,
+    }));
 }
 
 function computeAgentStats(records: AnalyticsAuditRecord[]): QmsAgentStat[] {

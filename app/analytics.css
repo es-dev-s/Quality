@@ -224,6 +224,19 @@
   box-shadow: var(--shadow);
 }
 
+.qms-kpi--action {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.qms-kpi--action:hover {
+  border-color: color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+}
+
 .qms-kpi__label {
   margin: 0;
   font-size: 0.6875rem;
@@ -752,6 +765,10 @@
   transition: width 400ms ease;
 }
 
+.qms-fatal-footer {
+  margin-top: 16px;
+}
+
 .qms-fatal-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -764,6 +781,19 @@
   border-radius: var(--radius);
   background: #fef2f2;
   text-align: center;
+}
+
+.qms-fatal-chip--action {
+  display: block;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.qms-fatal-chip--action:hover {
+  border-color: var(--color-danger);
+  background: #fee2e2;
 }
 
 .qms-fatal-chip__count {
@@ -793,6 +823,22 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+
+.qms-fatal-list__row--action {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.qms-fatal-list__row--action:hover .qms-fatal-list__team {
+  color: var(--color-text-primary);
 }
 
 .qms-fatal-list__count {

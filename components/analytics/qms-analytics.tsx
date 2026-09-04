@@ -30,7 +30,10 @@ import {
   agentNamesForSelectedTeam,
   buildAgentFilterSelectOptions,
 } from "@/lib/audit/agent-filter-access";
-import { summaryChipClass } from "@/lib/audit/analytics-metrics";
+import {
+  getAnalyticsFatalOccurrences,
+  summaryChipClass,
+} from "@/lib/audit/analytics-metrics";
 import type { DashboardPeriod } from "@/lib/audit/dashboard-metrics";
 import { LoadingZone } from "@/components/primitives/loading-zone";
 import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
@@ -51,6 +54,8 @@ import {
 } from "@/lib/audit/analytics-role-config";
 import type { AnalyticsSortOrder } from "@/lib/audit/analytics-sort";
 import { QmsSortToggle } from "@/components/analytics/analytics-controls";
+import { FatalIncidentsByTeamCard } from "@/components/analytics/fatal-incidents-by-team";
+import { FatalOccurrencesModal } from "@/components/dashboard/fatal-occurrences-modal";
 import { HistoryFilterSection } from "@/components/audit/history-filter-section";
 import {
   defaultAuditHistoryFilter,
@@ -89,6 +94,7 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
   const filterSidebar = useFilterSidebar();
   const { busy: isLoading, run: runBusy } = useBusyAction();
   const [error, setError] = useState<string | null>(null);
+  const [fatalTeam, setFatalTeam] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visibleTabs.includes(tab)) {
@@ -153,6 +159,14 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
     }),
     [analyticsView]
   );
+
+  const fatalOccurrences = useMemo(() => {
+    if (fatalTeam === null) return [];
+    return getAnalyticsFatalOccurrences(
+      analyticsView.records,
+      fatalTeam || null
+    );
+  }, [analyticsView.records, fatalTeam]);
 
   const hasCustomRange = !!(customRange.from || customRange.to);
   const hasActiveFilters =
@@ -548,14 +562,24 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
         label="Loading analytics…"
         className="qms-analytics__body loading-zone--min"
       >
-        {tab === "overview" && <OverviewTab data={analytics} sortOrder={sortOrder} />}
+        {tab === "overview" && (
+          <OverviewTab
+            data={analytics}
+            sortOrder={sortOrder}
+            onOpenFatalIncidents={setFatalTeam}
+          />
+        )}
         {tab === "parameters" && (
           <ParametersTab data={analytics} sortOrder={sortOrder} />
         )}
         {tab === "teams" && <TeamsTab data={analytics} sortOrder={sortOrder} />}
         {tab === "agents" && <AgentsTab data={analytics} sortOrder={sortOrder} />}
         {tab === "compliance" && (
-          <ComplianceTab data={analytics} sortOrder={sortOrder} />
+          <ComplianceTab
+            data={analytics}
+            sortOrder={sortOrder}
+            onOpenFatalIncidents={setFatalTeam}
+          />
         )}
         {tab === "auditors" && (
           <AuditorsTab data={analytics} sortOrder={sortOrder} />
@@ -563,7 +587,32 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
         {tab === "leaderboards" && (
           <LeaderboardsTab data={analytics.leaderboards} sortOrder={sortOrder} />
         )}
+        <FatalIncidentsByTeamCard
+          className="qms-fatal-footer"
+          items={analytics.fatal_by_team}
+          sortOrder={sortOrder}
+          onSelectTeam={setFatalTeam}
+        />
       </LoadingZone>
+
+      <FatalOccurrencesModal
+        fatalName={
+          fatalTeam === null
+            ? null
+            : fatalTeam
+              ? `Fatal incidents — ${fatalTeam}`
+              : "Fatal incidents"
+        }
+        description={
+          fatalTeam === null
+            ? undefined
+            : `${fatalOccurrences.length} fatal audit${
+                fatalOccurrences.length === 1 ? "" : "s"
+              } in the selected period`
+        }
+        occurrences={fatalOccurrences}
+        onClose={() => setFatalTeam(null)}
+      />
 
       <footer className="qms-analytics__footer">
         Quality analytics · {analytics.kpis.total_audits.toLocaleString()} audits in view

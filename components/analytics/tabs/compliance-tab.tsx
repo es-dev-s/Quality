@@ -18,9 +18,11 @@ import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
 export function ComplianceTab({
   data,
   sortOrder: _sortOrder,
+  onOpenFatalIncidents,
 }: {
   data: QmsAnalyticsData;
   sortOrder: AnalyticsSortOrder;
+  onOpenFatalIncidents?: (team: string | null) => void;
 }) {
   const { kpis } = data;
   const feedbackTotal = kpis.fb_done + kpis.fb_pending + kpis.fb_disputed;
@@ -55,6 +57,11 @@ export function ComplianceTab({
           value={kpis.fatal_count}
           sub="Requires root cause analysis"
           tone="danger"
+          onClick={
+            kpis.fatal_count > 0 && onOpenFatalIncidents
+              ? () => onOpenFatalIncidents("")
+              : undefined
+          }
         />
         <QmsKpiTile
           label="Critical severity"
@@ -162,7 +169,13 @@ export function ComplianceTab({
               <QmsEmpty message="No fatal incidents recorded." />
             ) : (
               data.fatal_by_team.map((item) => (
-                <div key={item.team} className="qms-fatal-list__row">
+                <button
+                  key={item.team}
+                  type="button"
+                  className="qms-fatal-list__row qms-fatal-list__row--action"
+                  onClick={() => onOpenFatalIncidents?.(item.team)}
+                  aria-label={`View ${item.count} fatal audit${item.count === 1 ? "" : "s"} for ${item.team}`}
+                >
                   <span className="qms-fatal-list__count">{item.count}</span>
                   <div className="qms-fatal-list__body">
                     <p className="qms-fatal-list__team">{item.team}</p>
@@ -175,7 +188,7 @@ export function ComplianceTab({
                       />
                     </div>
                   </div>
-                </div>
+                </button>
               ))
             )}
           </div>

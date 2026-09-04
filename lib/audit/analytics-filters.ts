@@ -221,6 +221,7 @@ export function applyAnalyticsFilters(
     leaderboards: computeLeaderboardAnalytics(filtered, {
       mergeParametersAcrossInteractionTypes,
     }),
+    records: filtered,
     filteredCount: filtered.length,
     interactionFilter: options.interactionFilter,
   };
