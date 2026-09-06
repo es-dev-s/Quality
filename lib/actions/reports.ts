@@ -6,9 +6,12 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
 import { PASS_RATE_QUALITY_THRESHOLD, qualityPctForAverage } from "@/lib/audit/metrics-config";
 import { reportDateRangeSchema } from "@/lib/validation/reports";
+import { canExportAuditData } from "@/lib/rbac";
 import {
   AUDIT_EXPORT_SELECT,
+  REPORT_PAGE_SELECT,
   mapSubmissionToExportRow,
+  mapSubmissionToPageRow,
   type AuditExportRow,
 } from "@/lib/reports/audit-export-row";
 
@@ -39,11 +42,11 @@ export async function getReportData(startDate: string, endDate: string) {
         lte: range.endDate,
       },
     }),
-    select: AUDIT_EXPORT_SELECT,
+    select: REPORT_PAGE_SELECT,
     orderBy: { auditDate: "desc" },
   });
 
-  const rows = submissions.map(mapSubmissionToExportRow);
+  const rows = submissions.map(mapSubmissionToPageRow);
 
   const total = rows.length;
   const avgQuality =
@@ -62,6 +65,47 @@ export async function getReportData(startDate: string, endDate: string) {
     rows,
     stats: { total, avgQuality, passRate, fatals },
     generatedAt: new Date().toISOString(),
+    error: null as string | null,
+  };
+}
+
+export async function getReportExportData(startDate: string, endDate: string) {
+  const session = await requirePermission(PERMISSIONS.REPORTS_READ);
+  if (!canExportAuditData(session.user.role)) {
+    return {
+      startDate,
+      endDate,
+      rows: [] as AuditExportRow[],
+      error: "You do not have permission to export reports.",
+    };
+  }
+
+  const parsed = reportDateRangeSchema.safeParse({ startDate, endDate });
+  if (!parsed.success) {
+    return {
+      startDate,
+      endDate,
+      rows: [] as AuditExportRow[],
+      error: parsed.error.issues[0]?.message ?? "Invalid date range.",
+    };
+  }
+
+  const range = parsed.data;
+  const submissions = await prisma.auditSubmission.findMany({
+    where: await scopedAuditWhere(session, {
+      auditDate: {
+        gte: range.startDate,
+        lte: range.endDate,
+      },
+    }),
+    select: AUDIT_EXPORT_SELECT,
+    orderBy: { auditDate: "desc" },
+  });
+
+  return {
+    startDate: range.startDate,
+    endDate: range.endDate,
+    rows: submissions.map(mapSubmissionToExportRow),
     error: null as string | null,
   };
 }

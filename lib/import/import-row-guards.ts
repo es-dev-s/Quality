@@ -132,6 +132,9 @@ export function importRowIntegrityError(
   if (!isFinitePercent(row.finalPct)) {
     return "Final % must be a number between 0 and 100.";
   }
+  if (row.hasFatal && row.finalPct !== 0) {
+    return "Fatal audits must have a final score of 0.";
+  }
   if (!isFiniteNonNegative(row.totalScored) || !isFiniteNonNegative(row.totalMax)) {
     return "Points scored / max must be valid numbers.";
   }

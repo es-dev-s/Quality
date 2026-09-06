@@ -13,7 +13,11 @@ import {
   usePaginatedRows,
 } from "@/components/primitives/data-table-panel";
 import { LoadingZone } from "@/components/primitives/loading-zone";
-import { getReportData, type ReportPageData } from "@/lib/actions/reports";
+import {
+  getReportData,
+  getReportExportData,
+  type ReportPageData,
+} from "@/lib/actions/reports";
 import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
 import { useStaleRequestGuard } from "@/lib/hooks/use-stale-request-guard";
 import { exportReportCsv } from "@/lib/reports/export-csv";
@@ -51,6 +55,7 @@ export function ExecutiveReport({ canExport = false }: { canExport?: boolean }) 
   const [data, setData] = useState<ReportPageData | null>(null);
   const [tableDensity, setTableDensity] = useState<ReportTableDensity>("expanded");
   const [isPending, startTransition] = useTransition();
+  const [isExporting, startExport] = useTransition();
   const filterSidebar = useFilterSidebar();
   const { beginRequest } = useStaleRequestGuard();
 
@@ -75,7 +80,14 @@ export function ExecutiveReport({ canExport = false }: { canExport?: boolean }) 
 
   function handleExport() {
     if (!data?.rows.length) return;
-    exportReportCsv(data.rows);
+    startExport(async () => {
+      const result = await getReportExportData(
+        appliedRange.start,
+        appliedRange.end
+      );
+      if (result.error || !result.rows.length) return;
+      exportReportCsv(result.rows);
+    });
   }
 
   return (
@@ -144,7 +156,7 @@ export function ExecutiveReport({ canExport = false }: { canExport?: boolean }) 
               type="button"
               className="ui-btn ui-btn--primary ui-btn--sm"
               onClick={handleExport}
-              disabled={!data?.rows.length}
+              disabled={!data?.rows.length || isExporting}
             >
               <Download size={15} aria-hidden />
               Export CSV ({data?.rows.length ?? 0})

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Award, RefreshCw } from "lucide-react";
 import { FilterChipBar } from "@/components/filters/filter-chip-bar";
@@ -165,6 +165,12 @@ export function DashboardAnalytics({
   );
   const agentTargetSaveSeq = useRef(0);
   const totalTargetSaveSeq = useRef(0);
+  const lastSavedAgentTarget = useRef(data.agentTarget ?? DEFAULT_AGENT_TARGET);
+  const lastSavedMonthlyTarget = useRef(data.totalMonthlyTarget ?? null);
+  const pendingAgentTarget = useRef<number | null>(null);
+  const pendingMonthlyTarget = useRef<number | null>(null);
+  const agentTargetTimer = useRef<number | null>(null);
+  const monthlyTargetTimer = useRef<number | null>(null);
   const [selectedFatal, setSelectedFatal] = useState<string | null>(null);
   const [targetAuditSource, setTargetAuditSource] = useState<
     AuditSourceKind | ""
@@ -342,15 +348,26 @@ export function DashboardAnalytics({
   }, [filtered]);
 
   function handleRefresh() {
+    flushAgentTargetSave();
+    flushMonthlyTargetSave();
     startRefresh(() => {
       router.refresh();
     });
   }
 
+  function clearTimer(ref: { current: number | null }) {
+    if (ref.current != null) {
+      window.clearTimeout(ref.current);
+      ref.current = null;
+    }
+  }
+
   function persistAgentTarget(raw: number) {
     const next = Math.max(1, Math.min(999, Math.round(raw) || 1));
     setAgentTarget(next);
+    pendingAgentTarget.current = null;
     if (!canEditAuditTargets) return;
+    if (next === lastSavedAgentTarget.current) return;
     const seq = ++agentTargetSaveSeq.current;
     void (async () => {
       const result = await setAuditTargetPerAgent(next);
@@ -360,7 +377,9 @@ export function DashboardAnalytics({
         return;
       }
       if ("success" in result && result.success) {
+        lastSavedAgentTarget.current = result.perAgent;
         setAgentTarget(result.perAgent);
+        toast("Per-agent target saved.", "success");
       }
     })();
   }
@@ -368,7 +387,9 @@ export function DashboardAnalytics({
   function persistTotalMonthlyTarget(raw: number) {
     const next = Math.max(1, Math.min(99_999, Math.round(raw) || 1));
     setTotalMonthlyTarget(next);
+    pendingMonthlyTarget.current = null;
     if (!canEditAuditTargets) return;
+    if (next === lastSavedMonthlyTarget.current) return;
     const seq = ++totalTargetSaveSeq.current;
     void (async () => {
       const result = await setAuditTargetTotalMonthly(next);
@@ -378,10 +399,72 @@ export function DashboardAnalytics({
         return;
       }
       if ("success" in result && result.success) {
+        lastSavedMonthlyTarget.current = result.totalMonthly;
         setTotalMonthlyTarget(result.totalMonthly);
+        toast("Monthly auditor target saved.", "success");
       }
     })();
   }
+
+  function scheduleAgentTargetSave(raw: number) {
+    const next = Math.max(1, Math.min(999, Math.round(raw) || 1));
+    setAgentTarget(next);
+    pendingAgentTarget.current = next;
+    clearTimer(agentTargetTimer);
+    agentTargetTimer.current = window.setTimeout(() => {
+      persistAgentTarget(next);
+    }, 400);
+  }
+
+  function flushAgentTargetSave(raw?: number) {
+    clearTimer(agentTargetTimer);
+    const next = raw ?? pendingAgentTarget.current;
+    if (next == null) return;
+    persistAgentTarget(next);
+  }
+
+  function scheduleMonthlyTargetSave(raw: number) {
+    const next = Math.max(1, Math.min(99_999, Math.round(raw) || 1));
+    setTotalMonthlyTarget(next);
+    pendingMonthlyTarget.current = next;
+    clearTimer(monthlyTargetTimer);
+    monthlyTargetTimer.current = window.setTimeout(() => {
+      persistTotalMonthlyTarget(next);
+    }, 400);
+  }
+
+  function flushMonthlyTargetSave(raw?: number) {
+    clearTimer(monthlyTargetTimer);
+    const next = raw ?? pendingMonthlyTarget.current;
+    if (next == null) return;
+    persistTotalMonthlyTarget(next);
+  }
+
+  useEffect(() => {
+    if (pendingAgentTarget.current == null && typeof data.agentTarget === "number") {
+      setAgentTarget(data.agentTarget);
+      lastSavedAgentTarget.current = data.agentTarget;
+    }
+    if (pendingMonthlyTarget.current == null) {
+      setTotalMonthlyTarget(data.totalMonthlyTarget ?? null);
+      lastSavedMonthlyTarget.current = data.totalMonthlyTarget ?? null;
+    }
+  }, [data.agentTarget, data.totalMonthlyTarget]);
+
+  useEffect(() => {
+    return () => {
+      clearTimer(agentTargetTimer);
+      clearTimer(monthlyTargetTimer);
+      const agent = pendingAgentTarget.current;
+      const monthly = pendingMonthlyTarget.current;
+      if (agent != null && agent !== lastSavedAgentTarget.current) {
+        void setAuditTargetPerAgent(agent);
+      }
+      if (monthly != null && monthly !== lastSavedMonthlyTarget.current) {
+        void setAuditTargetTotalMonthly(monthly);
+      }
+    };
+  }, []);
 
   function updateFilter<K extends keyof DashboardIncludeFilters>(
     key: K,
@@ -859,11 +942,17 @@ export function DashboardAnalytics({
                 aria-label="Monthly audit target per agent"
                 onChange={(e) => {
                   if (!canEditAuditTargets) return;
-                  setAgentTarget(Math.max(1, Number(e.target.value) || 1));
+                  scheduleAgentTargetSave(Number(e.target.value) || 1);
                 }}
-                onBlur={() => {
+                onBlur={(e) => {
                   if (!canEditAuditTargets) return;
-                  persistAgentTarget(agentTarget);
+                  flushAgentTargetSave(Number(e.currentTarget.value) || 1);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" || !canEditAuditTargets) return;
+                  e.preventDefault();
+                  flushAgentTargetSave(Number(e.currentTarget.value) || 1);
+                  e.currentTarget.blur();
                 }}
               />
             </label>
@@ -926,7 +1015,7 @@ export function DashboardAnalytics({
                 monthlyTarget={resolvedMonthlyTarget}
                 canEditMonthlyTarget={canEditAuditTargets}
                 showMonthlyTarget={canEditAuditTargets}
-                onMonthlyTargetChange={setTotalMonthlyTarget}
+                onMonthlyTargetChange={scheduleMonthlyTargetSave}
               />
               {canEditAuditTargets ? null : (
                 <label className="dash-target-input">
@@ -946,8 +1035,14 @@ export function DashboardAnalytics({
                     aria-label="Total monthly audit target for auditors"
                     onChange={(e) => {
                       if (!canEditAuditTargets) return;
-                      setTotalMonthlyTarget(
-                        Math.max(1, Number(e.target.value) || 1)
+                      scheduleMonthlyTargetSave(
+                        Number(e.target.value) || 1
+                      );
+                    }}
+                    onBlur={(e) => {
+                      if (!canEditAuditTargets) return;
+                      flushMonthlyTargetSave(
+                        Number(e.currentTarget.value) || 1
                       );
                     }}
                   />

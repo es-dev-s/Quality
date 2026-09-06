@@ -49,7 +49,7 @@ export type AuditExportRow = {
 /** @deprecated Use AuditExportRow — kept for existing report imports. */
 export type ReportRow = AuditExportRow;
 
-export const AUDIT_EXPORT_SELECT = {
+const AUDIT_EXPORT_SCALAR_SELECT = {
   id: true,
   auditCode: true,
   agent: true,
@@ -79,9 +79,6 @@ export const AUDIT_EXPORT_SELECT = {
   feedbackStatusAt: true,
   agentFeedback: true,
   supervisorRemarks: true,
-  rows: true,
-  catScores: true,
-  record: true,
   createdAt: true,
   template: { select: { name: true } },
   submittedBy: {
@@ -93,8 +90,22 @@ export const AUDIT_EXPORT_SELECT = {
   },
 } satisfies Prisma.AuditSubmissionSelect;
 
+/** Table/KPI-style report load — skips large JSON blobs. */
+export const REPORT_PAGE_SELECT = AUDIT_EXPORT_SCALAR_SELECT;
+
+export const AUDIT_EXPORT_SELECT = {
+  ...AUDIT_EXPORT_SCALAR_SELECT,
+  rows: true,
+  catScores: true,
+  record: true,
+} satisfies Prisma.AuditSubmissionSelect;
+
 export type AuditExportSubmission = Prisma.AuditSubmissionGetPayload<{
   select: typeof AUDIT_EXPORT_SELECT;
+}>;
+
+export type ReportPageSubmission = Prisma.AuditSubmissionGetPayload<{
+  select: typeof REPORT_PAGE_SELECT;
 }>;
 
 export function parseAuditRows(value: unknown): AuditRow[] {
@@ -140,13 +151,10 @@ export function collectParameterColumnKeys(rows: AuditExportRow[]): string[] {
   return [...keys].sort((a, b) => a.localeCompare(b));
 }
 
-export function mapSubmissionToExportRow(
-  submission: AuditExportSubmission
+function mapSubmissionScalars(
+  submission: ReportPageSubmission,
+  extras: Pick<AuditExportRow, "subReason" | "catScores" | "rows">
 ): AuditExportRow {
-  const auditRows = parseAuditRows(submission.rows);
-  const record = submission.record as { subReason?: unknown } | null;
-  const subReason =
-    typeof record?.subReason === "string" ? record.subReason : null;
   const legacy = normalizeLegacyReferenceFields(
     submission.mobile ?? "",
     submission.referenceUrl
@@ -167,7 +175,7 @@ export function mapSubmissionToExportRow(
     lob: submission.lob,
     sublob: submission.sublob,
     reason: submission.reason,
-    subReason,
+    subReason: extras.subReason,
     mobile: legacy.mobile || null,
     referenceUrl: legacy.referenceUrl || null,
     response: submission.response,
@@ -194,7 +202,31 @@ export function mapSubmissionToExportRow(
       submission.createdAt instanceof Date
         ? submission.createdAt.toISOString()
         : String(submission.createdAt),
-    catScores: parseCatScores(submission.catScores),
-    rows: auditRows,
+    catScores: extras.catScores,
+    rows: extras.rows,
   };
+}
+
+export function mapSubmissionToPageRow(
+  submission: ReportPageSubmission
+): AuditExportRow {
+  return mapSubmissionScalars(submission, {
+    subReason: null,
+    catScores: {},
+    rows: [],
+  });
+}
+
+export function mapSubmissionToExportRow(
+  submission: AuditExportSubmission
+): AuditExportRow {
+  const record = submission.record as { subReason?: unknown } | null;
+  const subReason =
+    typeof record?.subReason === "string" ? record.subReason : null;
+
+  return mapSubmissionScalars(submission, {
+    subReason,
+    catScores: parseCatScores(submission.catScores),
+    rows: parseAuditRows(submission.rows),
+  });
 }

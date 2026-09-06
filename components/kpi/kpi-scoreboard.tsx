@@ -72,9 +72,17 @@ export function KpiScoreboard({
                 if (!canEditTarget || !onTargetChange) return;
                 onTargetChange(Math.max(1, Number(event.target.value) || 1));
               }}
-              onBlur={() => {
+              onBlur={(event) => {
                 if (!canEditTarget || !onTargetCommit) return;
-                onTargetCommit(targetPerAgent);
+                onTargetCommit(Number(event.currentTarget.value) || 1);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || !canEditTarget || !onTargetCommit) {
+                  return;
+                }
+                event.preventDefault();
+                onTargetCommit(Number(event.currentTarget.value) || 1);
+                event.currentTarget.blur();
               }}
             />
             /agent

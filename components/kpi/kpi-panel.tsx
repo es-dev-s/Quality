@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FilterSelect } from "@/components/filters/filter-select";
 import { FilterClearButton } from "@/components/filters/filter-clear-button";
 import {
@@ -41,6 +41,9 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
   const [filters, setFilters] = useState<KpiFiltersState>(DEFAULT_KPI_FILTERS);
   const [targetPerAgent, setTargetPerAgent] = useState(data.targetPerAgent);
   const targetSaveSeq = useRef(0);
+  const lastSavedTarget = useRef(data.targetPerAgent);
+  const pendingTarget = useRef<number | null>(null);
+  const targetTimer = useRef<number | null>(null);
 
   const qualityManagers = filterOptions.qualityManagers ?? [];
   const qualityAnalysts = filterOptions.qualityAnalysts ?? [];
@@ -117,6 +120,8 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
   function persistTarget(value: number) {
     const next = Math.max(1, Math.min(999, Math.round(value) || 1));
     setTargetPerAgent(next);
+    pendingTarget.current = null;
+    if (next === lastSavedTarget.current) return;
     const seq = ++targetSaveSeq.current;
     void (async () => {
       const result = await setAuditTargetPerAgent(next);
@@ -126,10 +131,39 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
         return;
       }
       if ("success" in result && result.success) {
+        lastSavedTarget.current = result.perAgent;
         setTargetPerAgent(result.perAgent);
+        toast("Per-agent target saved.", "success");
       }
     })();
   }
+
+  function scheduleTargetSave(value: number) {
+    const next = Math.max(1, Math.min(999, Math.round(value) || 1));
+    setTargetPerAgent(next);
+    pendingTarget.current = next;
+    if (targetTimer.current != null) window.clearTimeout(targetTimer.current);
+    targetTimer.current = window.setTimeout(() => {
+      persistTarget(next);
+    }, 400);
+  }
+
+  useEffect(() => {
+    if (pendingTarget.current == null) {
+      setTargetPerAgent(data.targetPerAgent);
+      lastSavedTarget.current = data.targetPerAgent;
+    }
+  }, [data.targetPerAgent]);
+
+  useEffect(() => {
+    return () => {
+      if (targetTimer.current != null) window.clearTimeout(targetTimer.current);
+      const pending = pendingTarget.current;
+      if (pending != null && pending !== lastSavedTarget.current) {
+        void setAuditTargetPerAgent(pending);
+      }
+    };
+  }, []);
 
   return (
     <section className="kpi-workspace">
@@ -202,7 +236,7 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
         qmName={filters.qm || null}
         qmRosterSize={qmRosterSize}
         canEditTarget
-        onTargetChange={setTargetPerAgent}
+        onTargetChange={scheduleTargetSave}
         onTargetCommit={persistTarget}
       />
     </section>

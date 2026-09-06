@@ -34,10 +34,8 @@ import { MessageSquare, Phone } from "lucide-react";
 import {
   FEEDBACK_SECURITY_OPTIONS,
   FEEDBACK_SEVERITY_LABEL,
-  FEEDBACK_STATUS_OPTIONS,
   defaultAuditFeedback,
   type FeedbackSecurity,
-  type FeedbackStatus,
 } from "@/lib/audit/feedback";
 import { AuditScorePanel } from "@/components/forms/audit-score-panel";
 import { QmsEmpty } from "@/components/analytics/qms-primitives";
@@ -1196,28 +1194,13 @@ export function AuditForm({
                       Feedback Status
                       <span className="audit-required"> *</span>
                     </Label>
-                    <Select
+                    <Input
                       id="feedbackStatus"
                       className="audit-control"
-                      value={formData.feedbackStatus}
-                      required
-                      onChange={(e) => {
-                        const feedbackStatus = e.target.value as FeedbackStatus;
-                        updateForm({
-                          feedbackStatus,
-                          feedbackDate:
-                            feedbackStatus === "Pending"
-                              ? ""
-                              : formData.feedbackDate,
-                        });
-                      }}
-                    >
-                      {FEEDBACK_STATUS_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </Select>
+                      value={formData.feedbackStatus || "Pending"}
+                      readOnly
+                      disabled
+                    />
                   </Field>
 
                   <Field className="audit-field">

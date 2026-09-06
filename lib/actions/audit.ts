@@ -101,9 +101,17 @@ function validationError(message: string) {
 
 function normalizeFormFeedbackForSave(
   formData: Pick<AuditFormData, "feedbackSecurity" | "feedbackStatus">,
-  existing?: { feedbackDate: string | null; feedbackStatusAt: string | null }
+  existing?: {
+    feedbackStatus?: string | null;
+    feedbackDate: string | null;
+    feedbackStatusAt: string | null;
+  }
 ): AuditFeedbackFields | { error: string } {
-  const feedbackStatus = parseFeedbackStatus(formData.feedbackStatus);
+  // Status and dates are Audit Log-only. New audits stay Pending; edits keep
+  // the stored lifecycle even if the form payload is tampered.
+  const feedbackStatus = existing
+    ? parseFeedbackStatus(existing.feedbackStatus)
+    : "Pending";
   if (!FEEDBACK_STATUS_OPTIONS.includes(feedbackStatus)) {
     return { error: "Invalid feedback status." };
   }
@@ -836,8 +844,11 @@ export async function updateAuditSubmission(
     select: {
       id: true,
       auditCode: true,
+      agent: true,
+      supervisor: true,
       hasFatal: true,
       isHistory: true,
+      teamNameSnapshot: true,
       feedbackSecurity: true,
       feedbackStatus: true,
       feedbackDate: true,
@@ -854,6 +865,7 @@ export async function updateAuditSubmission(
   }
 
   const feedbackResult = normalizeFormFeedbackForSave(validFormData, {
+    feedbackStatus: existing.feedbackStatus,
     feedbackDate: existing.feedbackDate,
     feedbackStatusAt: existing.feedbackStatusAt,
   });
@@ -883,10 +895,16 @@ export async function updateAuditSubmission(
   }
 
   const record = result.record;
-  const teamNameSnapshot = await resolveTeamNameSnapshot(
-    record.agent,
-    record.supervisor || null
-  );
+  const agentOrSupervisorChanged =
+    existing.agent !== record.agent ||
+    (existing.supervisor ?? "") !== (record.supervisor || "");
+  const teamNameSnapshot =
+    !agentOrSupervisorChanged && existing.teamNameSnapshot?.trim()
+      ? existing.teamNameSnapshot
+      : await resolveTeamNameSnapshot(
+          record.agent,
+          record.supervisor || null
+        );
 
   try {
     const updated = await prisma.auditSubmission.updateMany({
@@ -1271,16 +1289,17 @@ export async function updateAuditFeedbackStatus(
 
 export async function getDashboardAuditData(): Promise<DashboardAuditData> {
   const session = await requirePermission(PERMISSIONS.OVERVIEW_READ);
+  const cacheScope = cacheScopeFromSession(session);
+  const ctx = dataScopeFromSession(session);
+  const targetsPromise = readAuditTargets();
 
   try {
-    const cacheScope = cacheScopeFromSession(session);
-    const ctx = dataScopeFromSession(session);
     const [submissions, rosterAgentNames, targets] = await Promise.all([
       withDbRetry(() => getCachedDashboardRecords(cacheScope)()),
       canFilterByAgent(session.user.role.slug)
         ? fetchAgentRosterNames(ctx.userId, ctx.role.slug)
         : Promise.resolve([] as string[]),
-      readAuditTargets(),
+      targetsPromise,
     ]);
 
     return {
@@ -1311,6 +1330,10 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
   } catch (error) {
     console.error("getDashboardAuditData failed:", error);
     const cacheOverflow = isNextDataCacheOverflowError(error);
+    const targets = await targetsPromise.catch(() => ({
+      perAgent: KPI_DEFAULT_AGENT_TARGET,
+      totalMonthly: null as number | null,
+    }));
     return {
       records: [],
       rosterAgentNames: [],
@@ -1318,8 +1341,8 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
       dbError: cacheOverflow
         ? "Dashboard could not load this many audits from cache. Refresh and try again."
         : "Unable to reach the database. Use the Supabase session pooler (pooler.supabase.com:5432) in DATABASE_URL or DATABASE_URL_SESSION — not db.*.supabase.co.",
-      agentTarget: KPI_DEFAULT_AGENT_TARGET,
-      totalMonthlyTarget: null,
+      agentTarget: targets.perAgent,
+      totalMonthlyTarget: targets.totalMonthly,
     };
   }
 }
