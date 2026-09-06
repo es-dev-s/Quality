@@ -93,7 +93,7 @@ export async function getKpiData(): Promise<KpiPageData> {
   const [records, rosterAgentNames, targets] = await Promise.all([
     fetchKpiRecords(await scopedAuditWhere(session)),
     fetchAgentRosterNames(ctx.userId, ctx.role.slug),
-    readAuditTargets(),
+    readAuditTargets(session.user.id),
   ]);
 
   return {

@@ -9,6 +9,14 @@ import {
 export const META_AUDIT_TARGET_PER_AGENT = "audit_target_per_agent";
 export const META_AUDIT_TARGET_TOTAL_MONTHLY = "audit_target_total_monthly";
 
+export function perAgentTargetKey(userId: string): string {
+  return `${META_AUDIT_TARGET_PER_AGENT}:${userId}`;
+}
+
+export function totalMonthlyTargetKey(userId: string): string {
+  return `${META_AUDIT_TARGET_TOTAL_MONTHLY}:${userId}`;
+}
+
 const PER_AGENT_MIN = 1;
 const PER_AGENT_MAX = 999;
 const TOTAL_MONTHLY_MIN = 1;
@@ -43,10 +51,38 @@ export function clampAuditTargetTotalMonthly(value: number): number {
   );
 }
 
-export async function readAuditTargets(): Promise<AuditTargets> {
+async function resolveOwnedMetaValue(
+  personalKey: string,
+  legacyKey: string,
+  min: number,
+  max: number
+): Promise<string | null> {
+  const personal = await getSystemMeta(personalKey);
+  const parsedPersonal = parsePositiveInt(personal, min, max);
+  if (parsedPersonal != null) return String(parsedPersonal);
+
+  const legacy = parsePositiveInt(await getSystemMeta(legacyKey), min, max);
+  if (legacy == null) return null;
+
+  // One-time copy so this user owns the value and later edits stay private.
+  await setSystemMeta(personalKey, String(legacy));
+  return String(legacy);
+}
+
+export async function readAuditTargets(userId: string): Promise<AuditTargets> {
   const [perAgentRaw, totalMonthlyRaw] = await Promise.all([
-    getSystemMeta(META_AUDIT_TARGET_PER_AGENT),
-    getSystemMeta(META_AUDIT_TARGET_TOTAL_MONTHLY),
+    resolveOwnedMetaValue(
+      perAgentTargetKey(userId),
+      META_AUDIT_TARGET_PER_AGENT,
+      PER_AGENT_MIN,
+      PER_AGENT_MAX
+    ),
+    resolveOwnedMetaValue(
+      totalMonthlyTargetKey(userId),
+      META_AUDIT_TARGET_TOTAL_MONTHLY,
+      TOTAL_MONTHLY_MIN,
+      TOTAL_MONTHLY_MAX
+    ),
   ]);
 
   return {
@@ -61,16 +97,20 @@ export async function readAuditTargets(): Promise<AuditTargets> {
   };
 }
 
-export async function writeAuditTargetPerAgent(value: number): Promise<number> {
+export async function writeAuditTargetPerAgent(
+  userId: string,
+  value: number
+): Promise<number> {
   const next = clampAuditTargetPerAgent(value);
-  await setSystemMeta(META_AUDIT_TARGET_PER_AGENT, String(next));
+  await setSystemMeta(perAgentTargetKey(userId), String(next));
   return next;
 }
 
 export async function writeAuditTargetTotalMonthly(
+  userId: string,
   value: number
 ): Promise<number> {
   const next = clampAuditTargetTotalMonthly(value);
-  await setSystemMeta(META_AUDIT_TARGET_TOTAL_MONTHLY, String(next));
+  await setSystemMeta(totalMonthlyTargetKey(userId), String(next));
   return next;
 }

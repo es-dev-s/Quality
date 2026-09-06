@@ -1291,7 +1291,7 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
   const session = await requirePermission(PERMISSIONS.OVERVIEW_READ);
   const cacheScope = cacheScopeFromSession(session);
   const ctx = dataScopeFromSession(session);
-  const targetsPromise = readAuditTargets();
+  const targetsPromise = readAuditTargets(session.user.id);
 
   try {
     const [submissions, rosterAgentNames, targets] = await Promise.all([

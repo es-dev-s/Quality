@@ -28,8 +28,8 @@ function revalidateTargetPaths() {
 }
 
 export async function getAuditTargets(): Promise<AuditTargets> {
-  await requireAuth();
-  return readAuditTargets();
+  const session = await requireAuth();
+  return readAuditTargets(session.user.id);
 }
 
 export async function setAuditTargetPerAgent(value: number) {
@@ -50,7 +50,10 @@ export async function setAuditTargetPerAgent(value: number) {
     return { error: "Enter a whole number between 1 and 999." };
   }
 
-  const perAgent = await writeAuditTargetPerAgent(parsed.data.value);
+  const perAgent = await writeAuditTargetPerAgent(
+    session.user.id,
+    parsed.data.value
+  );
   revalidateTargetPaths();
   return { success: true as const, perAgent };
 }
@@ -73,7 +76,10 @@ export async function setAuditTargetTotalMonthly(value: number) {
     return { error: "Enter a whole number between 1 and 99999." };
   }
 
-  const totalMonthly = await writeAuditTargetTotalMonthly(parsed.data.value);
+  const totalMonthly = await writeAuditTargetTotalMonthly(
+    session.user.id,
+    parsed.data.value
+  );
   revalidateTargetPaths();
   return { success: true as const, totalMonthly };
 }
