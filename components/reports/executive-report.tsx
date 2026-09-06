@@ -729,20 +729,20 @@ export function ExecutiveReport({
                   )}
                 >
                   <colgroup>
-                    <col />
-                    <col />
-                    <col />
-                    <col />
-                    <col />
-                    <col />
-                    <col />
-                    <col />
-                    <col />
-                    <col />
-                    <col />
-                    <col />
-                    <col className="platform-report-table__grade-col" />
-                    <col />
+                    <col className="rpt-col rpt-col--id" />
+                    <col className="rpt-col rpt-col--name" />
+                    <col className="rpt-col rpt-col--name" />
+                    <col className="rpt-col rpt-col--name" />
+                    <col className="rpt-col rpt-col--date" />
+                    <col className="rpt-col rpt-col--date" />
+                    <col className="rpt-col rpt-col--type" />
+                    <col className="rpt-col rpt-col--lob" />
+                    <col className="rpt-col rpt-col--reason" />
+                    <col className="rpt-col rpt-col--client" />
+                    <col className="rpt-col rpt-col--metric" />
+                    <col className="rpt-col rpt-col--metric" />
+                    <col className="rpt-col rpt-col--grade" />
+                    <col className="rpt-col rpt-col--feedback" />
                   </colgroup>
                   <thead>
                     <tr>
@@ -756,9 +756,9 @@ export function ExecutiveReport({
                       <th>LOB</th>
                       <th>Reason</th>
                       <th>Number / client name</th>
-                      <th>Quality</th>
-                      <th>Final</th>
-                      <th className="platform-report-table__grade">Grade</th>
+                      <th className="rpt-col--center">Quality</th>
+                      <th className="rpt-col--center">Final</th>
+                      <th className="rpt-col--center">Grade</th>
                       <th>Feedback</th>
                     </tr>
                   </thead>
@@ -785,15 +785,17 @@ export function ExecutiveReport({
                           {row.reason ?? "—"}
                         </td>
                         <td>{row.mobile ?? "—"}</td>
-                        <td className="platform-cell-accent">{row.qualityPct}%</td>
-                        <td>
+                        <td className="platform-cell-accent rpt-col--center">
+                          {row.qualityPct}%
+                        </td>
+                        <td className="rpt-col--center">
                           {row.hasFatal ? (
                             <span className="platform-cell-danger">FAILED</span>
                           ) : (
                             `${row.finalPct}%`
                           )}
                         </td>
-                        <td className="platform-report-table__grade">
+                        <td className="rpt-col--center rpt-col--grade">
                           <span className={gradeClass(row.grade)}>{row.grade}</span>
                         </td>
                         <td>{row.feedbackStatus}</td>

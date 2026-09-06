@@ -493,32 +493,86 @@
   max-height: min(72vh, 920px);
 }
 
+.platform-report .platform-report-table__scroll {
+  overflow-x: auto;
+}
+
 .platform-report .platform-report-table {
-  min-width: max(100%, 1280px);
+  table-layout: fixed;
+  width: max-content;
+  min-width: 96rem;
 }
 
-.platform-report .platform-report-table__grade-col {
-  width: 11.75rem;
-}
-
-.platform-report .platform-report-table th.platform-report-table__grade,
-.platform-report .platform-report-table td.platform-report-table__grade {
-  width: 11.75rem;
-  min-width: 11.75rem;
+.platform-report .platform-report-table thead th,
+.platform-report .platform-report-table tbody td {
   overflow: visible;
   white-space: nowrap;
   word-break: normal;
+  vertical-align: middle;
+  text-align: left;
+  padding-inline: 16px;
 }
 
-.platform-report .platform-report-table--expanded td.platform-report-table__grade {
+.platform-report .platform-report-table--expanded thead th,
+.platform-report .platform-report-table--expanded tbody td {
   white-space: nowrap;
   word-break: normal;
   vertical-align: middle;
 }
 
-.platform-report .platform-report-table td.platform-report-table__grade .dash-grade {
+.platform-report .rpt-col--id {
+  width: 8.5rem;
+}
+
+.platform-report .rpt-col--name {
+  width: 11rem;
+}
+
+.platform-report .rpt-col--date {
+  width: 8.25rem;
+}
+
+.platform-report .rpt-col--type {
+  width: 11.5rem;
+}
+
+.platform-report .rpt-col--lob {
+  width: 11rem;
+}
+
+.platform-report .rpt-col--reason {
+  width: 14rem;
+}
+
+.platform-report .rpt-col--client {
+  width: 14.5rem;
+}
+
+.platform-report .rpt-col--metric {
+  width: 6.75rem;
+}
+
+.platform-report .rpt-col--grade {
+  width: 13rem;
+}
+
+.platform-report .rpt-col--feedback {
+  width: 11rem;
+}
+
+.platform-report .platform-report-table__reason {
+  max-width: none;
+}
+
+.platform-report .platform-report-table th.rpt-col--center,
+.platform-report .platform-report-table td.rpt-col--center {
+  text-align: center;
+}
+
+.platform-report .platform-report-table td.rpt-col--grade .dash-grade {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   width: max-content;
   max-width: none;
   flex-shrink: 0;
