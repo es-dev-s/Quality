@@ -3,6 +3,7 @@ import {
   qualityPctForAverage,
 } from "@/lib/audit/metrics-config";
 import { resolveMetricDate } from "@/lib/audit/metric-dates";
+import type { AuditSourceKind } from "@/lib/audit/audit-source";
 
 export type DashboardAuditRecord = {
   id: string;
@@ -20,6 +21,7 @@ export type DashboardAuditRecord = {
   hasFatal: boolean;
   fatalList: string[];
   isHistory?: boolean;
+  auditSource?: AuditSourceKind;
 };
 
 export type FatalOccurrenceRow = {
@@ -65,6 +67,7 @@ export const EMPTY_INCLUDE_FILTERS: DashboardIncludeFilters = {
 
 export type DashboardFilterOptions = {
   agents: string[];
+  agentsByTeam: Record<string, string[]>;
   teamNames: string[];
   businessTypes: string[];
   auditors: string[];
@@ -79,10 +82,18 @@ export function extractFilterOptions(
   const businessTypes = new Set<string>();
   const auditors = new Set<string>();
   const auditTypes = new Set<string>();
+  const agentsByTeamSets = new Map<string, Set<string>>();
 
   for (const record of records) {
     if (record.agent) agents.add(record.agent);
-    if (record.supervisor) teamNames.add(record.supervisor);
+    if (record.supervisor) {
+      teamNames.add(record.supervisor);
+      if (record.agent) {
+        const set = agentsByTeamSets.get(record.supervisor) ?? new Set<string>();
+        set.add(record.agent);
+        agentsByTeamSets.set(record.supervisor, set);
+      }
+    }
     if (record.businessType) businessTypes.add(record.businessType);
     if (record.auditor) auditors.add(record.auditor);
     if (record.type) auditTypes.add(record.type);
@@ -91,8 +102,14 @@ export function extractFilterOptions(
   const sort = (values: Set<string>) =>
     Array.from(values).sort((a, b) => a.localeCompare(b));
 
+  const agentsByTeam: Record<string, string[]> = {};
+  for (const [team, set] of agentsByTeamSets) {
+    agentsByTeam[team] = sort(set);
+  }
+
   return {
     agents: sort(agents),
+    agentsByTeam,
     teamNames: sort(teamNames),
     businessTypes: sort(businessTypes),
     auditors: sort(auditors),
@@ -110,6 +127,7 @@ export function mergeRosterIntoFilterOptions(
   return {
     ...options,
     agents: Array.from(agents).sort((a, b) => a.localeCompare(b)),
+    agentsByTeam: options.agentsByTeam ?? {},
   };
 }
 
@@ -294,6 +312,22 @@ export function filterCurrentMonth(
   now = new Date()
 ): DashboardAuditRecord[] {
   return records.filter((r) => isSameMonth(recordMetricDate(r), now));
+}
+
+export function filterRecordsByAuditor(
+  records: DashboardAuditRecord[],
+  auditor: string
+): DashboardAuditRecord[] {
+  if (!auditor) return records;
+  return records.filter((record) => record.auditor === auditor);
+}
+
+export function filterRecordsByAuditSource(
+  records: DashboardAuditRecord[],
+  source: AuditSourceKind | ""
+): DashboardAuditRecord[] {
+  if (!source) return records;
+  return records.filter((record) => record.auditSource === source);
 }
 
 /** Filter by an explicit from/to date range (both YYYY-MM-DD, both optional). */
@@ -665,6 +699,50 @@ export function computeAuditorTargets(
   });
 
   return { auditors, perAuditorTarget, activeAuditors };
+}
+
+function viewerMatchKeys(viewer: {
+  name?: string | null;
+  email?: string | null;
+}): Set<string> {
+  const keys = new Set<string>();
+  const name = viewer.name?.trim();
+  if (name) keys.add(name.toLowerCase());
+  const email = viewer.email?.trim();
+  if (email) keys.add(email.toLowerCase());
+  return keys;
+}
+
+/**
+ * Keep only the logged-in auditor's row (merge name/email variants).
+ * Used so Quality Analysts do not see other auditors' target progress.
+ */
+export function restrictAuditorTargetsToViewer(
+  result: {
+    auditors: AuditorTargetRow[];
+    perAuditorTarget: number;
+    activeAuditors: number;
+  },
+  viewer: { name?: string | null; email?: string | null }
+): {
+  auditors: AuditorTargetRow[];
+  perAuditorTarget: number;
+  activeAuditors: number;
+} {
+  const keys = viewerMatchKeys(viewer);
+  const matched = result.auditors.filter((row) =>
+    keys.has(row.name.trim().toLowerCase())
+  );
+  const displayName = viewer.name?.trim() || viewer.email?.trim() || "You";
+  const achieved = matched.reduce((sum, row) => sum + row.achieved, 0);
+  const target = matched[0]?.target ?? result.perAuditorTarget;
+  const pct = target > 0 ? Math.round((achieved / target) * 100) : 0;
+
+  return {
+    perAuditorTarget: result.perAuditorTarget,
+    activeAuditors: 1,
+    auditors: [{ name: displayName, achieved, target, pct }],
+  };
 }
 
 export function auditorInitials(name: string): string {

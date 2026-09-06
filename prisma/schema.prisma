@@ -71,10 +71,9 @@ model AgentAssignment {
   assignedTo User @relation("AssignedAgentsTo", fields: [assignedToId], references: [id], onDelete: Cascade)
   assignedBy User @relation("AgentAssignedByQM", fields: [assignedById], references: [id], onDelete: Restrict)
 
-  @@unique([agentId, assignedToId])
+  @@unique([agentId])
   @@index([assignedToId])
   @@index([assignedById])
-  @@index([agentId])
   @@map("agent_assignments")
 }
 
@@ -336,6 +335,7 @@ model AuditSubmission {
   historyOwner      User?         @relation("HistoryOwner", fields: [historyOwnerId], references: [id], onDelete: SetNull)
   historyTransferId String?       @map("history_transfer_id")
   historyTransfer   AgentTransfer? @relation(fields: [historyTransferId], references: [id], onDelete: SetNull)
+  teamNameSnapshot  String?       @map("team_name_snapshot")
   notifications  Notification[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -373,6 +373,7 @@ model Notification {
   user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   audit AuditSubmission? @relation(fields: [auditId], references: [id], onDelete: SetNull)
 
+  @@unique([userId, type, auditId], map: "notifications_user_type_audit_key")
   @@index([userId, readAt])
   @@index([userId, createdAt])
   @@index([auditId])

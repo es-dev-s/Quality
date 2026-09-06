@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FilterSelect } from "@/components/filters/filter-select";
 import { FilterClearButton } from "@/components/filters/filter-clear-button";
 import {
@@ -8,8 +8,10 @@ import {
   type DateRangeValue,
 } from "@/components/primitives/date-range-picker";
 import { KpiScoreboard } from "@/components/kpi/kpi-scoreboard";
+import { useToast } from "@/components/primitives/toast";
 import { computeKpiRows } from "@/lib/kpi/compute-kpi";
 import type { KpiPageData } from "@/lib/kpi/records";
+import { setAuditTargetPerAgent } from "@/lib/actions/audit-targets";
 import {
   DEFAULT_KPI_FILTERS,
   KPI_TIME_OPTIONS,
@@ -35,7 +37,13 @@ function toSelectOptions(
 }
 
 export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
+  const { toast } = useToast();
   const [filters, setFilters] = useState<KpiFiltersState>(DEFAULT_KPI_FILTERS);
+  const [targetPerAgent, setTargetPerAgent] = useState(data.targetPerAgent);
+  const targetSaveSeq = useRef(0);
+  const lastSavedTarget = useRef(data.targetPerAgent);
+  const pendingTarget = useRef<number | null>(null);
+  const targetTimer = useRef<number | null>(null);
 
   const qualityManagers = filterOptions.qualityManagers ?? [];
   const qualityAnalysts = filterOptions.qualityAnalysts ?? [];
@@ -65,13 +73,13 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
         records: data.records,
         filters,
         rosterAgentNames: data.rosterAgentNames,
-        targetPerAgent: data.targetPerAgent,
+        targetPerAgent,
         qmAgentNamesByQm,
       }),
     [
       data.records,
       data.rosterAgentNames,
-      data.targetPerAgent,
+      targetPerAgent,
       qmAgentNamesByQm,
       filters,
     ]
@@ -109,6 +117,54 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
     setFilters(DEFAULT_KPI_FILTERS);
   }
 
+  function persistTarget(value: number) {
+    const next = Math.max(1, Math.min(999, Math.round(value) || 1));
+    setTargetPerAgent(next);
+    pendingTarget.current = null;
+    if (next === lastSavedTarget.current) return;
+    const seq = ++targetSaveSeq.current;
+    void (async () => {
+      const result = await setAuditTargetPerAgent(next);
+      if (seq !== targetSaveSeq.current) return;
+      if ("error" in result && result.error) {
+        toast(result.error, "error");
+        return;
+      }
+      if ("success" in result && result.success) {
+        lastSavedTarget.current = result.perAgent;
+        setTargetPerAgent(result.perAgent);
+        toast("Per-agent target saved.", "success");
+      }
+    })();
+  }
+
+  function scheduleTargetSave(value: number) {
+    const next = Math.max(1, Math.min(999, Math.round(value) || 1));
+    setTargetPerAgent(next);
+    pendingTarget.current = next;
+    if (targetTimer.current != null) window.clearTimeout(targetTimer.current);
+    targetTimer.current = window.setTimeout(() => {
+      persistTarget(next);
+    }, 400);
+  }
+
+  useEffect(() => {
+    if (pendingTarget.current == null) {
+      setTargetPerAgent(data.targetPerAgent);
+      lastSavedTarget.current = data.targetPerAgent;
+    }
+  }, [data.targetPerAgent]);
+
+  useEffect(() => {
+    return () => {
+      if (targetTimer.current != null) window.clearTimeout(targetTimer.current);
+      const pending = pendingTarget.current;
+      if (pending != null && pending !== lastSavedTarget.current) {
+        void setAuditTargetPerAgent(pending);
+      }
+    };
+  }, []);
+
   return (
     <section className="kpi-workspace">
       <div className="kpi-toolbar" role="toolbar" aria-label="KPI filters">
@@ -134,6 +190,8 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
               options={qmOptions}
               ariaLabel="Filter by quality manager"
               className="dash-select dash-select--filter kpi-filter__control"
+              searchable
+              searchPlaceholder="Search quality managers…"
             />
           </label>
 
@@ -146,6 +204,8 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
               options={qaOptions}
               ariaLabel="Filter by quality analyst"
               className="dash-select dash-select--filter kpi-filter__control"
+              searchable
+              searchPlaceholder="Search quality analysts…"
             />
           </label>
 
@@ -171,10 +231,13 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
 
       <KpiScoreboard
         summary={summary}
-        targetPerAgent={data.targetPerAgent}
+        targetPerAgent={targetPerAgent}
         agentCount={agentCount}
         qmName={filters.qm || null}
         qmRosterSize={qmRosterSize}
+        canEditTarget
+        onTargetChange={scheduleTargetSave}
+        onTargetCommit={persistTarget}
       />
     </section>
   );

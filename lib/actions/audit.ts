@@ -11,6 +11,7 @@ import {
 } from "@/lib/auth-guards";
 import { PERMISSIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import {
+  canDeleteAuditLogs,
   canEditFeedbackFully,
   canEditSupervisorRemarks,
   canExportAuditData,
@@ -51,6 +52,7 @@ import {
   parseAuditPageLimit,
 } from "@/lib/cached-queries/audit-submissions";
 import { dispatchFatalAuditNotifications } from "@/lib/notifications/dispatch-fatal-audit";
+import { dispatchDisputeAuditNotifications } from "@/lib/notifications/dispatch-dispute-audit";
 import {
   AUDIT_EXPORT_SELECT,
   mapSubmissionToExportRow,
@@ -64,6 +66,9 @@ import { canFilterByAgent } from "@/lib/audit/agent-filter-access";
 import { dataScopeFromSession } from "@/lib/audit/data-scope";
 import { resolveAuditSourceKind } from "@/lib/audit/audit-source";
 import { ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
+import { readAuditTargets } from "@/lib/kpi/audit-targets";
+import { KPI_DEFAULT_AGENT_TARGET } from "@/lib/kpi/records";
+import { resolveTeamNameSnapshot } from "@/lib/audit/resolve-team-name";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
 import {
   defaultAuditFeedback,
@@ -96,9 +101,17 @@ function validationError(message: string) {
 
 function normalizeFormFeedbackForSave(
   formData: Pick<AuditFormData, "feedbackSecurity" | "feedbackStatus">,
-  existing?: { feedbackDate: string | null; feedbackStatusAt: string | null }
+  existing?: {
+    feedbackStatus?: string | null;
+    feedbackDate: string | null;
+    feedbackStatusAt: string | null;
+  }
 ): AuditFeedbackFields | { error: string } {
-  const feedbackStatus = parseFeedbackStatus(formData.feedbackStatus);
+  // Status and dates are Audit Log-only. New audits stay Pending; edits keep
+  // the stored lifecycle even if the form payload is tampered.
+  const feedbackStatus = existing
+    ? parseFeedbackStatus(existing.feedbackStatus)
+    : "Pending";
   if (!FEEDBACK_STATUS_OPTIONS.includes(feedbackStatus)) {
     return { error: "Invalid feedback status." };
   }
@@ -286,6 +299,11 @@ export async function saveAuditSubmission(
 
   const record = result.record;
 
+  const teamNameSnapshot = await resolveTeamNameSnapshot(
+    record.agent,
+    record.supervisor || null
+  );
+
   const submissionData = {
     auditCode: record.id,
     templateId: template.id,
@@ -321,6 +339,7 @@ export async function saveAuditSubmission(
     rows: record.rows,
     record: record as unknown as object,
     submissionKey: submissionKey ?? null,
+    teamNameSnapshot,
   };
 
   let createdId: string | undefined;
@@ -825,8 +844,11 @@ export async function updateAuditSubmission(
     select: {
       id: true,
       auditCode: true,
+      agent: true,
+      supervisor: true,
       hasFatal: true,
       isHistory: true,
+      teamNameSnapshot: true,
       feedbackSecurity: true,
       feedbackStatus: true,
       feedbackDate: true,
@@ -843,6 +865,7 @@ export async function updateAuditSubmission(
   }
 
   const feedbackResult = normalizeFormFeedbackForSave(validFormData, {
+    feedbackStatus: existing.feedbackStatus,
     feedbackDate: existing.feedbackDate,
     feedbackStatusAt: existing.feedbackStatusAt,
   });
@@ -872,6 +895,16 @@ export async function updateAuditSubmission(
   }
 
   const record = result.record;
+  const agentOrSupervisorChanged =
+    existing.agent !== record.agent ||
+    (existing.supervisor ?? "") !== (record.supervisor || "");
+  const teamNameSnapshot =
+    !agentOrSupervisorChanged && existing.teamNameSnapshot?.trim()
+      ? existing.teamNameSnapshot
+      : await resolveTeamNameSnapshot(
+          record.agent,
+          record.supervisor || null
+        );
 
   try {
     const updated = await prisma.auditSubmission.updateMany({
@@ -908,6 +941,7 @@ export async function updateAuditSubmission(
         catScores: record.catScores,
         rows: record.rows,
         record: record as unknown as object,
+        teamNameSnapshot,
       },
     });
 
@@ -986,6 +1020,11 @@ export async function updateAuditFeedback(
     where: await scopedAuditByIdWhere(session, parsed.data.id),
     select: {
       id: true,
+      auditCode: true,
+      agent: true,
+      supervisor: true,
+      auditor: true,
+      submittedById: true,
       isHistory: true,
       feedbackSecurity: true,
       feedbackStatus: true,
@@ -1094,6 +1133,20 @@ export async function updateAuditFeedback(
     },
   });
 
+  if (previousStatus !== "Disputed" && nextStatusParsed === "Disputed") {
+    void dispatchDisputeAuditNotifications({
+      auditId: existing.id,
+      auditCode: existing.auditCode,
+      agent: existing.agent,
+      supervisor: existing.supervisor,
+      auditor: existing.auditor,
+      submittedById: existing.submittedById,
+      disputedById: session.user.id,
+    }).catch((error) => {
+      console.error("dispatchDisputeAuditNotifications failed:", error);
+    });
+  }
+
   return {
     success: true as const,
     feedbackDate: feedback.feedbackDate || null,
@@ -1154,7 +1207,7 @@ export async function updateSupervisorRemarks(
 
 export async function deleteAuditSubmissions(ids: string[]) {
   const session = await requireAuth();
-  if (!isSuperAdmin(session.user.role)) {
+  if (!canDeleteAuditLogs(session.user.role)) {
     return permissionError();
   }
 
@@ -1182,7 +1235,7 @@ export async function deleteAuditSubmissions(ids: string[]) {
 
   try {
     const result = await prisma.auditSubmission.deleteMany({
-      where: { id: { in: uniqueIds } },
+      where: await scopedAuditWhere(session, { id: { in: uniqueIds } }),
     });
 
     if (result.count === 0) {
@@ -1236,15 +1289,17 @@ export async function updateAuditFeedbackStatus(
 
 export async function getDashboardAuditData(): Promise<DashboardAuditData> {
   const session = await requirePermission(PERMISSIONS.OVERVIEW_READ);
+  const cacheScope = cacheScopeFromSession(session);
+  const ctx = dataScopeFromSession(session);
+  const targetsPromise = readAuditTargets(session.user.id);
 
   try {
-    const cacheScope = cacheScopeFromSession(session);
-    const ctx = dataScopeFromSession(session);
-    const [submissions, rosterAgentNames] = await Promise.all([
+    const [submissions, rosterAgentNames, targets] = await Promise.all([
       withDbRetry(() => getCachedDashboardRecords(cacheScope)()),
       canFilterByAgent(session.user.role.slug)
         ? fetchAgentRosterNames(ctx.userId, ctx.role.slug)
         : Promise.resolve([] as string[]),
+      targetsPromise,
     ]);
 
     return {
@@ -1264,14 +1319,21 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
         hasFatal: s.hasFatal,
         fatalList: parseFatalList(s.fatalList),
         isHistory: s.isHistory,
+        auditSource: resolveAuditSourceKind(s.submittedBy.role?.slug),
       })),
       rosterAgentNames,
       fetchedAt: new Date().toISOString(),
       dbError: null as string | null,
+      agentTarget: targets.perAgent,
+      totalMonthlyTarget: targets.totalMonthly,
     };
   } catch (error) {
     console.error("getDashboardAuditData failed:", error);
     const cacheOverflow = isNextDataCacheOverflowError(error);
+    const targets = await targetsPromise.catch(() => ({
+      perAgent: KPI_DEFAULT_AGENT_TARGET,
+      totalMonthly: null as number | null,
+    }));
     return {
       records: [],
       rosterAgentNames: [],
@@ -1279,6 +1341,8 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
       dbError: cacheOverflow
         ? "Dashboard could not load this many audits from cache. Refresh and try again."
         : "Unable to reach the database. Use the Supabase session pooler (pooler.supabase.com:5432) in DATABASE_URL or DATABASE_URL_SESSION — not db.*.supabase.co.",
+      agentTarget: targets.perAgent,
+      totalMonthlyTarget: targets.totalMonthly,
     };
   }
 }

@@ -108,6 +108,7 @@ export type DashboardAuditRecord = {
   hasFatal: boolean;
   fatalList: string[];
   isHistory: boolean;
+  auditSource: AuditSourceKind;
 };
 
 export type DashboardAuditData = {
@@ -115,4 +116,6 @@ export type DashboardAuditData = {
   rosterAgentNames: string[];
   fetchedAt: string;
   dbError: string | null;
+  agentTarget: number;
+  totalMonthlyTarget: number | null;
 };

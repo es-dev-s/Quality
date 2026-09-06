@@ -111,7 +111,18 @@ async function findManagerUserIdsForAgent(agentUserId: string): Promise<string[]
   return managers.map((user) => user.id);
 }
 
-/** Agent, supervisor, and aligned quality managers for a fatal audit. */
+async function findActiveSuperAdminIds(excludeUserId: string): Promise<string[]> {
+  const users = await prisma.user.findMany({
+    where: withActiveUserFilter({
+      role: { slug: SYSTEM_ROLE_SLUGS.SUPERADMIN },
+      id: { not: excludeUserId },
+    }),
+    select: { id: true },
+  });
+  return users.map((user) => user.id);
+}
+
+/** Agent, supervisor, aligned quality managers, and Super Admins for a fatal audit. */
 export async function resolveFatalAuditRecipients(
   ctx: FatalAuditRecipientContext
 ): Promise<FatalAuditRecipient[]> {
@@ -139,6 +150,13 @@ export async function resolveFatalAuditRecipients(
       if (managerId !== ctx.excludeUserId) {
         recipients.set(managerId, "manager");
       }
+    }
+  }
+
+  const superAdminIds = await findActiveSuperAdminIds(ctx.excludeUserId);
+  for (const superAdminId of superAdminIds) {
+    if (!recipients.has(superAdminId)) {
+      recipients.set(superAdminId, "superadmin");
     }
   }
 

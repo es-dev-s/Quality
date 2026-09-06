@@ -26,6 +26,7 @@ function assert(condition: boolean, message: string) {
 }
 
 const qa = role(SYSTEM_ROLE_SLUGS.QUALITY_ANALYST);
+const qm = role(SYSTEM_ROLE_SLUGS.QUALITY_MANAGER);
 const agent = role(SYSTEM_ROLE_SLUGS.AGENT);
 
 const qaPending = getFeedbackStatusSelectConfig(qa, "Pending");
@@ -42,16 +43,9 @@ assert(qaShared.editable, "QA can edit Shared");
 assert(qaShared.selectValue === "Shared", "QA Shared dropdown shows Shared");
 
 const qaAck = getFeedbackStatusSelectConfig(qa, "Acknowledged");
-assert(qaAck.editable, "QA can reset Acknowledged");
-assert(qaAck.selectValue === "Acknowledged", "QA dropdown shows global Acknowledged");
-assert(
-  qaAck.options.some((option) => option.value === "Acknowledged" && option.disabled),
-  "QA current status shown as disabled option"
-);
-assert(
-  qaAck.options.some((option) => option.value === "Pending" && !option.disabled),
-  "QA can pick Pending from single dropdown"
-);
+assert(!qaAck.showSelect, "QA has no dropdown once agent acknowledged");
+assert(!qaAck.editable, "QA cannot edit Acknowledged");
+assert(qaAck.selectValue === "Acknowledged", "QA still displays Acknowledged");
 
 const agentPending = getFeedbackStatusSelectConfig(agent, "Pending");
 assert(!agentPending.editable, "Agent cannot edit Pending");
@@ -79,8 +73,8 @@ assert(
   "QA Shared→Pending allowed"
 );
 assert(
-  assertFeedbackStatusChangeAllowed(qa, "Acknowledged", "Pending") === null,
-  "QA Acknowledged→Pending allowed"
+  assertFeedbackStatusChangeAllowed(qa, "Acknowledged", "Pending") !== null,
+  "QA cannot change Acknowledged"
 );
 assert(
   assertFeedbackStatusChangeAllowed(qa, "Disputed", "Shared") === null,
@@ -89,6 +83,18 @@ assert(
 assert(
   assertFeedbackStatusChangeAllowed(qa, "Pending", "Acknowledged") !== null,
   "QA cannot set Acknowledged"
+);
+
+const qmAck = getFeedbackStatusSelectConfig(qm, "Acknowledged");
+assert(!qmAck.showSelect, "QM has no dropdown once agent acknowledged");
+assert(!qmAck.editable, "QM cannot edit Acknowledged");
+assert(
+  assertFeedbackStatusChangeAllowed(qm, "Acknowledged", "Pending") !== null,
+  "QM cannot change Acknowledged"
+);
+assert(
+  assertFeedbackStatusChangeAllowed(qm, "Pending", "Shared") === null,
+  "QM Pending→Shared allowed"
 );
 assert(
   assertFeedbackStatusChangeAllowed(agent, "Shared", "Acknowledged") === null,

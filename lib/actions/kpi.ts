@@ -10,10 +10,10 @@ import { dataScopeFromSession } from "@/lib/audit/data-scope";
 import { scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
 import type { KpiFilterOptions } from "@/lib/kpi/filters";
 import {
-  KPI_DEFAULT_AGENT_TARGET,
   type KpiAuditRecord,
   type KpiPageData,
 } from "@/lib/kpi/records";
+import { readAuditTargets } from "@/lib/kpi/audit-targets";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 
@@ -90,15 +90,16 @@ export async function getKpiData(): Promise<KpiPageData> {
   const session = await requireSuperAdmin();
   const ctx = dataScopeFromSession(session);
 
-  const [records, rosterAgentNames] = await Promise.all([
+  const [records, rosterAgentNames, targets] = await Promise.all([
     fetchKpiRecords(await scopedAuditWhere(session)),
     fetchAgentRosterNames(ctx.userId, ctx.role.slug),
+    readAuditTargets(session.user.id),
   ]);
 
   return {
     records,
     rosterAgentNames,
-    targetPerAgent: KPI_DEFAULT_AGENT_TARGET,
+    targetPerAgent: targets.perAgent,
     fetchedAt: new Date().toISOString(),
   };
 }

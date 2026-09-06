@@ -9,6 +9,8 @@ import { resolveMetricDate } from "@/lib/audit/metric-dates";
 
 type FatalOccurrencesModalProps = {
   fatalName: string | null;
+  title?: string;
+  description?: string;
   occurrences: FatalOccurrenceRow[];
   canEditAudits?: boolean;
   canEditSupervisorRemarks?: boolean;
@@ -24,6 +26,8 @@ function formatDate(value: string): string {
 
 export function FatalOccurrencesModal({
   fatalName,
+  title,
+  description,
   occurrences,
   canEditAudits = false,
   canEditSupervisorRemarks = false,
@@ -42,8 +46,11 @@ export function FatalOccurrencesModal({
       <Modal
         open={open}
         onClose={handleClose}
-        title={fatalName ?? "Fatal error details"}
-        description={`${occurrences.length} audit${occurrences.length === 1 ? "" : "s"} with this fatal parameter in the selected period`}
+        title={title ?? fatalName ?? "Fatal error details"}
+        description={
+          description ??
+          `${occurrences.length} audit${occurrences.length === 1 ? "" : "s"} with this fatal parameter in the selected period`
+        }
         className="dash-fatal-modal"
         rootClassName={viewAuditId ? "ui-modal-root--underlay" : undefined}
       >

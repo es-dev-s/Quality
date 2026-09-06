@@ -563,17 +563,9 @@
   min-height: 32px;
 }
 
-.platform-report__toolbar--compact {
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.platform-report__toolbar-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-  min-width: 0;
+.platform-report__toolbar.platform-report__toolbar--compact {
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .pf-panel .filter-chip-bar {

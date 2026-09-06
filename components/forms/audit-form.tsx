@@ -18,6 +18,7 @@ import {
   getSubReasonsForReason,
 } from "@/lib/audit/interaction-options";
 import { getScoreTone, toneClass } from "@/lib/audit/score-visual";
+import { selectionToneClass } from "@/lib/audit/selection-tone";
 import type { AuditReferenceOption } from "@/lib/actions/audit";
 import type { TemplateListItem } from "@/lib/actions/templates";
 import type {
@@ -33,10 +34,8 @@ import { MessageSquare, Phone } from "lucide-react";
 import {
   FEEDBACK_SECURITY_OPTIONS,
   FEEDBACK_SEVERITY_LABEL,
-  FEEDBACK_STATUS_OPTIONS,
   defaultAuditFeedback,
   type FeedbackSecurity,
-  type FeedbackStatus,
 } from "@/lib/audit/feedback";
 import { AuditScorePanel } from "@/components/forms/audit-score-panel";
 import { QmsEmpty } from "@/components/analytics/qms-primitives";
@@ -695,6 +694,8 @@ export function AuditForm({
                       className="audit-control"
                       value={formData.supervisor}
                       disabled={pending}
+                      searchable
+                      searchPlaceholder="Search supervisors…"
                       onChange={(e) => handleSupervisorChange(e.target.value)}
                     >
                       <option value="">Select supervisor</option>
@@ -718,6 +719,8 @@ export function AuditForm({
                       className="audit-control"
                       value={formData.agent}
                       disabled={!formData.supervisor.trim() || pending}
+                      searchable
+                      searchPlaceholder="Search agents…"
                       onChange={(e) => updateForm({ agent: e.target.value })}
                     >
                       <option value="">
@@ -746,6 +749,8 @@ export function AuditForm({
                       id="auditor"
                       className="audit-control"
                       value={formData.auditor}
+                      searchable
+                      searchPlaceholder="Search quality analysts…"
                       onChange={(e) => updateForm({ auditor: e.target.value })}
                     >
                       <option value="">Select Quality Analyst</option>
@@ -1120,7 +1125,7 @@ export function AuditForm({
                           <Select
                             className={cn(
                               "audit-control audit-score-row__select",
-                              toneClass(tone, "audit-control")
+                              selectionToneClass(current)
                             )}
                             value={current}
                             onChange={(e) =>
@@ -1189,28 +1194,13 @@ export function AuditForm({
                       Feedback Status
                       <span className="audit-required"> *</span>
                     </Label>
-                    <Select
+                    <Input
                       id="feedbackStatus"
                       className="audit-control"
-                      value={formData.feedbackStatus}
-                      required
-                      onChange={(e) => {
-                        const feedbackStatus = e.target.value as FeedbackStatus;
-                        updateForm({
-                          feedbackStatus,
-                          feedbackDate:
-                            feedbackStatus === "Pending"
-                              ? ""
-                              : formData.feedbackDate,
-                        });
-                      }}
-                    >
-                      {FEEDBACK_STATUS_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </Select>
+                      value={formData.feedbackStatus || "Pending"}
+                      readOnly
+                      disabled
+                    />
                   </Field>
 
                   <Field className="audit-field">

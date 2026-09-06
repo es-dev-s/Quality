@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { resolveSelectPortalTarget } from "@/lib/ui/select-portal";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Search } from "lucide-react";
 import {
   Children,
   forwardRef,
@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type SelectHTMLAttributes,
 } from "react";
 import { createPortal } from "react-dom";
@@ -24,6 +25,9 @@ type OptionItem = { value: string; label: string; disabled?: boolean };
 type SelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
   /** Prefer this in filter panels — avoids fragile option-child parsing. */
   options?: OptionItem[];
+  /** Show a typeahead field in the open menu (user lists, long option sets). */
+  searchable?: boolean;
+  searchPlaceholder?: string;
 };
 
 function isOptionElement(child: React.ReactElement): boolean {
@@ -50,16 +54,21 @@ function parseOptions(children: React.ReactNode): OptionItem[] {
   return options;
 }
 
-function measureMenu(trigger: HTMLElement): MenuLayout {
+function optionMatchesQuery(option: OptionItem, query: string): boolean {
+  if (!query) return true;
+  return option.label.toLowerCase().includes(query);
+}
+
+function measureMenu(trigger: HTMLElement, searchable: boolean): MenuLayout {
   const rect = trigger.getBoundingClientRect();
   const gap = 4;
   const padding = 8;
-  const preferredMax = 280;
+  const preferredMax = searchable ? 320 : 280;
   const spaceBelow = window.innerHeight - rect.bottom - padding;
   const spaceAbove = rect.top - padding;
   const openUp = spaceBelow < 140 && spaceAbove > spaceBelow;
   const maxHeight = Math.max(
-    112,
+    searchable ? 160 : 112,
     Math.min(preferredMax, openUp ? spaceAbove - gap : spaceBelow - gap)
   );
   const top = openUp
@@ -87,6 +96,8 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
       className,
       children,
       options: optionsProp,
+      searchable = false,
+      searchPlaceholder = "Search…",
       value,
       defaultValue,
       onChange,
@@ -101,7 +112,10 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
     const listboxId = useId();
     const rootRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
+    const searchRef = useRef<HTMLInputElement>(null);
     const [open, setOpen] = useState(false);
+    const [query, setQuery] = useState("");
+    const [highlightIndex, setHighlightIndex] = useState(0);
     const [menuLayout, setMenuLayout] = useState<MenuLayout | null>(null);
     const [portalTarget, setPortalTarget] = useState<{
       container: HTMLElement;
@@ -126,11 +140,33 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
         label: currentValue || "Select",
       };
 
+    const normalizedQuery = query.trim().toLowerCase();
+    const visibleOptions = useMemo(
+      () =>
+        searchable
+          ? options.filter((option) =>
+              optionMatchesQuery(option, normalizedQuery)
+            )
+          : options,
+      [options, searchable, normalizedQuery]
+    );
+
     useEffect(() => {
       if (controlled) {
         setInternalValue(String(value));
       }
     }, [controlled, value]);
+
+    useEffect(() => {
+      if (!open) {
+        setQuery("");
+        setHighlightIndex(0);
+      }
+    }, [open]);
+
+    useEffect(() => {
+      setHighlightIndex(0);
+    }, [normalizedQuery, visibleOptions.length]);
 
     useLayoutEffect(() => {
       if (!open || !triggerRef.current) {
@@ -142,7 +178,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
       const updateLayout = () => {
         if (!triggerRef.current) return;
         setPortalTarget(resolveSelectPortalTarget(triggerRef.current));
-        setMenuLayout(measureMenu(triggerRef.current));
+        setMenuLayout(measureMenu(triggerRef.current, searchable));
       };
 
       updateLayout();
@@ -152,7 +188,12 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
         window.removeEventListener("resize", updateLayout);
         window.removeEventListener("scroll", updateLayout, true);
       };
-    }, [open, options.length]);
+    }, [open, options.length, searchable]);
+
+    useLayoutEffect(() => {
+      if (!open || !searchable) return;
+      searchRef.current?.focus();
+    }, [open, searchable]);
 
     useEffect(() => {
       if (!open) return;
@@ -197,6 +238,34 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
       triggerRef.current?.focus();
     }
 
+    function moveHighlight(delta: number) {
+      if (visibleOptions.length === 0) return;
+      setHighlightIndex((current) => {
+        const next = (current + delta + visibleOptions.length) % visibleOptions.length;
+        return next;
+      });
+    }
+
+    function onSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        moveHighlight(1);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        moveHighlight(-1);
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const option = visibleOptions[highlightIndex] ?? visibleOptions[0];
+        if (option && !option.disabled) {
+          selectOption(option.value);
+        }
+      }
+    }
+
     const menuStyle: CSSProperties | undefined =
       menuLayout && portalTarget
         ? {
@@ -209,17 +278,24 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
           }
         : undefined;
 
-    const menu =
-      open && menuLayout && portalTarget ? (
-        <ul
-          id={listboxId}
-          data-select-menu={listboxId}
-          className="ui-custom-select__menu ui-custom-select__menu--portal ui-scrollbar"
-          style={menuStyle}
-          role="listbox"
-        >
-          {options.map((option) => (
-            <li key={option.value || "__empty__"} role="presentation">
+    const optionList = (
+      <ul
+        id={listboxId}
+        className={cn(
+          "ui-custom-select__list ui-scrollbar",
+          !searchable && "ui-custom-select__menu ui-custom-select__menu--portal"
+        )}
+        style={searchable ? undefined : menuStyle}
+        role="listbox"
+        data-select-menu={searchable ? undefined : listboxId}
+      >
+        {visibleOptions.length === 0 ? (
+          <li role="presentation">
+            <p className="ui-custom-select__empty">No matches</p>
+          </li>
+        ) : (
+          visibleOptions.map((option, index) => (
+            <li key={`${option.value || "__empty__"}-${index}`} role="presentation">
               <button
                 type="button"
                 role="option"
@@ -227,9 +303,13 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
                 className={cn(
                   "ui-custom-select__option",
                   option.value === currentValue &&
-                    "ui-custom-select__option--selected"
+                    "ui-custom-select__option--selected",
+                  searchable &&
+                    index === highlightIndex &&
+                    "ui-custom-select__option--active"
                 )}
                 disabled={option.disabled}
+                onMouseEnter={() => setHighlightIndex(index)}
                 onClick={() => selectOption(option.value)}
               >
                 <span>{option.label}</span>
@@ -238,8 +318,39 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
                 ) : null}
               </button>
             </li>
-          ))}
-        </ul>
+          ))
+        )}
+      </ul>
+    );
+
+    const menu =
+      open && menuLayout && portalTarget ? (
+        searchable ? (
+          <div
+            data-select-menu={listboxId}
+            className="ui-custom-select__menu ui-custom-select__menu--portal ui-custom-select__menu--searchable"
+            style={menuStyle}
+          >
+            <div className="ui-custom-select__search">
+              <Search size={14} aria-hidden />
+              <input
+                ref={searchRef}
+                type="text"
+                value={query}
+                placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder}
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={onSearchKeyDown}
+              />
+            </div>
+            {optionList}
+          </div>
+        ) : (
+          optionList
+        )
       ) : null;
 
     return (

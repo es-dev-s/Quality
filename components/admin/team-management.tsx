@@ -1085,7 +1085,7 @@ function AgentAssignmentPanel({
             toast(result.error, "error");
             return;
           }
-          toast("Agent assigned.", "success");
+          toast("Agent assigned. Previous QA access was removed.", "success");
           onChanged();
           setView("active");
         } catch {
@@ -1117,8 +1117,8 @@ function AgentAssignmentPanel({
         const skipped = result.skipped ?? 0;
         const message =
           skipped > 0
-            ? `${assigned} agent${assigned === 1 ? "" : "s"} assigned. ${skipped} skipped (already assigned or unavailable).`
-            : `${assigned} agent${assigned === 1 ? "" : "s"} assigned.`;
+            ? `${assigned} agent${assigned === 1 ? "" : "s"} assigned. ${skipped} already with this analyst.`
+            : `${assigned} agent${assigned === 1 ? "" : "s"} assigned. Previous QA access was removed.`;
 
         toast(message, "success");
         setSelectedAgentIds([]);
@@ -1255,6 +1255,7 @@ function AgentAssignmentPanel({
             className="team-assignments__compose"
             aria-labelledby="team-assign-compose-title"
           >
+            <div className="team-assignments__compose-body">
             <p id="team-assign-compose-title" className="team-assignments__compose-lead">
               {view === "single"
                 ? "Link one approved agent to a quality analyst."
@@ -1270,6 +1271,8 @@ function AgentAssignmentPanel({
                   value={assignToId}
                   disabled={pending || assigneeOptions.length === 0}
                   options={assigneeSelectOptions}
+                  searchable
+                  searchPlaceholder="Search quality analysts…"
                   onChange={(e) => setAssignToId(e.target.value)}
                 />
               </Field>
@@ -1283,6 +1286,8 @@ function AgentAssignmentPanel({
                     value={agentId}
                     disabled={pending || selectableAgents.length === 0}
                     options={agentSelectOptions}
+                    searchable
+                    searchPlaceholder="Search agents…"
                     onChange={(e) => setAgentId(e.target.value)}
                   />
                   {selectableAgents.length === 0 ? (
@@ -1400,6 +1405,7 @@ function AgentAssignmentPanel({
                 ) : null}
               </Field>
             ) : null}
+            </div>
 
             <div className="team-assignments__compose-actions">
               <Button type="button" disabled={assignDisabled} onClick={handleAssign}>
@@ -1433,7 +1439,7 @@ function AgentAssignmentPanel({
             ) : (
               <DataTablePanel
                 pagination={assignmentPagination}
-                fillViewport={fillViewport}
+                fillViewport={false}
                 className="team-assignments__table-panel"
                 summaryLabel={`${filteredAssignments.length} of ${
                   agentAssignments.length
@@ -1767,6 +1773,8 @@ function MemberAccessPanel({
             value={memberId}
             disabled={pending}
             options={memberSelectOptions}
+            searchable
+            searchPlaceholder="Search members…"
             onChange={(e) => setMemberId(e.target.value)}
           />
         </Field>
@@ -2306,7 +2314,14 @@ export function TeamManagement({
     <div
       className={
         embedded
-          ? "settings-tab-layout team-management team-management--embedded"
+          ? [
+              "settings-tab-layout",
+              "team-management",
+              "team-management--embedded",
+              subTab === "assignments" ? "team-management--assignments-page" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")
           : "team-management"
       }
     >

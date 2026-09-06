@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Award, RefreshCw } from "lucide-react";
 import { FilterChipBar } from "@/components/filters/filter-chip-bar";
@@ -18,6 +18,8 @@ import { FilterSelect } from "@/components/filters/filter-select";
 import { LoadingZone } from "@/components/primitives/loading-zone";
 import { cn } from "@/lib/utils";
 import { FatalOccurrencesModal } from "@/components/dashboard/fatal-occurrences-modal";
+import { TargetCalendarFilter } from "@/components/dashboard/target-calendar-filter";
+import { useDashboardShell } from "@/components/dashboard/shell";
 import { HistoryFilterSection } from "@/components/audit/history-filter-section";
 import type { DashboardAuditData } from "@/lib/audit/audit-records";
 import {
@@ -30,6 +32,7 @@ import {
   auditorInitials,
   computeAgentTargets,
   computeAuditorTargets,
+  restrictAuditorTargetsToViewer,
   computePeriodStats,
   computeScoreDistribution,
   computeTopAgents,
@@ -43,6 +46,7 @@ import {
   filterByPeriod,
   filterByCustomRange,
   filterCurrentMonth,
+  filterRecordsByAuditSource,
   hasActiveIncludeFilters,
   resolveTrendRangeBounds,
   type DashboardIncludeFilters,
@@ -50,11 +54,23 @@ import {
   type TrendGranularity,
 } from "@/lib/audit/dashboard-metrics";
 import {
+  agentNamesForSelectedTeam,
   buildAgentFilterSelectOptions,
   canFilterByAgent,
 } from "@/lib/audit/agent-filter-access";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import {
+  canEditAuditTargets as roleCanEditAgentTargets,
+  canEditMonthlyAuditTargets,
+} from "@/lib/rbac";
 import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
+import { type AuditSourceKind } from "@/lib/audit/audit-source";
+import {
+  setAuditTargetPerAgent,
+  setAuditTargetTotalMonthly,
+} from "@/lib/actions/audit-targets";
+import { useToast } from "@/components/primitives/toast";
+import { KPI_DEFAULT_AGENT_TARGET } from "@/lib/kpi/records";
 
 type DashboardAnalyticsProps = {
   data: DashboardAuditData;
@@ -77,7 +93,35 @@ const TREND_OPTIONS: { id: TrendGranularity; label: string }[] = [
   { id: "month", label: "Month by month" },
 ];
 
-const DEFAULT_AGENT_TARGET = 20;
+const DEFAULT_AGENT_TARGET = KPI_DEFAULT_AGENT_TARGET;
+
+const AGENT_TARGET_SOURCE_OPTIONS: { value: AuditSourceKind | ""; label: string }[] = [
+  { value: "", label: "Audit source" },
+  { value: "supervisor", label: "Supervisor audits" },
+  { value: "qa", label: "QA audits" },
+];
+
+function agentTargetSourceCopy(source: AuditSourceKind | "") {
+  if (source === "supervisor") {
+    return {
+      desc: "Supervisor audits this month vs target per agent",
+      summary: "Supervisor audits this month",
+      empty: "No agents with supervisor audits this month yet.",
+    };
+  }
+  if (source === "qa") {
+    return {
+      desc: "QA audits this month vs target per agent",
+      summary: "QA audits this month",
+      empty: "No agents with QA audits this month yet.",
+    };
+  }
+  return {
+    desc: "Cumulative audits this month vs target per agent",
+    summary: "Cumulative this month",
+    empty: "No agents in audit history yet.",
+  };
+}
 
 function scoreTone(score: number): string {
   if (score >= 90) return "dash-kpi__value--success";
@@ -104,7 +148,9 @@ export function DashboardAnalytics({
   canEditAudits = false,
   canEditSupervisorRemarks = false,
 }: DashboardAnalyticsProps) {
+  const { user } = useDashboardShell();
   const router = useRouter();
+  const { toast } = useToast();
   const [isRefreshing, startRefresh] = useTransition();
   const [period, setPeriod] = useState<DashboardPeriod>("overall");
   const [customRange, setCustomRange] = useState<DateRangeValue>({ from: "", to: "" });
@@ -115,15 +161,31 @@ export function DashboardAnalytics({
   const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
     defaultAuditHistoryFilter(data.records ?? [])
   );
-  const [agentTarget, setAgentTarget] = useState(DEFAULT_AGENT_TARGET);
-  const [totalMonthlyTarget, setTotalMonthlyTarget] = useState<number | null>(
-    null
+  const [agentTarget, setAgentTarget] = useState(
+    data.agentTarget ?? DEFAULT_AGENT_TARGET
   );
+  const [totalMonthlyTarget, setTotalMonthlyTarget] = useState<number | null>(
+    data.totalMonthlyTarget ?? null
+  );
+  const agentTargetSaveSeq = useRef(0);
+  const totalTargetSaveSeq = useRef(0);
+  const lastSavedAgentTarget = useRef(data.agentTarget ?? DEFAULT_AGENT_TARGET);
+  const lastSavedMonthlyTarget = useRef(data.totalMonthlyTarget ?? null);
+  const pendingAgentTarget = useRef<number | null>(null);
+  const pendingMonthlyTarget = useRef<number | null>(null);
+  const agentTargetTimer = useRef<number | null>(null);
+  const monthlyTargetTimer = useRef<number | null>(null);
   const [selectedFatal, setSelectedFatal] = useState<string | null>(null);
+  const [targetAuditSource, setTargetAuditSource] = useState<
+    AuditSourceKind | ""
+  >("");
+  const [auditorTargetRange, setAuditorTargetRange] = useState<DateRangeValue>({
+    from: "",
+    to: "",
+  });
   const filterSidebar = useFilterSidebar();
-  const canEditAuditTargets =
-    roleSlug === SYSTEM_ROLE_SLUGS.SUPERADMIN ||
-    roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER;
+  const canEditAuditTargets = roleCanEditAgentTargets(user.role);
+  const canEditMonthlyTargets = canEditMonthlyAuditTargets(user.role);
 
   const records = data.records ?? [];
   const referenceNow = useMemo(
@@ -182,6 +244,31 @@ export function DashboardAnalytics({
     [scopedRecords, referenceNow]
   );
 
+  const agentTargetRecords = useMemo(() => {
+    if (!targetAuditSource) {
+      return { all: scopedRecords, month: monthRecords };
+    }
+    const bySource = filterRecordsByAuditSource(monthRecords, targetAuditSource);
+    return { all: bySource, month: bySource };
+  }, [scopedRecords, monthRecords, targetAuditSource]);
+
+  const auditorTargetSource = useMemo(() => {
+    if (auditorTargetRange.from || auditorTargetRange.to) {
+      const ranged = filterByCustomRange(
+        scopedRecords,
+        auditorTargetRange.from,
+        auditorTargetRange.to
+      );
+      return { all: ranged, counts: ranged };
+    }
+    return { all: scopedRecords, counts: monthRecords };
+  }, [
+    scopedRecords,
+    monthRecords,
+    auditorTargetRange.from,
+    auditorTargetRange.to,
+  ]);
+
   const stats = useMemo(() => computePeriodStats(filtered), [filtered]);
   const monthStats = useMemo(
     () => computePeriodStats(monthRecords),
@@ -205,18 +292,40 @@ export function DashboardAnalytics({
   );
 
   const agentTargets = useMemo(
-    () => computeAgentTargets(scopedRecords, monthRecords, agentTarget),
-    [scopedRecords, monthRecords, agentTarget]
+    () =>
+      computeAgentTargets(
+        agentTargetRecords.all,
+        agentTargetRecords.month,
+        agentTarget
+      ),
+    [agentTargetRecords, agentTarget]
   );
 
   const resolvedMonthlyTarget =
     totalMonthlyTarget ?? agentTargets.cumulativeTarget;
 
-  const auditorTargets = useMemo(
-    () =>
-      computeAuditorTargets(scopedRecords, monthRecords, resolvedMonthlyTarget),
-    [scopedRecords, monthRecords, resolvedMonthlyTarget]
-  );
+  const auditorTargets = useMemo(() => {
+    const computed = computeAuditorTargets(
+      auditorTargetSource.all,
+      auditorTargetSource.counts,
+      resolvedMonthlyTarget
+    );
+    if (roleSlug !== SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
+      return computed;
+    }
+    return restrictAuditorTargetsToViewer(computed, {
+      name: user.name,
+      email: user.email,
+    });
+  }, [
+    auditorTargetSource,
+    resolvedMonthlyTarget,
+    roleSlug,
+    user.name,
+    user.email,
+  ]);
+  const isQualityAnalyst = roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST;
+  const agentTargetCopy = agentTargetSourceCopy(targetAuditSource);
 
   const topAgents = useMemo(() => computeTopAgents(filtered), [filtered]);
   const topFatals = useMemo(() => computeTopFatals(filtered), [filtered]);
@@ -242,16 +351,142 @@ export function DashboardAnalytics({
   }, [filtered]);
 
   function handleRefresh() {
+    flushAgentTargetSave();
+    flushMonthlyTargetSave();
     startRefresh(() => {
       router.refresh();
     });
   }
 
+  function clearTimer(ref: { current: number | null }) {
+    if (ref.current != null) {
+      window.clearTimeout(ref.current);
+      ref.current = null;
+    }
+  }
+
+  function persistAgentTarget(raw: number) {
+    const next = Math.max(1, Math.min(999, Math.round(raw) || 1));
+    setAgentTarget(next);
+    pendingAgentTarget.current = null;
+    if (!canEditAuditTargets) return;
+    if (next === lastSavedAgentTarget.current) return;
+    const seq = ++agentTargetSaveSeq.current;
+    void (async () => {
+      const result = await setAuditTargetPerAgent(next);
+      if (seq !== agentTargetSaveSeq.current) return;
+      if ("error" in result && result.error) {
+        toast(result.error, "error");
+        return;
+      }
+      if ("success" in result && result.success) {
+        lastSavedAgentTarget.current = result.perAgent;
+        setAgentTarget(result.perAgent);
+        toast("Per-agent target saved.", "success");
+      }
+    })();
+  }
+
+  function persistTotalMonthlyTarget(raw: number) {
+    const next = Math.max(1, Math.min(99_999, Math.round(raw) || 1));
+    setTotalMonthlyTarget(next);
+    pendingMonthlyTarget.current = null;
+    if (!canEditMonthlyTargets) return;
+    if (next === lastSavedMonthlyTarget.current) return;
+    const seq = ++totalTargetSaveSeq.current;
+    void (async () => {
+      const result = await setAuditTargetTotalMonthly(next);
+      if (seq !== totalTargetSaveSeq.current) return;
+      if ("error" in result && result.error) {
+        toast(result.error, "error");
+        return;
+      }
+      if ("success" in result && result.success) {
+        lastSavedMonthlyTarget.current = result.totalMonthly;
+        setTotalMonthlyTarget(result.totalMonthly);
+        toast("Monthly auditor target saved.", "success");
+      }
+    })();
+  }
+
+  function scheduleAgentTargetSave(raw: number) {
+    const next = Math.max(1, Math.min(999, Math.round(raw) || 1));
+    setAgentTarget(next);
+    pendingAgentTarget.current = next;
+    clearTimer(agentTargetTimer);
+    agentTargetTimer.current = window.setTimeout(() => {
+      persistAgentTarget(next);
+    }, 400);
+  }
+
+  function flushAgentTargetSave(raw?: number) {
+    clearTimer(agentTargetTimer);
+    const next = raw ?? pendingAgentTarget.current;
+    if (next == null) return;
+    persistAgentTarget(next);
+  }
+
+  function scheduleMonthlyTargetSave(raw: number) {
+    const next = Math.max(1, Math.min(99_999, Math.round(raw) || 1));
+    setTotalMonthlyTarget(next);
+    pendingMonthlyTarget.current = next;
+    clearTimer(monthlyTargetTimer);
+    monthlyTargetTimer.current = window.setTimeout(() => {
+      persistTotalMonthlyTarget(next);
+    }, 400);
+  }
+
+  function flushMonthlyTargetSave(raw?: number) {
+    clearTimer(monthlyTargetTimer);
+    const next = raw ?? pendingMonthlyTarget.current;
+    if (next == null) return;
+    persistTotalMonthlyTarget(next);
+  }
+
+  useEffect(() => {
+    if (pendingAgentTarget.current == null && typeof data.agentTarget === "number") {
+      setAgentTarget(data.agentTarget);
+      lastSavedAgentTarget.current = data.agentTarget;
+    }
+    if (pendingMonthlyTarget.current == null) {
+      setTotalMonthlyTarget(data.totalMonthlyTarget ?? null);
+      lastSavedMonthlyTarget.current = data.totalMonthlyTarget ?? null;
+    }
+  }, [data.agentTarget, data.totalMonthlyTarget]);
+
+  useEffect(() => {
+    return () => {
+      clearTimer(agentTargetTimer);
+      clearTimer(monthlyTargetTimer);
+      const agent = pendingAgentTarget.current;
+      const monthly = pendingMonthlyTarget.current;
+      if (agent != null && agent !== lastSavedAgentTarget.current) {
+        void setAuditTargetPerAgent(agent);
+      }
+      if (monthly != null && monthly !== lastSavedMonthlyTarget.current) {
+        void setAuditTargetTotalMonthly(monthly);
+      }
+    };
+  }, []);
+
   function updateFilter<K extends keyof DashboardIncludeFilters>(
     key: K,
     value: DashboardIncludeFilters[K]
   ) {
-    setIncludeFilters((current) => ({ ...current, [key]: value }));
+    setIncludeFilters((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "teamName") {
+        const allowed = agentNamesForSelectedTeam(
+          filterOptions.agents,
+          filterOptions.agentsByTeam,
+          String(value)
+        );
+        if (next.agent && !allowed.includes(next.agent)) {
+          next.agent = "";
+        }
+      }
+      return next;
+    });
   }
 
   function clearFilters() {
@@ -328,8 +563,15 @@ export function DashboardAnalytics({
   const hasAnyDashboardFilters = dashboardFilterChips.length > 0;
 
   const agentFilterOptions = useMemo(
-    () => buildAgentFilterSelectOptions(filterOptions.agents),
-    [filterOptions.agents]
+    () =>
+      buildAgentFilterSelectOptions(
+        agentNamesForSelectedTeam(
+          filterOptions.agents,
+          filterOptions.agentsByTeam,
+          includeFilters.teamName
+        )
+      ),
+    [filterOptions.agents, filterOptions.agentsByTeam, includeFilters.teamName]
   );
 
   const teamFilterOptions = useMemo(
@@ -495,6 +737,17 @@ export function DashboardAnalytics({
 
         <FilterSidebarSection label="Segment">
           <FilterSidebarGrid>
+            <label className="dash-filter">
+              <span>Team name</span>
+              <FilterSelect
+                value={includeFilters.teamName}
+                onChange={(value) => updateFilter("teamName", value)}
+                options={teamFilterOptions}
+                ariaLabel="Filter by team"
+                searchable
+                searchPlaceholder="Search teams…"
+              />
+            </label>
             {showAgentFilter ? (
               <label className="dash-filter">
                 <span>Agent</span>
@@ -503,18 +756,11 @@ export function DashboardAnalytics({
                   onChange={(value) => updateFilter("agent", value)}
                   options={agentFilterOptions}
                   ariaLabel="Filter by agent"
+                  searchable
+                  searchPlaceholder="Search agents…"
                 />
               </label>
             ) : null}
-            <label className="dash-filter">
-              <span>Team name</span>
-              <FilterSelect
-                value={includeFilters.teamName}
-                onChange={(value) => updateFilter("teamName", value)}
-                options={teamFilterOptions}
-                ariaLabel="Filter by team"
-              />
-            </label>
             <label className="dash-filter">
               <span>Quality auditor</span>
               <FilterSelect
@@ -522,6 +768,8 @@ export function DashboardAnalytics({
                 onChange={(value) => updateFilter("auditor", value)}
                 options={auditorFilterOptions}
                 ariaLabel="Filter by auditor"
+                searchable
+                searchPlaceholder="Search auditors…"
               />
             </label>
             <label className="dash-filter">
@@ -547,13 +795,6 @@ export function DashboardAnalytics({
           <p className="dash-kpi__label">Total audits</p>
           <p className="dash-kpi__value">{stats.total}</p>
           <p className="dash-kpi__hint">in selected period</p>
-        </article>
-        <article className="dash-kpi">
-          <p className="dash-kpi__label">Avg quality score</p>
-          <p className={`dash-kpi__value ${scoreTone(stats.avgQualityExclFatal)}`}>
-            {stats.avgQualityExclFatal}%
-          </p>
-          <p className="dash-kpi__hint">incl. fatal as 0%</p>
         </article>
         <article className="dash-kpi">
           <p className="dash-kpi__label">Pass rate</p>
@@ -674,11 +915,20 @@ export function DashboardAnalytics({
           <div className="dash-panel__head dash-panel__head--split">
             <div>
               <h2 className="dash-panel__title">Audit target — per agent</h2>
-              <p className="dash-panel__desc">
-                Cumulative audits this month vs target per agent
-              </p>
+              <p className="dash-panel__desc">{agentTargetCopy.desc}</p>
             </div>
-            <label className="dash-target-input">
+            <div className="dash-target-head-actions">
+              <div className="dash-target-auditor-filter">
+                <FilterSelect
+                  value={targetAuditSource}
+                  onChange={(value) =>
+                    setTargetAuditSource(value as AuditSourceKind | "")
+                  }
+                  options={AGENT_TARGET_SOURCE_OPTIONS}
+                  ariaLabel="Audit source"
+                />
+              </div>
+              <label className="dash-target-input">
               <span>Target/month:</span>
               <input
                 type="number"
@@ -690,19 +940,30 @@ export function DashboardAnalytics({
                 title={
                   canEditAuditTargets
                     ? "Set monthly audit target per agent"
-                    : "Only Quality Manager and Superadmin can change this"
+                    : "Only Superadmin, Quality Manager, Supervisor, or Training Supervisor can change this"
                 }
                 aria-label="Monthly audit target per agent"
                 onChange={(e) => {
                   if (!canEditAuditTargets) return;
-                  setAgentTarget(Math.max(1, Number(e.target.value) || 1));
+                  scheduleAgentTargetSave(Number(e.target.value) || 1);
+                }}
+                onBlur={(e) => {
+                  if (!canEditAuditTargets) return;
+                  flushAgentTargetSave(Number(e.currentTarget.value) || 1);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" || !canEditAuditTargets) return;
+                  e.preventDefault();
+                  flushAgentTargetSave(Number(e.currentTarget.value) || 1);
+                  e.currentTarget.blur();
                 }}
               />
             </label>
+            </div>
           </div>
 
           <div className="dash-target-summary dash-target-summary--agent">
-            <span>Cumulative this month</span>
+            <span>{agentTargetCopy.summary}</span>
             <strong>
               {agentTargets.cumulativeAchieved} / {agentTargets.cumulativeTarget}{" "}
               ({agentTargets.cumulativePct}%)
@@ -711,7 +972,7 @@ export function DashboardAnalytics({
 
           <div className="dash-target-list">
             {agentTargets.agents.length === 0 ? (
-              <p className="dash-empty">No agents in audit history yet.</p>
+              <p className="dash-empty">{agentTargetCopy.empty}</p>
             ) : (
               agentTargets.agents.map((agent) => (
                 <div key={agent.name} className="dash-target-row">
@@ -741,44 +1002,74 @@ export function DashboardAnalytics({
             <div>
               <h2 className="dash-panel__title">Audit target — per auditor</h2>
               <p className="dash-panel__desc">
-                Total target ÷ active auditors = per-auditor allocation
+                {auditorTargetRange.from || auditorTargetRange.to
+                  ? isQualityAnalyst
+                    ? "Your audits in the selected dates vs your monthly target"
+                    : "Audits in the selected dates vs allocated target"
+                  : isQualityAnalyst
+                    ? "Your audits this month vs your monthly target"
+                    : "Total target ÷ active auditors = per-auditor allocation"}
               </p>
             </div>
-            <label className="dash-target-input">
-              <span>Total monthly target:</span>
-              <input
-                type="number"
-                min={1}
-                max={99999}
-                value={resolvedMonthlyTarget}
-                disabled={!canEditAuditTargets}
-                readOnly={!canEditAuditTargets}
-                title={
-                  canEditAuditTargets
-                    ? "Set total monthly audit target for auditors"
-                    : "Only Quality Manager and Superadmin can change this"
-                }
-                aria-label="Total monthly audit target for auditors"
-                onChange={(e) => {
-                  if (!canEditAuditTargets) return;
-                  setTotalMonthlyTarget(
-                    Math.max(1, Number(e.target.value) || 1)
-                  );
-                }}
+            <div className="dash-target-head-actions">
+              <TargetCalendarFilter
+                value={auditorTargetRange}
+                onChange={setAuditorTargetRange}
+                monthlyTarget={resolvedMonthlyTarget}
+                canEditMonthlyTarget={canEditMonthlyTargets}
+                showMonthlyTarget={canEditMonthlyTargets}
+                onMonthlyTargetChange={scheduleMonthlyTargetSave}
               />
-            </label>
+              {canEditMonthlyTargets ? null : (
+                <label className="dash-target-input">
+                  <span>Total monthly target:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={99999}
+                    value={resolvedMonthlyTarget}
+                    disabled={!canEditMonthlyTargets}
+                    readOnly={!canEditMonthlyTargets}
+                    title={
+                      canEditMonthlyTargets
+                        ? "Set total monthly audit target for auditors"
+                        : "Only Quality Manager and Superadmin can change this"
+                    }
+                    aria-label="Total monthly audit target for auditors"
+                    onChange={(e) => {
+                      if (!canEditMonthlyTargets) return;
+                      scheduleMonthlyTargetSave(
+                        Number(e.target.value) || 1
+                      );
+                    }}
+                    onBlur={(e) => {
+                      if (!canEditMonthlyTargets) return;
+                      flushMonthlyTargetSave(
+                        Number(e.currentTarget.value) || 1
+                      );
+                    }}
+                  />
+                </label>
+              )}
+            </div>
           </div>
 
           <div className="dash-target-summary dash-target-summary--auditor">
             <span>
-              Target per auditor ({auditorTargets.activeAuditors} auditors)
+              {isQualityAnalyst
+                ? "Your monthly target"
+                : `Target per auditor (${auditorTargets.activeAuditors} auditors)`}
             </span>
             <strong>{auditorTargets.perAuditorTarget} / month</strong>
           </div>
 
           <div className="dash-target-list">
             {auditorTargets.auditors.length === 0 ? (
-              <p className="dash-empty">No auditors in audit history yet.</p>
+              <p className="dash-empty">
+                {auditorTargetRange.from || auditorTargetRange.to
+                  ? "No auditors in the selected dates."
+                  : "No auditors in audit history yet."}
+              </p>
             ) : (
               auditorTargets.auditors.map((auditor) => (
                 <div

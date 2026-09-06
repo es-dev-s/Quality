@@ -53,6 +53,11 @@ export const AUDIT_DASHBOARD_SELECT = {
   hasFatal: true,
   fatalList: true,
   isHistory: true,
+  submittedBy: {
+    select: {
+      role: { select: { slug: true } },
+    },
+  },
 } satisfies Prisma.AuditSubmissionSelect;
 
 export const AUDIT_CURSOR_SELECT = {

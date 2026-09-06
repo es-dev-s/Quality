@@ -7,6 +7,10 @@ import { NavbarUserMenu } from "@/components/dashboard/navbar-user-menu";
 import { NotificationBell } from "@/components/dashboard/notifications-panel";
 import { useDashboardShell } from "@/components/dashboard/shell";
 import { resolvePageTitle } from "@/lib/page-titles";
+import {
+  canEditAuditSubmissions,
+  canEditSupervisorRemarks,
+} from "@/lib/rbac";
 
 type DashboardToolbarProps = {
   actions?: React.ReactNode;
@@ -14,7 +18,7 @@ type DashboardToolbarProps = {
 
 export function DashboardToolbar({ actions }: DashboardToolbarProps) {
   const pathname = usePathname();
-  const { collapsed, toggleCollapsed, toggleMobile } = useDashboardShell();
+  const { collapsed, toggleCollapsed, toggleMobile, user } = useDashboardShell();
   const title = resolvePageTitle(pathname);
 
   return (
@@ -49,7 +53,10 @@ export function DashboardToolbar({ actions }: DashboardToolbarProps) {
 
       <div className="dashboard-toolbar__end">
         {actions ? <div className="dashboard-toolbar__actions">{actions}</div> : null}
-        <NotificationBell />
+        <NotificationBell
+          canEditAudits={canEditAuditSubmissions(user.role)}
+          canEditSupervisorRemarks={canEditSupervisorRemarks(user.role)}
+        />
         <NavbarUserMenu />
       </div>
     </div>

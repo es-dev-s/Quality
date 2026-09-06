@@ -69,6 +69,8 @@ const AUDIT_SERVER_ACTIONS = [
   "deleteAuditSubmissions",
   "getDashboardAuditData",
   "getReportData",
+  "getReportExportData",
+  "getReportFilterOptions",
 ] as const;
 
 function roleFromSlug(slug: keyof typeof SYSTEM_ROLE_DEFINITIONS): SessionRole {
@@ -145,10 +147,14 @@ function verifyRoleAccessMatrix() {
       );
     }
 
-    if (canDelete && slug !== SYSTEM_ROLE_SLUGS.SUPERADMIN) {
+    if (
+      canDelete &&
+      slug !== SYSTEM_ROLE_SLUGS.SUPERADMIN &&
+      slug !== SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
+    ) {
       fail(
         `RBAC delete ${slug}`,
-        "canDeleteAuditLogs should be super-admin only"
+        "canDeleteAuditLogs should be Superadmin or Quality Manager only"
       );
     }
   }
@@ -194,8 +200,10 @@ async function verifyServerActionExports() {
 
   for (const name of AUDIT_SERVER_ACTIONS) {
     const fn =
-      name === "getReportData"
-        ? reportActions[name]
+      name === "getReportData" ||
+        name === "getReportExportData" ||
+        name === "getReportFilterOptions"
+        ? (reportActions as Record<string, unknown>)[name]
         : (auditActions as Record<string, unknown>)[name];
     if (typeof fn === "function") {
       pass(`Server action: ${name}`, "Exported");

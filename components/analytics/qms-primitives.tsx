@@ -89,20 +89,23 @@ export function QmsKpiTile({
   sub,
   tone = "default",
   compact = false,
+  onClick,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   tone?: "default" | "success" | "warn" | "danger" | "accent";
   compact?: boolean;
+  onClick?: () => void;
 }) {
   const valueClass =
     tone === "default"
       ? "qms-kpi__value"
       : `qms-kpi__value qms-kpi__value--${tone}`;
+  const className = onClick ? "qms-kpi qms-kpi--action" : "qms-kpi";
 
-  return (
-    <article className="qms-kpi">
+  const body = (
+    <>
       <p className="qms-kpi__label">{label}</p>
       <p
         className={
@@ -112,8 +115,18 @@ export function QmsKpiTile({
         {value}
       </p>
       {sub ? <p className="qms-kpi__sub">{sub}</p> : null}
-    </article>
+    </>
   );
+
+  if (onClick) {
+    return (
+      <button type="button" className={className} onClick={onClick}>
+        {body}
+      </button>
+    );
+  }
+
+  return <article className={className}>{body}</article>;
 }
 
 export function QmsGauge({ value, label }: { value: number; label: string }) {

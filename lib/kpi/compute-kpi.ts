@@ -10,7 +10,7 @@ import { qualityPctForAverage } from "@/lib/audit/metrics-config";
 import { resolveMetricDate } from "@/lib/audit/metric-dates";
 import { KPI_COLUMNS, type KpiColumn, type KpiRow } from "@/lib/kpi/columns";
 import type { KpiFiltersState } from "@/lib/kpi/filters";
-import type { KpiAuditRecord } from "@/lib/kpi/records";
+import { KPI_DEFAULT_AGENT_TARGET, type KpiAuditRecord } from "@/lib/kpi/records";
 
 const UNAVAILABLE = "—";
 const CALIBRATION_AUDIT = "Calibration Audit";
@@ -250,7 +250,7 @@ export function computeKpiRows(
         records: recordsOrOptions,
         filters: filtersArg!,
         rosterAgentNames: rosterAgentNamesArg ?? [],
-        targetPerAgent: targetPerAgentArg ?? 20,
+        targetPerAgent: targetPerAgentArg ?? KPI_DEFAULT_AGENT_TARGET,
         qmAgentNamesByQm: qmAgentNamesByQmArg,
       }
     : recordsOrOptions;

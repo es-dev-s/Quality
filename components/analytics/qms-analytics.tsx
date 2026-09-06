@@ -26,8 +26,14 @@ import {
   type AnalyticsIncludeFilters,
   type AnalyticsInteractionFilter,
 } from "@/lib/audit/analytics-filters";
-import { buildAgentFilterSelectOptions } from "@/lib/audit/agent-filter-access";
-import { summaryChipClass } from "@/lib/audit/analytics-metrics";
+import {
+  agentNamesForSelectedTeam,
+  buildAgentFilterSelectOptions,
+} from "@/lib/audit/agent-filter-access";
+import {
+  getAnalyticsFatalOccurrences,
+  summaryChipClass,
+} from "@/lib/audit/analytics-metrics";
 import type { DashboardPeriod } from "@/lib/audit/dashboard-metrics";
 import { LoadingZone } from "@/components/primitives/loading-zone";
 import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
@@ -48,6 +54,8 @@ import {
 } from "@/lib/audit/analytics-role-config";
 import type { AnalyticsSortOrder } from "@/lib/audit/analytics-sort";
 import { QmsSortToggle } from "@/components/analytics/analytics-controls";
+import { FatalIncidentsByTeamCard } from "@/components/analytics/fatal-incidents-by-team";
+import { FatalOccurrencesModal } from "@/components/dashboard/fatal-occurrences-modal";
 import { HistoryFilterSection } from "@/components/audit/history-filter-section";
 import {
   defaultAuditHistoryFilter,
@@ -86,6 +94,7 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
   const filterSidebar = useFilterSidebar();
   const { busy: isLoading, run: runBusy } = useBusyAction();
   const [error, setError] = useState<string | null>(null);
+  const [fatalTeam, setFatalTeam] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visibleTabs.includes(tab)) {
@@ -151,6 +160,14 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
     [analyticsView]
   );
 
+  const fatalOccurrences = useMemo(() => {
+    if (fatalTeam === null) return [];
+    return getAnalyticsFatalOccurrences(
+      analyticsView.records,
+      fatalTeam || null
+    );
+  }, [analyticsView.records, fatalTeam]);
+
   const hasCustomRange = !!(customRange.from || customRange.to);
   const hasActiveFilters =
     hasCustomRange ||
@@ -162,7 +179,20 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
     key: K,
     value: AnalyticsIncludeFilters[K]
   ) {
-    setIncludeFilters((current) => ({ ...current, [key]: value }));
+    setIncludeFilters((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "teamName") {
+        const allowed = agentNamesForSelectedTeam(
+          filterOptions.agents,
+          filterOptions.agentsByTeam,
+          String(value)
+        );
+        if (next.agent && !allowed.includes(next.agent)) {
+          next.agent = "";
+        }
+      }
+      return next;
+    });
   }
 
   function clearFilters() {
@@ -239,8 +269,15 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
   const hasAnyAnalyticsFilters = filterChips.length > 0;
 
   const agentFilterOptions = useMemo(
-    () => buildAgentFilterSelectOptions(filterOptions.agents),
-    [filterOptions.agents]
+    () =>
+      buildAgentFilterSelectOptions(
+        agentNamesForSelectedTeam(
+          filterOptions.agents,
+          filterOptions.agentsByTeam,
+          includeFilters.teamName
+        )
+      ),
+    [filterOptions.agents, filterOptions.agentsByTeam, includeFilters.teamName]
   );
 
   const teamFilterOptions = useMemo(
@@ -305,12 +342,6 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
               {hasActiveFilters ? (
                 <span style={{ fontWeight: 500, opacity: 0.75 }}> (filtered)</span>
               ) : null}
-            </span>
-            <span
-              className="qms-summary-chip qms-summary-chip--muted qms-summary-chip--scope"
-              title={scopeDescription}
-            >
-              {scopeDescription}
             </span>
             <div className="pf-bar__chips">
               <FilterChipBar inline showClearButton={false} chips={filterChips} />
@@ -453,17 +484,6 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
 
         <FilterSidebarSection label="Segment">
           <FilterSidebarGrid>
-            {filterVisibility.agent ? (
-              <label className="dash-filter">
-                <span>Agent</span>
-                <FilterSelect
-                  value={includeFilters.agent}
-                  onChange={(value) => updateFilter("agent", value)}
-                  options={agentFilterOptions}
-                  ariaLabel="Filter by agent"
-                />
-              </label>
-            ) : null}
             {filterVisibility.teamName ? (
               <label className="dash-filter">
                 <span>Team</span>
@@ -472,6 +492,21 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
                   onChange={(value) => updateFilter("teamName", value)}
                   options={teamFilterOptions}
                   ariaLabel="Filter by team"
+                  searchable
+                  searchPlaceholder="Search teams…"
+                />
+              </label>
+            ) : null}
+            {filterVisibility.agent ? (
+              <label className="dash-filter">
+                <span>Agent</span>
+                <FilterSelect
+                  value={includeFilters.agent}
+                  onChange={(value) => updateFilter("agent", value)}
+                  options={agentFilterOptions}
+                  ariaLabel="Filter by agent"
+                  searchable
+                  searchPlaceholder="Search agents…"
                 />
               </label>
             ) : null}
@@ -483,6 +518,8 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
                   onChange={(value) => updateFilter("auditor", value)}
                   options={auditorFilterOptions}
                   ariaLabel="Filter by quality analyst"
+                  searchable
+                  searchPlaceholder="Search quality analysts…"
                 />
               </label>
             ) : null}
@@ -519,14 +556,24 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
         label="Loading analytics…"
         className="qms-analytics__body loading-zone--min"
       >
-        {tab === "overview" && <OverviewTab data={analytics} sortOrder={sortOrder} />}
+        {tab === "overview" && (
+          <OverviewTab
+            data={analytics}
+            sortOrder={sortOrder}
+            onOpenFatalIncidents={setFatalTeam}
+          />
+        )}
         {tab === "parameters" && (
           <ParametersTab data={analytics} sortOrder={sortOrder} />
         )}
         {tab === "teams" && <TeamsTab data={analytics} sortOrder={sortOrder} />}
         {tab === "agents" && <AgentsTab data={analytics} sortOrder={sortOrder} />}
         {tab === "compliance" && (
-          <ComplianceTab data={analytics} sortOrder={sortOrder} />
+          <ComplianceTab
+            data={analytics}
+            sortOrder={sortOrder}
+            onOpenFatalIncidents={setFatalTeam}
+          />
         )}
         {tab === "auditors" && (
           <AuditorsTab data={analytics} sortOrder={sortOrder} />
@@ -534,7 +581,32 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
         {tab === "leaderboards" && (
           <LeaderboardsTab data={analytics.leaderboards} sortOrder={sortOrder} />
         )}
+        <FatalIncidentsByTeamCard
+          className="qms-fatal-footer"
+          items={analytics.fatal_by_team}
+          sortOrder={sortOrder}
+          onSelectTeam={setFatalTeam}
+        />
       </LoadingZone>
+
+      <FatalOccurrencesModal
+        fatalName={
+          fatalTeam === null
+            ? null
+            : fatalTeam
+              ? `Fatal incidents — ${fatalTeam}`
+              : "Fatal incidents"
+        }
+        description={
+          fatalTeam === null
+            ? undefined
+            : `${fatalOccurrences.length} fatal audit${
+                fatalOccurrences.length === 1 ? "" : "s"
+              } in the selected period`
+        }
+        occurrences={fatalOccurrences}
+        onClose={() => setFatalTeam(null)}
+      />
 
       <footer className="qms-analytics__footer">
         Quality analytics · {analytics.kpis.total_audits.toLocaleString()} audits in view

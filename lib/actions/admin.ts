@@ -10,12 +10,16 @@ import { PERMISSIONS, isLegacySystemRole } from "@/lib/permissions";
 import { isValidPermissionSlug } from "@/lib/permission-catalog";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
 import { fetchUserAuditMatchNames } from "@/lib/audit/user-audit-match";
-import { canManageRoles, canManageUsers, hasScope, isSuperAdmin } from "@/lib/rbac";
+import { canManageRoles, canManageUsers, canRevealUserPasswords, hasScope, isSuperAdmin } from "@/lib/rbac";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { isSupervisorRoleSlug } from "@/lib/audit/supervisor-tier";
 import { SUPERADMIN_ROLE_SLUG } from "@/lib/constants";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { isRetryableDbError, withDbRetry } from "@/lib/db/with-db-retry";
+import {
+  assertActorManagesUser,
+  buildManagedUsersWhere,
+} from "@/lib/user-roster-scope";
 import {
   invalidateAuditCaches,
   invalidateCacheTags,
@@ -179,11 +183,25 @@ function assertSuperAdminRoleAssignment(
 }
 
 export async function getUsers() {
-  await requirePermission(PERMISSIONS.ADMIN_USERS);
-  return prisma.user.findMany({
-    include: { role: true },
-    orderBy: { createdAt: "desc" },
-  });
+  const session = await requireAuth();
+  if (canManageUsers(session.user.role)) {
+    return prisma.user.findMany({
+      include: { role: true },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+  if (canRevealUserPasswords(session.user.role)) {
+    const where = await buildManagedUsersWhere(
+      session.user.id,
+      session.user.role
+    );
+    return prisma.user.findMany({
+      where,
+      include: { role: true },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+  throw new ForbiddenError();
 }
 
 export async function getRoles() {
@@ -201,6 +219,7 @@ export async function getRolesForSelect() {
   const session = await requireAuth();
   if (
     !canManageUsers(session.user.role) &&
+    !canRevealUserPasswords(session.user.role) &&
     !isSuperAdmin(session.user.role)
   ) {
     throw new ForbiddenError();
@@ -925,6 +944,17 @@ export async function setUserActive(userId: string, isActive: boolean) {
 export async function revealUserPassword(userId: string) {
   const session = await requirePermission(PERMISSIONS.USER_READ_SENSITIVE);
 
+  if (!isSuperAdmin(session.user.role)) {
+    const scopeError = await assertActorManagesUser(
+      session.user.id,
+      session.user.role,
+      userId
+    );
+    if (scopeError) {
+      return { error: scopeError };
+    }
+  }
+
   try {
     const target = await withDbRetry(() =>
       prisma.user.findUnique({
@@ -949,6 +979,12 @@ export async function revealUserPassword(userId: string) {
         };
       }
     } else {
+      if (!isSuperAdmin(session.user.role)) {
+        return {
+          error:
+            "No stored password is available for this user. Ask a Super Admin to reset it.",
+        };
+      }
       plainPassword = generateTemporaryPassword();
       wasReset = true;
       const credentials = await buildPasswordCredentials(plainPassword);

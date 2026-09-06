@@ -5,7 +5,10 @@ import {
   type SystemRoleSlug,
 } from "@/lib/permissions";
 import { isSuperAdmin } from "@/lib/rbac";
-import { resolveRoleUserName } from "@/lib/audit/role-users";
+import {
+  fetchQualityAnalystRoleUsers,
+  resolveRoleUserName,
+} from "@/lib/audit/role-users";
 import { fetchAgentRosterNames } from "@/lib/audit/agent-roster";
 import {
   isSupervisorTierRole,
@@ -54,6 +57,15 @@ function supervisorSubmittedClause(): Prisma.AuditSubmissionWhereInput {
   };
 }
 
+/** Audits submitted by a Quality Manager. */
+function qualityManagerSubmittedClause(): Prisma.AuditSubmissionWhereInput {
+  return {
+    submittedBy: {
+      role: { slug: SYSTEM_ROLE_SLUGS.QUALITY_MANAGER },
+    },
+  };
+}
+
 /**
  * Hide supervisor-submitted audits from roles that should not see them.
  * Only Quality Manager (roster-scoped) and Superadmin may view those rows.
@@ -66,17 +78,59 @@ function excludeSupervisorSubmitted(
   };
 }
 
+/**
+ * Hide audits the Quality Manager themselves made.
+ * Keep rows attributed to a Quality Analyst (auditor name), including older
+ * QA logs that were saved under a QM submitter.
+ */
+async function excludeQualityManagerSubmitted(
+  where: Prisma.AuditSubmissionWhereInput
+): Promise<Prisma.AuditSubmissionWhereInput> {
+  const qaUsers = await fetchQualityAnalystRoleUsers({ includeInactive: true });
+  const qaLabels = qaUsers.flatMap((user) =>
+    [user.profileName, user.name, user.email].filter(
+      (value): value is string => Boolean(value?.trim())
+    )
+  );
+  const qaAuditor = caseInsensitiveIn(qaLabels);
+
+  return {
+    AND: [
+      where,
+      {
+        OR: [
+          { NOT: qualityManagerSubmittedClause() },
+          ...(qaAuditor ? [{ auditor: qaAuditor }] : []),
+        ],
+      },
+    ],
+  };
+}
+
+/** Hide audits that have not been released from Pending feedback. */
+function excludePendingFeedback(
+  where: Prisma.AuditSubmissionWhereInput
+): Prisma.AuditSubmissionWhereInput {
+  return {
+    AND: [where, { NOT: { feedbackStatus: "Pending" } }],
+  };
+}
+
 /** Agent visibility for a specific user id (used by Agent role and Member grants). */
 export async function buildAgentScopeWhere(
   userId: string
 ): Promise<Prisma.AuditSubmissionWhereInput> {
   const matchNames = await fetchAgentUserAuditMatchNames(userId);
   const agentFilter = caseInsensitiveIn(matchNames);
-  return excludeSupervisorSubmitted(
-    orClauses([
-      { submittedById: userId },
-      ...(agentFilter ? [{ agent: agentFilter }] : []),
-    ])
+  return excludePendingFeedback(
+    await excludeQualityManagerSubmitted(
+      excludeSupervisorSubmitted(
+        orClauses([
+          { submittedById: userId },
+          ...(agentFilter ? [{ agent: agentFilter }] : []),
+        ])
+      )
+    )
   );
 }
 

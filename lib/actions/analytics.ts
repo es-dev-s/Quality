@@ -57,9 +57,11 @@ async function fetchAnalyticsRecords(
     where,
     select: {
       id: true,
+      auditCode: true,
       agent: true,
       supervisor: true,
       auditor: true,
+      lob: true,
       type: true,
       businessType: true,
       callDate: true,
@@ -72,6 +74,7 @@ async function fetchAnalyticsRecords(
       reason: true,
       fatalList: true,
       isHistory: true,
+      teamNameSnapshot: true,
       rows: true,
       catScores: true,
     },
@@ -80,9 +83,11 @@ async function fetchAnalyticsRecords(
 
   return submissions.map((s) => ({
     id: s.id,
+    auditCode: s.auditCode,
     agent: s.agent,
     supervisor: s.supervisor,
     auditor: s.auditor,
+    lob: s.lob,
     type: s.type,
     businessType: s.businessType,
     callDate: s.callDate,
@@ -96,7 +101,11 @@ async function fetchAnalyticsRecords(
     fatalList: s.fatalList,
     isHistory: s.isHistory,
     teamName: resolveRecordTeamName(
-      { agent: s.agent, supervisor: s.supervisor },
+      {
+        agent: s.agent,
+        supervisor: s.supervisor,
+        teamNameSnapshot: s.teamNameSnapshot,
+      },
       teamByPerson
     ),
     rows: parseRows(s.rows),

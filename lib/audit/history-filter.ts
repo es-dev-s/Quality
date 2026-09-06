@@ -11,9 +11,11 @@ export function filterByAuditHistory<T extends { isHistory?: boolean }>(
 }
 
 export function defaultAuditHistoryFilter(
-  records: readonly { isHistory?: boolean }[]
+  _records?: readonly { isHistory?: boolean }[]
 ): AuditHistoryFilter {
-  return records.some((row) => row.isHistory) ? "all" : "working";
+  // Working only — history rows are transferred snapshots and must not
+  // inflate dashboard / analytics / audit-log totals by default.
+  return "working";
 }
 
 export const AUDIT_HISTORY_FILTER_OPTIONS: {

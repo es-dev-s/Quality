@@ -1,0 +1,157 @@
+import { normalizeAgentName } from "@/lib/audit/agent-name";
+import { resolveRoleUserName } from "@/lib/audit/role-users";
+import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { SUPERVISOR_TIER_ROLE_SLUGS } from "@/lib/audit/supervisor-tier";
+import { prisma } from "@/lib/prisma";
+import { withActiveUserFilter } from "@/lib/user-active-filter";
+
+export type DisputeRecipientRole = "supervisor" | "manager" | "analyst";
+
+export type DisputeAuditRecipientContext = {
+  agent: string;
+  supervisor: string | null;
+  auditor: string | null;
+  submittedById: string;
+  excludeUserId: string;
+};
+
+export type DisputeAuditRecipient = {
+  userId: string;
+  role: DisputeRecipientRole;
+};
+
+function normalizeDisplayName(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function userMatchesDisplayName(
+  user: { name: string | null; email: string },
+  displayName: string
+): boolean {
+  const target = normalizeDisplayName(displayName);
+  if (!target) return false;
+
+  const candidates = [
+    resolveRoleUserName(user),
+    user.name?.trim() ?? "",
+    user.email.trim(),
+    user.email.trim().toLowerCase(),
+  ];
+
+  return candidates.some(
+    (candidate) => candidate && normalizeDisplayName(candidate) === target
+  );
+}
+
+async function findActiveUserIdByRoleAndName(
+  roleSlug: string,
+  displayName: string | null | undefined
+): Promise<string | null> {
+  const trimmed = displayName?.trim();
+  if (!trimmed) return null;
+
+  const users = await prisma.user.findMany({
+    where: withActiveUserFilter({ role: { slug: roleSlug } }),
+    select: { id: true, name: true, email: true },
+  });
+
+  const match = users.find((user) => userMatchesDisplayName(user, trimmed));
+  return match?.id ?? null;
+}
+
+async function findAgentUserId(agentName: string): Promise<string | null> {
+  const direct = await findActiveUserIdByRoleAndName(
+    SYSTEM_ROLE_SLUGS.AGENT,
+    agentName
+  );
+  if (direct) return direct;
+
+  const { nameKey } = normalizeAgentName(agentName);
+  const rosterRow = await prisma.agent.findFirst({
+    where: { nameKey },
+    select: { name: true },
+  });
+  if (!rosterRow?.name) return null;
+
+  return findActiveUserIdByRoleAndName(SYSTEM_ROLE_SLUGS.AGENT, rosterRow.name);
+}
+
+async function findManagerUserIdsForAgent(agentUserId: string): Promise<string[]> {
+  const managerIds = new Set<string>();
+
+  const assignments = await prisma.agentAssignment.findMany({
+    where: { agentId: agentUserId },
+    select: { assignedById: true },
+  });
+  for (const row of assignments) {
+    managerIds.add(row.assignedById);
+  }
+
+  const approval = await prisma.userProvisioningRequest.findFirst({
+    where: {
+      createdUserId: agentUserId,
+      status: "APPROVED",
+      targetRoleSlug: SYSTEM_ROLE_SLUGS.AGENT,
+      reviewedById: { not: null },
+    },
+    orderBy: { reviewedAt: "desc" },
+    select: { reviewedById: true },
+  });
+  if (approval?.reviewedById) {
+    managerIds.add(approval.reviewedById);
+  }
+
+  if (managerIds.size === 0) return [];
+
+  const managers = await prisma.user.findMany({
+    where: withActiveUserFilter({
+      id: { in: [...managerIds] },
+      role: { slug: SYSTEM_ROLE_SLUGS.QUALITY_MANAGER },
+    }),
+    select: { id: true },
+  });
+
+  return managers.map((user) => user.id);
+}
+
+/** Supervisor, Quality Manager, and Quality Analyst when an agent disputes. */
+export async function resolveDisputeAuditRecipients(
+  ctx: DisputeAuditRecipientContext
+): Promise<DisputeAuditRecipient[]> {
+  const recipients = new Map<string, DisputeRecipientRole>();
+
+  const supervisorUserId = await (async () => {
+    for (const roleSlug of SUPERVISOR_TIER_ROLE_SLUGS) {
+      const id = await findActiveUserIdByRoleAndName(roleSlug, ctx.supervisor);
+      if (id) return id;
+    }
+    return null;
+  })();
+  if (supervisorUserId && supervisorUserId !== ctx.excludeUserId) {
+    recipients.set(supervisorUserId, "supervisor");
+  }
+
+  const agentUserId = await findAgentUserId(ctx.agent);
+  if (agentUserId) {
+    const managerIds = await findManagerUserIdsForAgent(agentUserId);
+    for (const managerId of managerIds) {
+      if (managerId !== ctx.excludeUserId) {
+        recipients.set(managerId, "manager");
+      }
+    }
+  }
+
+  if (ctx.submittedById && ctx.submittedById !== ctx.excludeUserId) {
+    recipients.set(ctx.submittedById, "analyst");
+  }
+
+  const auditorId = await findActiveUserIdByRoleAndName(
+    SYSTEM_ROLE_SLUGS.QUALITY_ANALYST,
+    ctx.auditor
+  );
+  if (auditorId && auditorId !== ctx.excludeUserId) {
+    recipients.set(auditorId, "analyst");
+  }
+
+  return [...recipients.entries()].map(([userId, role]) => ({ userId, role }));
+}

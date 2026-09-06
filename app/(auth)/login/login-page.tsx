@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
 import { loginAction, type LoginState } from "@/lib/actions/auth";
 import { Button } from "@/components/primitives/button";
 import { Field, Input, Label } from "@/components/primitives/field";
@@ -17,6 +18,7 @@ export default function LoginPage() {
     sessionReason === "deactivated" ||
     sessionReason === "not_approved";
   const [state, formAction, pending] = useActionState(loginAction, initialState);
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   const sessionNotice =
     sessionReason === "session"
@@ -70,14 +72,30 @@ export default function LoginPage() {
 
           <Field>
             <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              disabled={pending}
-            />
+            <div className="password-field password-field--in-input">
+              <Input
+                id="password"
+                name="password"
+                type={passwordVisible ? "text" : "password"}
+                autoComplete="current-password"
+                required
+                disabled={pending}
+                className="password-field__input"
+              />
+              <button
+                type="button"
+                className="password-field__icon-btn"
+                onClick={() => setPasswordVisible((visible) => !visible)}
+                disabled={pending}
+                aria-label={passwordVisible ? "Hide password" : "Show password"}
+              >
+                {passwordVisible ? (
+                  <EyeOff size={16} aria-hidden />
+                ) : (
+                  <Eye size={16} aria-hidden />
+                )}
+              </button>
+            </div>
           </Field>
 
           <Button type="submit" block loading={pending}>

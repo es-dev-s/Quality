@@ -42,6 +42,7 @@ export const EMPTY_ANALYTICS_INCLUDE_FILTERS: AnalyticsIncludeFilters = {
 
 export type AnalyticsFilterOptions = {
   agents: string[];
+  agentsByTeam: Record<string, string[]>;
   teamNames: string[];
   auditors: string[];
   businessTypes: string[];
@@ -70,11 +71,19 @@ export function extractAnalyticsFilterOptions(
   const teamNames = new Set<string>();
   const auditors = new Set<string>();
   const businessTypes = new Set<string>();
+  const agentsByTeamSets = new Map<string, Set<string>>();
 
   for (const record of records) {
     if (record.agent) agents.add(record.agent);
     const team = record.teamName?.trim();
-    if (team) teamNames.add(team);
+    if (team) {
+      teamNames.add(team);
+      if (record.agent) {
+        const set = agentsByTeamSets.get(team) ?? new Set<string>();
+        set.add(record.agent);
+        agentsByTeamSets.set(team, set);
+      }
+    }
     if (record.auditor) auditors.add(record.auditor);
     if (record.businessType) businessTypes.add(record.businessType);
   }
@@ -86,8 +95,14 @@ export function extractAnalyticsFilterOptions(
   const sort = (values: Set<string>) =>
     Array.from(values).sort((a, b) => a.localeCompare(b));
 
+  const agentsByTeam: Record<string, string[]> = {};
+  for (const [team, set] of agentsByTeamSets) {
+    agentsByTeam[team] = sort(set);
+  }
+
   return {
     agents: sort(agents),
+    agentsByTeam,
     teamNames: sort(teamNames),
     auditors: sort(auditors),
     businessTypes: sort(businessTypes),
@@ -206,6 +221,7 @@ export function applyAnalyticsFilters(
     leaderboards: computeLeaderboardAnalytics(filtered, {
       mergeParametersAcrossInteractionTypes,
     }),
+    records: filtered,
     filteredCount: filtered.length,
     interactionFilter: options.interactionFilter,
   };

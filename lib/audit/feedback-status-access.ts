@@ -199,6 +199,15 @@ export function getFeedbackStatusSelectConfig(
   }
 
   if (usesQaFeedbackWorkflow(role, memberMode)) {
+    if (current === "Acknowledged") {
+      return {
+        showSelect: false,
+        editable: false,
+        options: [],
+        selectValue: current,
+        hint: "Agent acknowledged this audit. Status can no longer be changed.",
+      };
+    }
     return {
       showSelect: true,
       editable: true,
@@ -256,6 +265,9 @@ export function assertFeedbackStatusChangeAllowed(
   }
 
   if (role && usesQaFeedbackWorkflow(role, memberMode)) {
+    if (previous === "Acknowledged") {
+      return "Acknowledged status cannot be changed after the agent responds.";
+    }
     if (!QA_FEEDBACK_STATUSES.includes(next)) {
       return "Quality Analyst can only set Pending or Shared.";
     }

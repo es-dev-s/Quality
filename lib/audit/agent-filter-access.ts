@@ -28,6 +28,17 @@ export function buildAgentFilterSelectOptions(agentNames: string[]) {
   ];
 }
 
+/** Agents shown in the picker when a team is selected (empty team = full list). */
+export function agentNamesForSelectedTeam(
+  agentNames: string[],
+  agentsByTeam: Record<string, string[]>,
+  teamName: string
+): string[] {
+  if (!teamName) return agentNames;
+  const allowed = new Set(agentsByTeam[teamName] ?? []);
+  return agentNames.filter((name) => allowed.has(name));
+}
+
 export function matchesAgentFilter(
   recordAgent: string,
   selectedAgent: string
