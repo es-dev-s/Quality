@@ -36,6 +36,11 @@
   padding: var(--space-5) var(--space-6);
 }
 
+.platform-report__toolbar-row--presets {
+  background: var(--color-bg-secondary);
+  border-top-color: var(--color-border);
+}
+
 .platform-kpi {
   padding: var(--space-4) var(--space-5);
 }

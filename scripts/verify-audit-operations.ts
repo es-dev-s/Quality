@@ -70,6 +70,7 @@ const AUDIT_SERVER_ACTIONS = [
   "getDashboardAuditData",
   "getReportData",
   "getReportExportData",
+  "getReportFilterOptions",
 ] as const;
 
 function roleFromSlug(slug: keyof typeof SYSTEM_ROLE_DEFINITIONS): SessionRole {
@@ -199,7 +200,9 @@ async function verifyServerActionExports() {
 
   for (const name of AUDIT_SERVER_ACTIONS) {
     const fn =
-      name === "getReportData" || name === "getReportExportData"
+      name === "getReportData" ||
+        name === "getReportExportData" ||
+        name === "getReportFilterOptions"
         ? (reportActions as Record<string, unknown>)[name]
         : (auditActions as Record<string, unknown>)[name];
     if (typeof fn === "function") {
