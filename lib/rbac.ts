@@ -108,6 +108,16 @@ export function canRevealUserPasswords(role?: SessionRole | null): boolean {
 export function canEditAuditTargets(role?: SessionRole | null): boolean {
   if (!role) return false;
   return (
+    isSuperAdmin(role) ||
+    role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER ||
+    isSupervisorTierRole(role.slug)
+  );
+}
+
+/** Total monthly auditor target stays Superadmin / Quality Manager only. */
+export function canEditMonthlyAuditTargets(role?: SessionRole | null): boolean {
+  if (!role) return false;
+  return (
     isSuperAdmin(role) || role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
   );
 }

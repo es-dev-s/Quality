@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAuth } from "@/lib/auth";
 import { permissionError } from "@/lib/auth-guards";
-import { canEditAuditTargets } from "@/lib/rbac";
+import {
+  canEditAuditTargets,
+  canEditMonthlyAuditTargets,
+} from "@/lib/rbac";
 import {
   readAuditTargets,
   writeAuditTargetPerAgent,
@@ -60,7 +63,7 @@ export async function setAuditTargetPerAgent(value: number) {
 
 export async function setAuditTargetTotalMonthly(value: number) {
   const session = await requireAuth();
-  if (!canEditAuditTargets(session.user.role)) {
+  if (!canEditMonthlyAuditTargets(session.user.role)) {
     return permissionError();
   }
 

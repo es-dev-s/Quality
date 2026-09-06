@@ -59,6 +59,10 @@ import {
   canFilterByAgent,
 } from "@/lib/audit/agent-filter-access";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import {
+  canEditAuditTargets as roleCanEditAgentTargets,
+  canEditMonthlyAuditTargets,
+} from "@/lib/rbac";
 import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
 import { type AuditSourceKind } from "@/lib/audit/audit-source";
 import {
@@ -180,9 +184,8 @@ export function DashboardAnalytics({
     to: "",
   });
   const filterSidebar = useFilterSidebar();
-  const canEditAuditTargets =
-    roleSlug === SYSTEM_ROLE_SLUGS.SUPERADMIN ||
-    roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER;
+  const canEditAuditTargets = roleCanEditAgentTargets(user.role);
+  const canEditMonthlyTargets = canEditMonthlyAuditTargets(user.role);
 
   const records = data.records ?? [];
   const referenceNow = useMemo(
@@ -388,7 +391,7 @@ export function DashboardAnalytics({
     const next = Math.max(1, Math.min(99_999, Math.round(raw) || 1));
     setTotalMonthlyTarget(next);
     pendingMonthlyTarget.current = null;
-    if (!canEditAuditTargets) return;
+    if (!canEditMonthlyTargets) return;
     if (next === lastSavedMonthlyTarget.current) return;
     const seq = ++totalTargetSaveSeq.current;
     void (async () => {
@@ -937,7 +940,7 @@ export function DashboardAnalytics({
                 title={
                   canEditAuditTargets
                     ? "Set monthly audit target per agent"
-                    : "Only Quality Manager and Superadmin can change this"
+                    : "Only Superadmin, Quality Manager, Supervisor, or Training Supervisor can change this"
                 }
                 aria-label="Monthly audit target per agent"
                 onChange={(e) => {
@@ -1013,11 +1016,11 @@ export function DashboardAnalytics({
                 value={auditorTargetRange}
                 onChange={setAuditorTargetRange}
                 monthlyTarget={resolvedMonthlyTarget}
-                canEditMonthlyTarget={canEditAuditTargets}
-                showMonthlyTarget={canEditAuditTargets}
+                canEditMonthlyTarget={canEditMonthlyTargets}
+                showMonthlyTarget={canEditMonthlyTargets}
                 onMonthlyTargetChange={scheduleMonthlyTargetSave}
               />
-              {canEditAuditTargets ? null : (
+              {canEditMonthlyTargets ? null : (
                 <label className="dash-target-input">
                   <span>Total monthly target:</span>
                   <input
@@ -1025,22 +1028,22 @@ export function DashboardAnalytics({
                     min={1}
                     max={99999}
                     value={resolvedMonthlyTarget}
-                    disabled={!canEditAuditTargets}
-                    readOnly={!canEditAuditTargets}
+                    disabled={!canEditMonthlyTargets}
+                    readOnly={!canEditMonthlyTargets}
                     title={
-                      canEditAuditTargets
+                      canEditMonthlyTargets
                         ? "Set total monthly audit target for auditors"
                         : "Only Quality Manager and Superadmin can change this"
                     }
                     aria-label="Total monthly audit target for auditors"
                     onChange={(e) => {
-                      if (!canEditAuditTargets) return;
+                      if (!canEditMonthlyTargets) return;
                       scheduleMonthlyTargetSave(
                         Number(e.target.value) || 1
                       );
                     }}
                     onBlur={(e) => {
-                      if (!canEditAuditTargets) return;
+                      if (!canEditMonthlyTargets) return;
                       flushMonthlyTargetSave(
                         Number(e.currentTarget.value) || 1
                       );
