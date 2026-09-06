@@ -728,6 +728,22 @@ export function ExecutiveReport({
                     tableDensity === "expanded" && "platform-report-table--expanded"
                   )}
                 >
+                  <colgroup>
+                    <col />
+                    <col />
+                    <col />
+                    <col />
+                    <col />
+                    <col />
+                    <col />
+                    <col />
+                    <col />
+                    <col />
+                    <col />
+                    <col />
+                    <col className="platform-report-table__grade-col" />
+                    <col />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th>Audit ID</th>
@@ -742,7 +758,7 @@ export function ExecutiveReport({
                       <th>Number / client name</th>
                       <th>Quality</th>
                       <th>Final</th>
-                      <th>Grade</th>
+                      <th className="platform-report-table__grade">Grade</th>
                       <th>Feedback</th>
                     </tr>
                   </thead>
@@ -777,7 +793,7 @@ export function ExecutiveReport({
                             `${row.finalPct}%`
                           )}
                         </td>
-                        <td>
+                        <td className="platform-report-table__grade">
                           <span className={gradeClass(row.grade)}>{row.grade}</span>
                         </td>
                         <td>{row.feedbackStatus}</td>

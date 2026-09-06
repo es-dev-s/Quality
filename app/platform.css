@@ -493,6 +493,38 @@
   max-height: min(72vh, 920px);
 }
 
+.platform-report .platform-report-table {
+  min-width: max(100%, 1280px);
+}
+
+.platform-report .platform-report-table__grade-col {
+  width: 11.75rem;
+}
+
+.platform-report .platform-report-table th.platform-report-table__grade,
+.platform-report .platform-report-table td.platform-report-table__grade {
+  width: 11.75rem;
+  min-width: 11.75rem;
+  overflow: visible;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+.platform-report .platform-report-table--expanded td.platform-report-table__grade {
+  white-space: nowrap;
+  word-break: normal;
+  vertical-align: middle;
+}
+
+.platform-report .platform-report-table td.platform-report-table__grade .dash-grade {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  max-width: none;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .platform-report-density {
   display: inline-flex;
   flex-wrap: wrap;
