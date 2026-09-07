@@ -8,6 +8,7 @@ import type { SessionRole } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 
 type FeedbackStatusSelectProps = {
+  id?: string;
   role: SessionRole | null | undefined;
   value: FeedbackStatus;
   className?: string;
@@ -24,6 +25,7 @@ export function feedbackStatusClass(status: FeedbackStatus) {
 }
 
 export function FeedbackStatusSelect({
+  id,
   role,
   value,
   className,
@@ -36,6 +38,7 @@ export function FeedbackStatusSelect({
   if (!config.showSelect) {
     return (
       <span
+        id={id}
         className={cn(
           "audit-logs__feedback audit-logs__feedback--readonly",
           feedbackStatusClass(value),
@@ -50,6 +53,7 @@ export function FeedbackStatusSelect({
 
   return (
     <Select
+      id={id}
       className={cn(
         "audit-logs__feedback",
         feedbackStatusClass(value),

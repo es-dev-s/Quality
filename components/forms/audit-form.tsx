@@ -6,6 +6,11 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/primitives/button";
 import { Field, Input, Label, Select } from "@/components/primitives/field";
 import { useToast } from "@/components/primitives/toast";
+import { useDashboardShell } from "@/components/dashboard/shell";
+import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
+import { getFeedbackStatusSelectConfig } from "@/lib/audit/feedback-status-access";
+import { applyFormFeedbackStatusChange } from "@/lib/audit/form-feedback-save";
+import { feedbackStatusClass } from "@/components/audit-logs/feedback-status-select";
 import { saveAuditSubmission, updateAuditSubmission } from "@/lib/actions/audit";
 import { calculateResults } from "@/lib/audit/calculate-results";
 import { getScoringOptions } from "@/lib/audit/scoring-options";
@@ -36,6 +41,7 @@ import {
   FEEDBACK_SEVERITY_LABEL,
   defaultAuditFeedback,
   type FeedbackSecurity,
+  type FeedbackStatus,
 } from "@/lib/audit/feedback";
 import { AuditScorePanel } from "@/components/forms/audit-score-panel";
 import { QmsEmpty } from "@/components/analytics/qms-primitives";
@@ -185,6 +191,7 @@ export function AuditForm({
   const isEditMode = Boolean(editAuditId);
   const router = useRouter();
   const { toast } = useToast();
+  const { user } = useDashboardShell();
   const [pending, startTransition] = useTransition();
   const submissionKeyRef = useRef<string | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState(initialTemplateId);
@@ -220,6 +227,14 @@ export function AuditForm({
   const [interactionNotice, setInteractionNotice] = useState<string | null>(
     null
   );
+  const feedbackStatusConfig = getFeedbackStatusSelectConfig(
+    user.role,
+    formData.feedbackStatus
+  );
+  const canChooseFeedbackStatus = feedbackStatusConfig.editable;
+  const feedbackStatusOptions = canChooseFeedbackStatus
+    ? feedbackStatusConfig.options
+    : [{ value: formData.feedbackStatus, label: formData.feedbackStatus }];
 
   useEffect(() => {
     if (!isEditMode && !submissionKeyRef.current) {
@@ -389,6 +404,11 @@ export function AuditForm({
 
   const handleReason = (reason: string) => {
     updateForm({ reason });
+  };
+
+  const handleFeedbackStatus = (status: FeedbackStatus) => {
+    if (!canChooseFeedbackStatus || status === formData.feedbackStatus) return;
+    updateForm(applyFormFeedbackStatusChange(formData, status));
   };
 
   const handleScore = (paramId: string, value: string) => {
@@ -1162,7 +1182,9 @@ export function AuditForm({
             <div className="audit-panel__body">
               <div className="audit-details">
                 <p className="audit-field__hint audit-field__hint--block">
-                  Feedback status and date are updated from the Audit Log.
+                  {canChooseFeedbackStatus
+                    ? "Choose a status here. The date fills in automatically when you share."
+                    : "Feedback status can be changed from Audit Logs."}
                 </p>
                 <div className="audit-details__row">
                   <Field className={fieldAttentionClass("feedbackSecurity")}>
@@ -1194,13 +1216,29 @@ export function AuditForm({
                       Feedback Status
                       <span className="audit-required"> *</span>
                     </Label>
-                    <Input
+                    <Select
                       id="feedbackStatus"
-                      className="audit-control"
+                      className={cn(
+                        "audit-control audit-feedback-status",
+                        feedbackStatusClass(formData.feedbackStatus)
+                      )}
                       value={formData.feedbackStatus || "Pending"}
-                      readOnly
-                      disabled
+                      required
+                      disabled={!canChooseFeedbackStatus}
+                      title={feedbackStatusConfig.hint}
+                      aria-label="Feedback status"
+                      options={feedbackStatusOptions.map((option) => ({
+                        value: option.value,
+                        label: option.label,
+                        disabled: option.disabled,
+                      }))}
+                      onChange={(e) =>
+                        handleFeedbackStatus(e.target.value as FeedbackStatus)
+                      }
                     />
+                    {feedbackStatusConfig.hint ? (
+                      <p className="audit-field-hint">{feedbackStatusConfig.hint}</p>
+                    ) : null}
                   </Field>
 
                   <Field className="audit-field">
@@ -1208,7 +1246,11 @@ export function AuditForm({
                     <Input
                       id="feedbackDate"
                       className="audit-control"
-                      value={formData.feedbackDate || "—"}
+                      value={
+                        formData.feedbackDate
+                          ? formatFeedbackDateTime(formData.feedbackDate)
+                          : "—"
+                      }
                       readOnly
                       disabled
                     />
