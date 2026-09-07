@@ -6,6 +6,7 @@ import { requirePermission } from "@/lib/auth-guards";
 import { PERMISSIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
 import { dataScopeFromSession } from "@/lib/audit/data-scope";
+import { reconcileTransferHistoryForViewer } from "@/lib/audit/transfer-history";
 import {
   fetchAgentRosterNames,
   fetchProvisionedAgentNamesBySupervisorUserIds,
@@ -125,6 +126,10 @@ async function reportWhere(
 
 export async function getReportFilterOptions(): Promise<ReportFilterOptions> {
   const session = await requirePermission(PERMISSIONS.REPORTS_READ);
+  await reconcileTransferHistoryForViewer(
+    session.user.id,
+    session.user.role.slug
+  );
   const ctx = dataScopeFromSession(session);
   const scope = await scopedAuditWhere(session);
   const loadOrgRoster = canLoadOrgPeopleRoster(ctx.role.slug);
@@ -184,6 +189,10 @@ export async function getReportFilterOptions(): Promise<ReportFilterOptions> {
 
 export async function getReportData(input: ReportFilters) {
   const session = await requirePermission(PERMISSIONS.REPORTS_READ);
+  await reconcileTransferHistoryForViewer(
+    session.user.id,
+    session.user.role.slug
+  );
   const parsed = parseReportFilters(input);
   if (parsed.error) {
     return emptyReport(parsed.filters, parsed.error);
@@ -222,6 +231,10 @@ export async function getReportData(input: ReportFilters) {
 
 export async function getReportExportData(input: ReportFilters) {
   const session = await requirePermission(PERMISSIONS.REPORTS_READ);
+  await reconcileTransferHistoryForViewer(
+    session.user.id,
+    session.user.role.slug
+  );
   if (!canExportAuditData(session.user.role)) {
     return {
       startDate: input.startDate,

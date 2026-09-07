@@ -77,6 +77,7 @@ type DashboardAnalyticsProps = {
   roleSlug: string;
   canEditAudits?: boolean;
   canEditSupervisorRemarks?: boolean;
+  viewerUserId?: string;
 };
 
 const PERIODS: { id: DashboardPeriod; label: string; ariaLabel: string }[] = [
@@ -147,8 +148,10 @@ export function DashboardAnalytics({
   roleSlug,
   canEditAudits = false,
   canEditSupervisorRemarks = false,
+  viewerUserId,
 }: DashboardAnalyticsProps) {
   const { user } = useDashboardShell();
+  const historyViewerId = viewerUserId ?? user.id;
   const router = useRouter();
   const { toast } = useToast();
   const [isRefreshing, startRefresh] = useTransition();
@@ -159,7 +162,7 @@ export function DashboardAnalytics({
   const [includeFilters, setIncludeFilters] =
     useState<DashboardIncludeFilters>(EMPTY_INCLUDE_FILTERS);
   const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
-    defaultAuditHistoryFilter(data.records ?? [])
+    defaultAuditHistoryFilter(data.records ?? [], historyViewerId, roleSlug)
   );
   const [agentTarget, setAgentTarget] = useState(
     data.agentTarget ?? DEFAULT_AGENT_TARGET

@@ -66,9 +66,14 @@ import {
 type QmsAnalyticsProps = {
   data: AnalyticsPageData;
   roleSlug: string;
+  viewerUserId?: string;
 };
 
-export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps) {
+export function QmsAnalytics({
+  data: initialData,
+  roleSlug,
+  viewerUserId,
+}: QmsAnalyticsProps) {
   const visibleTabs = useMemo(() => analyticsTabsForRole(roleSlug), [roleSlug]);
   const scopeDescription = useMemo(
     () => getAnalyticsScopeDescription(roleSlug),
@@ -89,7 +94,7 @@ export function QmsAnalytics({ data: initialData, roleSlug }: QmsAnalyticsProps)
   const [interactionFilter, setInteractionFilter] =
     useState<AnalyticsInteractionFilter>(DEFAULT_ANALYTICS_INTERACTION_FILTER);
   const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
-    defaultAuditHistoryFilter(initialData.records)
+    defaultAuditHistoryFilter(initialData.records, viewerUserId, roleSlug)
   );
   const filterSidebar = useFilterSidebar();
   const { busy: isLoading, run: runBusy } = useBusyAction();

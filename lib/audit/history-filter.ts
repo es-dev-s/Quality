@@ -1,4 +1,7 @@
 /** Client-side filter for working vs history audit rows. */
+import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { isSupervisorTierRole } from "@/lib/audit/supervisor-tier";
+
 export type AuditHistoryFilter = "working" | "history" | "all";
 
 export function filterByAuditHistory<T extends { isHistory?: boolean }>(
@@ -10,11 +13,39 @@ export function filterByAuditHistory<T extends { isHistory?: boolean }>(
   return records.filter((row) => row.isHistory);
 }
 
+/** These roles only receive history rows that already belong to them. */
+export function viewerDefaultsToOwnedHistory(roleSlug?: string): boolean {
+  if (!roleSlug) return false;
+  return (
+    isSupervisorTierRole(roleSlug) ||
+    roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST ||
+    roleSlug === SYSTEM_ROLE_SLUGS.AGENT ||
+    roleSlug === SYSTEM_ROLE_SLUGS.MEMBER
+  );
+}
+
 export function defaultAuditHistoryFilter(
-  _records?: readonly { isHistory?: boolean }[]
+  records?: readonly {
+    isHistory?: boolean;
+    historyOwnerId?: string | null;
+  }[],
+  viewerUserId?: string,
+  roleSlug?: string
 ): AuditHistoryFilter {
-  // Working only — history rows are transferred snapshots and must not
-  // inflate dashboard / analytics / audit-log totals by default.
+  if (
+    viewerDefaultsToOwnedHistory(roleSlug) &&
+    records?.some((row) => row.isHistory)
+  ) {
+    return "all";
+  }
+  if (
+    viewerUserId &&
+    records?.some(
+      (row) => row.isHistory && row.historyOwnerId === viewerUserId
+    )
+  ) {
+    return "all";
+  }
   return "working";
 }
 

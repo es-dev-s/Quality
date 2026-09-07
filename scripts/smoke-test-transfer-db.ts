@@ -90,6 +90,7 @@ async function main() {
     "reviewed_at",
     "review_note",
     "transferred_at",
+    "from_qa_user_id",
   ];
   const missingCols = requiredCols.filter((c) => !colSet.has(c));
   record(

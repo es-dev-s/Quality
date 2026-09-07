@@ -22,6 +22,11 @@ import {
 import { isSupervisorTierRole, SUPERVISOR_TIER_ROLE_SLUG_FILTER } from "@/lib/audit/supervisor-tier";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { withActiveUserFilter, ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
+import {
+  collectAgentTransferMatchNames,
+  reconcileTransferHistoryForViewer,
+  tagWorkingAuditsForTransfer,
+} from "@/lib/audit/transfer-history";
 
 class TransferExecutionError extends Error {
   constructor(
@@ -94,16 +99,16 @@ export type TransferHistoryAuditRow = {
   transferredAt: string;
 };
 
-function revalidateTransferPaths(userIds: string[]) {
+function revalidateTransferPaths(userIds: Array<string | null | undefined>) {
   revalidatePath("/settings");
   revalidatePath("/dashboard");
   revalidatePath("/audit-logs");
   revalidatePath("/analytics");
-  revalidatePath("/audit-transfer-history");
   revalidatePath("/forms");
   revalidatePath("/forms/audit");
+  revalidatePath("/audit-transfer-history");
   invalidateInteractionConfigCaches();
-  for (const userId of userIds) {
+  for (const userId of [...new Set(userIds.filter((id): id is string => Boolean(id)))]) {
     invalidateAuditCaches(userId);
     invalidateUserCaches(userId);
   }
@@ -144,12 +149,19 @@ async function resolveRespectiveQmId(fromSupervisorId: string): Promise<string |
   return null;
 }
 
-async function countWorkingAuditsForAgentName(agentDisplayName: string): Promise<number> {
-  const agentFilter = caseInsensitiveIn([agentDisplayName]);
+async function countWorkingAuditsForAgent(
+  agentUserId: string,
+  fallbackName: string
+): Promise<number> {
+  const names = await collectAgentTransferMatchNames(prisma, agentUserId, [
+    fallbackName,
+  ]);
+  const agentFilter = caseInsensitiveIn(names);
+  if (!agentFilter) return 0;
   return prisma.auditSubmission.count({
     where: {
       isHistory: false,
-      ...(agentFilter ? { agent: agentFilter } : { agent: agentDisplayName }),
+      agent: agentFilter,
     },
   });
 }
@@ -167,45 +179,34 @@ async function executeAgentTransfer(
   const { transferId, agentUserId, agentDisplayName, fromSupervisorId, toSupervisorId } =
     params;
 
-  const agentNameFilter = caseInsensitiveIn([agentDisplayName]);
-
   const fromSupervisor = await tx.user.findUnique({
     where: { id: fromSupervisorId },
     select: { teamName: true },
   });
   const previousTeamName = fromSupervisor?.teamName?.trim() || null;
 
-  if (previousTeamName) {
-    await tx.auditSubmission.updateMany({
-      where: {
-        isHistory: false,
-        teamNameSnapshot: null,
-        ...(agentNameFilter
-          ? { agent: agentNameFilter }
-          : { agent: agentDisplayName }),
-      },
-      data: { teamNameSnapshot: previousTeamName },
-    });
-  }
+  const assignment = await tx.agentAssignment.findUnique({
+    where: { agentId: agentUserId },
+    select: { assignedToId: true },
+  });
+  const fromQaUserId = assignment?.assignedToId ?? null;
 
-  const tagResult = await tx.auditSubmission.updateMany({
-    where: {
-      isHistory: false,
-      ...(agentNameFilter ? { agent: agentNameFilter } : { agent: agentDisplayName }),
-    },
-    data: {
-      isHistory: true,
-      historyOwnerId: fromSupervisorId,
-      historyTransferId: transferId,
-    },
+  const taggedCount = await tagWorkingAuditsForTransfer(tx, {
+    transferId,
+    agentUserId,
+    extraNames: [agentDisplayName],
+    fromSupervisorId,
+    previousTeamName,
+    excludeSubmittedById: toSupervisorId,
   });
 
   await tx.agentTransfer.update({
     where: { id: transferId },
     data: {
-      auditCountAtTransfer: tagResult.count,
+      auditCountAtTransfer: taggedCount,
       status: "APPROVED",
       transferredAt: new Date(),
+      fromQaUserId,
     },
   });
 
@@ -228,7 +229,7 @@ async function executeAgentTransfer(
     );
   }
 
-  return tagResult.count;
+  return { taggedCount, fromQaUserId };
 }
 
 function canReviewTransfer(
@@ -433,7 +434,7 @@ export async function transferAgentToSupervisor(input: {
           },
         });
 
-        const auditCount = await executeAgentTransfer(tx, {
+        const execution = await executeAgentTransfer(tx, {
           transferId: transfer.id,
           agentUserId: agentUser.id,
           agentDisplayName,
@@ -443,15 +444,22 @@ export async function transferAgentToSupervisor(input: {
 
         return {
           transferId: transfer.id,
-          auditCount,
+          auditCount: execution.taggedCount,
+          fromQaUserId: execution.fromQaUserId,
         };
       });
 
-      invalidateAgentAssignmentCaches(session.user.id, targetSupervisor.id);
+      invalidateAgentAssignmentCaches(
+        session.user.id,
+        targetSupervisor.id,
+        undefined,
+        result.fromQaUserId ? [result.fromQaUserId] : []
+      );
       revalidateTransferPaths([
         session.user.id,
         fromSupervisorId,
         targetSupervisor.id,
+        result.fromQaUserId,
       ]);
 
       return {
@@ -475,7 +483,10 @@ export async function transferAgentToSupervisor(input: {
     }
   }
 
-  const pendingAuditCount = await countWorkingAuditsForAgentName(agentDisplayName);
+  const pendingAuditCount = await countWorkingAuditsForAgent(
+    agentUser.id,
+    agentDisplayName
+  );
 
   try {
     const transfer = await prisma.$transaction(async (tx) => {
@@ -596,7 +607,7 @@ export async function approveAgentTransferRequest(input: {
   const agentDisplayName = resolveRoleUserName(transfer.agentUser);
 
   try {
-    const auditCount = await prisma.$transaction(async (tx) => {
+    const execution = await prisma.$transaction(async (tx) => {
       const claimed = await tx.agentTransfer.updateMany({
         where: { id: transfer.id, status: "PENDING" },
         data: {
@@ -643,18 +654,21 @@ export async function approveAgentTransferRequest(input: {
 
     invalidateAgentAssignmentCaches(
       transfer.fromSupervisorId,
-      transfer.toSupervisorId
+      transfer.toSupervisorId,
+      undefined,
+      execution.fromQaUserId ? [execution.fromQaUserId] : []
     );
     revalidateTransferPaths([
       session.user.id,
       transfer.fromSupervisorId,
       transfer.toSupervisorId,
       transfer.transferredById,
+      execution.fromQaUserId,
     ]);
 
     return {
       success: true as const,
-      message: `Transfer approved. ${auditCount} audit(s) marked as history for the previous supervisor.`,
+      message: `Transfer approved. ${execution.taggedCount} audit(s) marked as history for the previous supervisor.`,
     };
   } catch (error) {
     if (error instanceof TransferExecutionError) {
@@ -789,7 +803,9 @@ export async function getPendingAgentTransfersForApproval(): Promise<
   });
 
   const counts = await Promise.all(
-    rows.map((row) => countWorkingAuditsForAgentName(row.agentNameSnapshot))
+    rows.map((row) =>
+      countWorkingAuditsForAgent(row.agentUserId, row.agentNameSnapshot)
+    )
   );
 
   return rows.map((row, index) => ({
@@ -855,6 +871,10 @@ export async function getAgentTransferHistory(): Promise<{
 }> {
   await requirePermission(PERMISSIONS.USERS_READ_MANAGED);
   const session = await requireAuth();
+  await reconcileTransferHistoryForViewer(
+    session.user.id,
+    session.user.role.slug
+  );
 
   let transferWhere: Prisma.AgentTransferWhereInput | undefined;
 
@@ -868,6 +888,8 @@ export async function getAgentTransferHistory(): Promise<{
         { transferredById: session.user.id },
       ],
     };
+  } else if (session.user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
+    transferWhere = { fromQaUserId: session.user.id };
   } else if (session.user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
     transferWhere = undefined;
   } else {
@@ -951,7 +973,7 @@ export async function countPendingHistoryAuditsForAgent(
   });
   if (!agent) return 0;
 
-  return countWorkingAuditsForAgentName(resolveRoleUserName(agent));
+  return countWorkingAuditsForAgent(agentUserId, resolveRoleUserName(agent));
 }
 
 /** Agent user IDs with a pending supervisor transfer (scoped to viewer when applicable). */

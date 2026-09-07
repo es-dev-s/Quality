@@ -41,6 +41,7 @@ async function AuditLogsContent() {
       canCreateAudit={canWriteAuditForm(session.user.role)}
       canExport={canExportAuditData(session.user.role)}
       isSuperAdmin={isSuperAdmin(session.user.role)}
+      viewerUserId={session.user.id}
     />
   );
 }

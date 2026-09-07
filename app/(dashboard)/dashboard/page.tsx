@@ -18,6 +18,7 @@ async function DashboardContent() {
       roleSlug={session.user.role.slug}
       canEditAudits={canEditAuditSubmissions(session.user.role)}
       canEditSupervisorRemarks={canEditSupervisorRemarks(session.user.role)}
+      viewerUserId={session.user.id}
     />
   );
 }

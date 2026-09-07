@@ -70,6 +70,7 @@ import { ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
 import { readAuditTargets } from "@/lib/kpi/audit-targets";
 import { KPI_DEFAULT_AGENT_TARGET } from "@/lib/kpi/records";
 import { resolveTeamNameSnapshot } from "@/lib/audit/resolve-team-name";
+import { reconcileTransferHistoryForViewer } from "@/lib/audit/transfer-history";
 import { resolveFormFeedbackForSave } from "@/lib/audit/form-feedback-save";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
 import {
@@ -473,6 +474,7 @@ type AuditLogRow = {
   };
   createdAt: Date | string;
   isHistory: boolean;
+  historyOwnerId?: string | null;
 };
 
 function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
@@ -513,11 +515,16 @@ function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
     auditSource: resolveAuditSourceKind(submittedByRoleSlug),
     createdAt: toIsoTimestamp(s.createdAt),
     isHistory: s.isHistory,
+    historyOwnerId: s.historyOwnerId ?? null,
   };
 }
 
 export async function getAuditLogs() {
   const session = await requirePermission(PERMISSIONS.AUDIT_LOGS_READ);
+  await reconcileTransferHistoryForViewer(
+    session.user.id,
+    session.user.role.slug
+  );
   const where = await scopedAuditWhere(session);
 
   const [totalCount, submissions] = await Promise.all([
@@ -681,6 +688,7 @@ export async function getAuditDetail(id: string) {
     auditSource: resolveAuditSourceKind(submittedByRoleSlug),
     createdAt: submission.createdAt.toISOString(),
     isHistory: submission.isHistory,
+    historyOwnerId: submission.historyOwnerId ?? null,
   } satisfies AuditDetail;
 }
 
@@ -1317,6 +1325,10 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
   const targetsPromise = readAuditTargets(session.user.id);
 
   try {
+    await reconcileTransferHistoryForViewer(
+      session.user.id,
+      session.user.role.slug
+    );
     const [submissions, rosterAgentNames, targets] = await Promise.all([
       withDbRetry(() => getCachedDashboardRecords(cacheScope)()),
       canFilterByAgent(session.user.role.slug)
@@ -1342,6 +1354,7 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
         hasFatal: s.hasFatal,
         fatalList: parseFatalList(s.fatalList),
         isHistory: s.isHistory,
+        historyOwnerId: s.historyOwnerId ?? null,
         auditSource: resolveAuditSourceKind(s.submittedBy.role?.slug),
       })),
       rosterAgentNames,

@@ -38,8 +38,8 @@ export function HistoryFilterSection({
         ))}
       </div>
       <p className="ui-hint" style={{ marginTop: 8 }}>
-        Working shows current team data. History shows audits retained after an
-        agent transfer.
+        Working is the current team. History is audits from members who later
+        transferred out. All shows both.
       </p>
     </FilterSidebarSection>
   );

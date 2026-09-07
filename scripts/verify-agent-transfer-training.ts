@@ -9,6 +9,7 @@ import {
   SYSTEM_ROLE_SLUGS,
 } from "@/lib/permissions";
 import { mergeRosterIntoFilterOptions, extractFilterOptions } from "@/lib/audit/dashboard-metrics";
+import { defaultAuditHistoryFilter } from "@/lib/audit/history-filter";
 
 let errors = 0;
 
@@ -139,6 +140,44 @@ console.log("");
 if (errors > 0) {
   console.error(`${errors} verification error(s).`);
   process.exit(1);
+}
+
+const ownedHistory = defaultAuditHistoryFilter(
+  [
+    { isHistory: false, historyOwnerId: null },
+    { isHistory: true, historyOwnerId: "supervisor-1" },
+  ],
+  "supervisor-1",
+  SYSTEM_ROLE_SLUGS.SUPERVISOR
+);
+if (ownedHistory !== "all") {
+  fail("previous supervisor should default to All so transferred-agent history is visible");
+} else {
+  ok("previous supervisor defaults to All when they own transfer history");
+}
+
+const qaHistory = defaultAuditHistoryFilter(
+  [{ isHistory: true, historyOwnerId: "supervisor-1" }],
+  "qa-1",
+  SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
+);
+if (qaHistory !== "all") {
+  fail("QA should default to All so transferred-member audits they already scoped stay visible");
+} else {
+  ok("QA defaults to All when transferred-member history is in their scope");
+}
+
+const otherViewer = defaultAuditHistoryFilter(
+  [
+    { isHistory: true, historyOwnerId: "supervisor-1" },
+  ],
+  "supervisor-2",
+  SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
+);
+if (otherViewer !== "working") {
+  fail("new team / other viewers should stay on Working by default");
+} else {
+  ok("new team stays on Working and does not inherit old-team history");
 }
 
 console.log("All agent transfer + training supervisor checks passed.");

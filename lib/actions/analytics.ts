@@ -6,6 +6,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { fetchAgentRosterNames } from "@/lib/audit/agent-roster";
 import { canFilterByAgent } from "@/lib/audit/agent-filter-access";
 import { dataScopeFromSession } from "@/lib/audit/data-scope";
+import { reconcileTransferHistoryForViewer } from "@/lib/audit/transfer-history";
 import { scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
 import type { AuditRow, CategoryScore } from "@/lib/audit/types";
 import type { AnalyticsAuditRecord } from "@/lib/audit/analytics-metrics";
@@ -74,6 +75,7 @@ async function fetchAnalyticsRecords(
       reason: true,
       fatalList: true,
       isHistory: true,
+      historyOwnerId: true,
       teamNameSnapshot: true,
       rows: true,
       catScores: true,
@@ -100,6 +102,7 @@ async function fetchAnalyticsRecords(
     reason: s.reason,
     fatalList: s.fatalList,
     isHistory: s.isHistory,
+    historyOwnerId: s.historyOwnerId ?? null,
     teamName: resolveRecordTeamName(
       {
         agent: s.agent,
@@ -116,6 +119,10 @@ async function fetchAnalyticsRecords(
 /** Loads scoped audit rows for client-side analytics filtering (period + segment). */
 export async function getAnalyticsData() {
   const session = await requirePermission(PERMISSIONS.ANALYTICS_READ);
+  await reconcileTransferHistoryForViewer(
+    session.user.id,
+    session.user.role.slug
+  );
   const ctx = dataScopeFromSession(session);
   const [records, rosterAgentNames] = await Promise.all([
     fetchAnalyticsRecords(await scopedAuditWhere(session)),
