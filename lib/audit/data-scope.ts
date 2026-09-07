@@ -148,7 +148,9 @@ export async function buildQaScopeWhere(
     orClauses([
       { submittedById: userId },
       ...(auditorFilter ? [{ auditor: auditorFilter }] : []),
-      ...(agentFilter ? [{ agent: agentFilter }] : []),
+      // Current assignments are live working data only. After a member
+      // transfers, the new QA must not inherit the previous team's history.
+      ...(agentFilter ? [{ agent: agentFilter, isHistory: false }] : []),
     ])
   );
 }
@@ -193,17 +195,24 @@ export async function auditSubmissionScopeWhere(
     return { NOT: supervisorSubmittedClause() };
   }
 
-  // QM: respective roster — includes supervisor audits for those agents only.
+  // QM: current roster plus history from supervisors this QM created.
   if (roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
     const agentNames = await fetchAgentRosterNames(
       ctx.userId,
       SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
     );
     const agentFilter = caseInsensitiveIn(agentNames);
-    if (!agentFilter) {
-      return noAccessFilter();
-    }
-    return { agent: agentFilter };
+    const pastTeamHistory: Prisma.AuditSubmissionWhereInput = {
+      isHistory: true,
+      OR: [
+        { historyOwner: { createdById: ctx.userId } },
+        { historyTransfer: { fromSupervisor: { createdById: ctx.userId } } },
+      ],
+    };
+    return orClauses([
+      ...(agentFilter ? [{ agent: agentFilter }] : []),
+      pastTeamHistory,
+    ]);
   }
 
   if (isSupervisorTierRole(roleSlug)) {
@@ -221,8 +230,11 @@ export async function auditSubmissionScopeWhere(
           }
         : null;
     const historyClause: Prisma.AuditSubmissionWhereInput = {
-      historyOwnerId: ctx.userId,
       isHistory: true,
+      OR: [
+        { historyOwnerId: ctx.userId },
+        { historyTransfer: { fromSupervisorId: ctx.userId } },
+      ],
     };
     return orClauses([
       { submittedById: ctx.userId },

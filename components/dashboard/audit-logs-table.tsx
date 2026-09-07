@@ -111,6 +111,7 @@ type AuditLogsTableProps = {
   canCreateAudit?: boolean;
   canExport?: boolean;
   isSuperAdmin?: boolean;
+  viewerUserId?: string;
 };
 
 type ScorePreset = "all" | "90+" | "75-89" | "50-74" | "1-49" | "0";
@@ -223,6 +224,7 @@ export function AuditLogsTable({
   canCreateAudit = false,
   canExport = false,
   isSuperAdmin = false,
+  viewerUserId,
 }: AuditLogsTableProps) {
   const router = useRouter();
   const { toast } = useToast();
@@ -239,7 +241,7 @@ export function AuditLogsTable({
   const [auditSource, setAuditSource] = useState<AuditSourceKind | "">("");
   const [dateSort, setDateSort] = useState<"asc" | "desc">("desc");
   const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
-    defaultAuditHistoryFilter(submissions)
+    defaultAuditHistoryFilter(submissions, viewerUserId, roleSlug)
   );
   const [dateRange, setDateRange] = useState<DateRangeFilter>("all");
   const [customRange, setCustomRange] = useState<DateRangeValue>({ from: "", to: "" });
@@ -720,7 +722,7 @@ export function AuditLogsTable({
     setAgent("");
     setFeedbackStatus("");
     setAuditSource("");
-    setHistoryFilter(defaultAuditHistoryFilter(rows));
+    setHistoryFilter(defaultAuditHistoryFilter(rows, viewerUserId, roleSlug));
   };
 
   function patchRowFeedback(

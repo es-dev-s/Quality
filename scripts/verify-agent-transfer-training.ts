@@ -9,6 +9,7 @@ import {
   SYSTEM_ROLE_SLUGS,
 } from "@/lib/permissions";
 import { mergeRosterIntoFilterOptions, extractFilterOptions } from "@/lib/audit/dashboard-metrics";
+import { defaultAuditHistoryFilter } from "@/lib/audit/history-filter";
 
 let errors = 0;
 
@@ -133,6 +134,88 @@ if (
   fail("extractFilterOptions should map agents to their team");
 } else {
   ok("dashboard filters map agents to the selected team");
+}
+
+console.log("");
+
+const ownedHistory = defaultAuditHistoryFilter(
+  [
+    { isHistory: false, historyOwnerId: null },
+    { isHistory: true, historyOwnerId: "supervisor-1" },
+  ],
+  "supervisor-1",
+  SYSTEM_ROLE_SLUGS.SUPERVISOR
+);
+if (ownedHistory !== "all") {
+  fail("previous supervisor should default to All so transferred-agent history is visible");
+} else {
+  ok("previous supervisor defaults to All when they own transfer history");
+}
+
+const trainingHistory = defaultAuditHistoryFilter(
+  [{ isHistory: true, historyOwnerId: "supervisor-1" }],
+  "training-1",
+  SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR
+);
+if (trainingHistory !== "all") {
+  fail("training supervisor should default to All for owned transfer history");
+} else {
+  ok("training supervisor defaults to All when they have transfer history");
+}
+
+const qaHistory = defaultAuditHistoryFilter(
+  [{ isHistory: true, historyOwnerId: "supervisor-1" }],
+  "qa-1",
+  SYSTEM_ROLE_SLUGS.QUALITY_ANALYST
+);
+if (qaHistory !== "all") {
+  fail("QA should default to All so transferred-member audits they already scoped stay visible");
+} else {
+  ok("QA defaults to All when transferred-member history is in their scope");
+}
+
+const agentHistory = defaultAuditHistoryFilter(
+  [{ isHistory: true, historyOwnerId: "supervisor-1" }],
+  "agent-1",
+  SYSTEM_ROLE_SLUGS.AGENT
+);
+if (agentHistory !== "all") {
+  fail("agent should default to All so their own transferred-team audits stay visible");
+} else {
+  ok("agent defaults to All when history is in their scope");
+}
+
+const memberHistory = defaultAuditHistoryFilter(
+  [{ isHistory: true, historyOwnerId: "supervisor-1" }],
+  "member-1",
+  SYSTEM_ROLE_SLUGS.MEMBER
+);
+if (memberHistory !== "all") {
+  fail("member should default to All for granted QA/agent history already in scope");
+} else {
+  ok("member defaults to All when granted history is in their scope");
+}
+
+const qmWorking = defaultAuditHistoryFilter(
+  [{ isHistory: true, historyOwnerId: "supervisor-1" }],
+  "qm-1",
+  SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
+);
+if (qmWorking !== "working") {
+  fail("quality manager should stay on Working by default");
+} else {
+  ok("quality manager stays on Working by default");
+}
+
+const superadminWorking = defaultAuditHistoryFilter(
+  [{ isHistory: true, historyOwnerId: "supervisor-1" }],
+  "sa-1",
+  SYSTEM_ROLE_SLUGS.SUPERADMIN
+);
+if (superadminWorking !== "working") {
+  fail("super admin should stay on Working by default");
+} else {
+  ok("super admin stays on Working by default");
 }
 
 console.log("");

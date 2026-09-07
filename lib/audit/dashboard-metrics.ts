@@ -21,6 +21,7 @@ export type DashboardAuditRecord = {
   hasFatal: boolean;
   fatalList: string[];
   isHistory?: boolean;
+  historyOwnerId?: string | null;
   auditSource?: AuditSourceKind;
 };
 

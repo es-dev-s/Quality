@@ -42,6 +42,7 @@ model User {
   agentTransfersPerformed   AgentTransfer[] @relation("TransferPerformedBy")
   agentTransfersAssignedReview AgentTransfer[] @relation("TransferAssignedReviewer")
   agentTransfersReviewed    AgentTransfer[] @relation("TransferReviewedBy")
+  agentTransfersFromQa      AgentTransfer[] @relation("TransferFromQa")
   historyOwnedAudits        AuditSubmission[] @relation("HistoryOwner")
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
@@ -110,6 +111,7 @@ model AgentTransfer {
   agentEmailSnapshot  String               @map("agent_email_snapshot")
   fromSupervisorId    String               @map("from_supervisor_id")
   toSupervisorId      String               @map("to_supervisor_id")
+  fromQaUserId        String?              @map("from_qa_user_id")
   transferredById     String               @map("transferred_by_id")
   assignedReviewerId  String?              @map("assigned_reviewer_id")
   status              AgentTransferStatus  @default(PENDING)
@@ -124,6 +126,7 @@ model AgentTransfer {
   agentUser         User  @relation("TransferAgent", fields: [agentUserId], references: [id], onDelete: Restrict)
   fromSupervisor    User  @relation("TransferFromSupervisor", fields: [fromSupervisorId], references: [id], onDelete: Restrict)
   toSupervisor      User  @relation("TransferToSupervisor", fields: [toSupervisorId], references: [id], onDelete: Restrict)
+  fromQaUser        User? @relation("TransferFromQa", fields: [fromQaUserId], references: [id], onDelete: SetNull)
   transferredBy     User  @relation("TransferPerformedBy", fields: [transferredById], references: [id], onDelete: Restrict)
   assignedReviewer  User? @relation("TransferAssignedReviewer", fields: [assignedReviewerId], references: [id], onDelete: SetNull)
   reviewedBy        User? @relation("TransferReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
@@ -131,6 +134,7 @@ model AgentTransfer {
 
   @@index([fromSupervisorId])
   @@index([toSupervisorId])
+  @@index([fromQaUserId])
   @@index([agentUserId])
   @@index([status])
   @@index([assignedReviewerId])

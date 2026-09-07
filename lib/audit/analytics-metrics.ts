@@ -38,6 +38,7 @@ export type AnalyticsAuditRecord = {
   feedbackStatus: string;
   feedbackSecurity: FeedbackSecurity;
   isHistory: boolean;
+  historyOwnerId?: string | null;
   reason?: string | null;
   fatalList?: unknown;
   /** Frozen snapshot first, then live User.teamName (supervisor, then agent). Not the person name. */

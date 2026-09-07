@@ -17,6 +17,7 @@ import {
   canExportAuditData,
   hasScope,
   isSuperAdmin,
+  type SessionRole,
 } from "@/lib/rbac";
 import { scopedAuditByIdWhere, scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
 import { resolveStatusTimestamps } from "@/lib/audit/feedback-datetime";
@@ -32,7 +33,12 @@ import { validateAuditFormAgainstConfig } from "@/lib/audit/validate-audit-form-
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { getTemplateById } from "@/lib/actions/templates";
 import { fetchAuditTemplateForEdit } from "@/lib/audit/template-db";
-import { isNextDataCacheOverflowError, withDbRetry } from "@/lib/db/with-db-retry";
+import {
+  isNextDataCacheOverflowError,
+  isPrismaSchemaMismatchError,
+  isRetryableDbError,
+  withDbRetry,
+} from "@/lib/db/with-db-retry";
 import { assertWriteRateLimit } from "@/lib/server/rate-limit";
 import {
   auditIdSchema,
@@ -69,10 +75,11 @@ import { ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
 import { readAuditTargets } from "@/lib/kpi/audit-targets";
 import { KPI_DEFAULT_AGENT_TARGET } from "@/lib/kpi/records";
 import { resolveTeamNameSnapshot } from "@/lib/audit/resolve-team-name";
+import { reconcileTransferHistoryForViewer } from "@/lib/audit/transfer-history";
+import { resolveFormFeedbackForSave } from "@/lib/audit/form-feedback-save";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
 import {
   defaultAuditFeedback,
-  FEEDBACK_STATUS_OPTIONS,
   normalizeFeedbackForSave,
   parseFeedbackSecurity,
   parseFeedbackStatus,
@@ -99,40 +106,30 @@ function validationError(message: string) {
   return { error: message };
 }
 
-function normalizeFormFeedbackForSave(
-  formData: Pick<AuditFormData, "feedbackSecurity" | "feedbackStatus">,
+async function normalizeFormFeedbackForSave(
+  session: { user: { id: string; role: SessionRole } },
+  formData: Pick<AuditFormData, "feedbackSecurity" | "feedbackStatus" | "feedbackDate">,
   existing?: {
     feedbackStatus?: string | null;
     feedbackDate: string | null;
     feedbackStatusAt: string | null;
   }
-): AuditFeedbackFields | { error: string } {
-  // Status and dates are Audit Log-only. New audits stay Pending; edits keep
-  // the stored lifecycle even if the form payload is tampered.
-  const feedbackStatus = existing
-    ? parseFeedbackStatus(existing.feedbackStatus)
-    : "Pending";
-  if (!FEEDBACK_STATUS_OPTIONS.includes(feedbackStatus)) {
-    return { error: "Invalid feedback status." };
-  }
+): Promise<AuditFeedbackFields | { error: string }> {
+  const memberMode =
+    session.user.role.slug === SYSTEM_ROLE_SLUGS.MEMBER
+      ? await resolveMemberFeedbackMode(session.user.id)
+      : undefined;
 
-  const normalized = normalizeFeedbackForSave({
-    feedbackSecurity: parseFeedbackSecurity(formData.feedbackSecurity),
-    feedbackStatus,
-    feedbackDate:
-      feedbackStatus === "Pending" ? "" : (existing?.feedbackDate ?? ""),
-    feedbackStatusAt:
-      feedbackStatus === "Acknowledged" || feedbackStatus === "Disputed"
-        ? (existing?.feedbackStatusAt ?? "")
-        : "",
+  return resolveFormFeedbackForSave({
+    role: session.user.role,
+    memberMode,
+    requested: {
+      feedbackSecurity: formData.feedbackSecurity,
+      feedbackStatus: formData.feedbackStatus,
+      feedbackDate: formData.feedbackDate,
+    },
+    existing,
   });
-
-  const validationErrorMessage = validateFeedbackForSave(normalized);
-  if (validationErrorMessage) {
-    return { error: validationErrorMessage };
-  }
-
-  return normalized;
 }
 
 function revalidateAuditPaths() {
@@ -279,7 +276,7 @@ export async function saveAuditSubmission(
     return { error: configError };
   }
 
-  const feedbackResult = normalizeFormFeedbackForSave(validFormData);
+  const feedbackResult = await normalizeFormFeedbackForSave(session, validFormData);
   if ("error" in feedbackResult) {
     return { error: feedbackResult.error };
   }
@@ -417,6 +414,20 @@ export async function saveAuditSubmission(
     });
   }
 
+  if (feedback.feedbackStatus === "Disputed" && createdId) {
+    void dispatchDisputeAuditNotifications({
+      auditId: createdId,
+      auditCode: record.id,
+      agent: record.agent,
+      supervisor: record.supervisor || null,
+      auditor: record.auditor || null,
+      submittedById: session.user.id,
+      disputedById: session.user.id,
+    }).catch((error) => {
+      console.error("dispatchDisputeAuditNotifications failed:", error);
+    });
+  }
+
   return { success: true, record };
 }
 
@@ -468,6 +479,7 @@ type AuditLogRow = {
   };
   createdAt: Date | string;
   isHistory: boolean;
+  historyOwnerId?: string | null;
 };
 
 function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
@@ -508,11 +520,16 @@ function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
     auditSource: resolveAuditSourceKind(submittedByRoleSlug),
     createdAt: toIsoTimestamp(s.createdAt),
     isHistory: s.isHistory,
+    historyOwnerId: s.historyOwnerId ?? null,
   };
 }
 
 export async function getAuditLogs() {
   const session = await requirePermission(PERMISSIONS.AUDIT_LOGS_READ);
+  await reconcileTransferHistoryForViewer(
+    session.user.id,
+    session.user.role.slug
+  );
   const where = await scopedAuditWhere(session);
 
   const [totalCount, submissions] = await Promise.all([
@@ -676,6 +693,7 @@ export async function getAuditDetail(id: string) {
     auditSource: resolveAuditSourceKind(submittedByRoleSlug),
     createdAt: submission.createdAt.toISOString(),
     isHistory: submission.isHistory,
+    historyOwnerId: submission.historyOwnerId ?? null,
   } satisfies AuditDetail;
 }
 
@@ -864,7 +882,8 @@ export async function updateAuditSubmission(
     return { error: "History audits cannot be edited." };
   }
 
-  const feedbackResult = normalizeFormFeedbackForSave(validFormData, {
+  const previousFeedbackStatus = parseFeedbackStatus(existing.feedbackStatus);
+  const feedbackResult = await normalizeFormFeedbackForSave(session, validFormData, {
     feedbackStatus: existing.feedbackStatus,
     feedbackDate: existing.feedbackDate,
     feedbackStatusAt: existing.feedbackStatusAt,
@@ -980,6 +999,23 @@ export async function updateAuditSubmission(
       submittedById: session.user.id,
     }).catch((error) => {
       console.error("dispatchFatalAuditNotifications failed:", error);
+    });
+  }
+
+  if (
+    previousFeedbackStatus !== "Disputed" &&
+    preservedFeedback.feedbackStatus === "Disputed"
+  ) {
+    void dispatchDisputeAuditNotifications({
+      auditId: validId,
+      auditCode: record.id,
+      agent: record.agent,
+      supervisor: record.supervisor || null,
+      auditor: record.auditor || null,
+      submittedById: existing.submittedById,
+      disputedById: session.user.id,
+    }).catch((error) => {
+      console.error("dispatchDisputeAuditNotifications failed:", error);
     });
   }
 
@@ -1294,6 +1330,10 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
   const targetsPromise = readAuditTargets(session.user.id);
 
   try {
+    await reconcileTransferHistoryForViewer(
+      session.user.id,
+      session.user.role.slug
+    );
     const [submissions, rosterAgentNames, targets] = await Promise.all([
       withDbRetry(() => getCachedDashboardRecords(cacheScope)()),
       canFilterByAgent(session.user.role.slug)
@@ -1319,6 +1359,7 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
         hasFatal: s.hasFatal,
         fatalList: parseFatalList(s.fatalList),
         isHistory: s.isHistory,
+        historyOwnerId: s.historyOwnerId ?? null,
         auditSource: resolveAuditSourceKind(s.submittedBy.role?.slug),
       })),
       rosterAgentNames,
@@ -1340,7 +1381,11 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
       fetchedAt: new Date().toISOString(),
       dbError: cacheOverflow
         ? "Dashboard could not load this many audits from cache. Refresh and try again."
-        : "Unable to reach the database. Use the Supabase session pooler (pooler.supabase.com:5432) in DATABASE_URL or DATABASE_URL_SESSION — not db.*.supabase.co.",
+        : isPrismaSchemaMismatchError(error)
+          ? "Dashboard could not load audits. Refresh and try again."
+        : isRetryableDbError(error)
+          ? "Unable to reach the database. Use the Supabase session pooler (pooler.supabase.com:5432) in DATABASE_URL or DATABASE_URL_SESSION — not db.*.supabase.co."
+          : "Dashboard could not load audits. Refresh and try again.",
       agentTarget: targets.perAgent,
       totalMonthlyTarget: targets.totalMonthly,
     };

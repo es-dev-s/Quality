@@ -12,6 +12,7 @@ async function AnalyticsContent() {
     <QmsAnalytics
       data={data}
       roleSlug={session.user.role.slug}
+      viewerUserId={session.user.id}
     />
   );
 }

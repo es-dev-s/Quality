@@ -87,6 +87,7 @@ async function AuditFormContent({
       initialType={initialType}
       supervisorAgentMap={supervisorAgentMap}
       successRedirect={resolveAuditSaveRedirect(session.user.role)}
+      feedbackStatusRole={session.user.role}
     />
   );
 }

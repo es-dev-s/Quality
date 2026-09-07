@@ -8,7 +8,9 @@ import {
   DataTablePanel,
   usePaginatedRows,
 } from "@/components/primitives/data-table-panel";
+import { useDashboardShell } from "@/components/dashboard/shell";
 import type { AgentListItem } from "@/lib/actions/agents";
+import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 
 type AgentsTableProps = {
   agents: AgentListItem[];
@@ -29,6 +31,8 @@ export function AgentsTable({
   onOpenTeamTab,
   embedded = false,
 }: AgentsTableProps) {
+  const { user } = useDashboardShell();
+  const isQualityAnalyst = user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST;
   const [search, setSearch] = useState("");
 
   const filtered = useMemo(() => {
@@ -60,7 +64,7 @@ export function AgentsTable({
           <UserPlus size={16} />
           Manage in Users
         </Button>
-      ) : !canManageUsers && onOpenTeamTab ? (
+      ) : !canManageUsers && onOpenTeamTab && !isQualityAnalyst ? (
         <Button size="sm" onClick={onOpenTeamTab}>
           <UserPlus size={16} />
           Request agent

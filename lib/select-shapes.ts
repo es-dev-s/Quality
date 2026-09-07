@@ -27,6 +27,7 @@ export const AUDIT_LOG_LIST_SELECT = {
   referenceUrl: true,
   mobile: true,
   isHistory: true,
+  historyOwnerId: true,
   createdAt: true,
   submittedBy: {
     select: {
@@ -53,6 +54,7 @@ export const AUDIT_DASHBOARD_SELECT = {
   hasFatal: true,
   fatalList: true,
   isHistory: true,
+  historyOwnerId: true,
   submittedBy: {
     select: {
       role: { select: { slug: true } },
