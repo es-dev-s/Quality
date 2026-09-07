@@ -57,6 +57,7 @@ async function EditAuditContent({ id }: { id: string }) {
       successRedirect="/audit-logs"
       cancelHref="/audit-logs"
       supervisorAgentMap={supervisorAgentMap}
+      feedbackStatusRole={session.user.role}
     />
   );
 }

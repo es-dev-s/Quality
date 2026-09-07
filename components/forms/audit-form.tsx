@@ -11,6 +11,7 @@ import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
 import { getFeedbackStatusSelectConfig } from "@/lib/audit/feedback-status-access";
 import { applyFormFeedbackStatusChange } from "@/lib/audit/form-feedback-save";
 import { feedbackStatusClass } from "@/components/audit-logs/feedback-status-select";
+import { canEditFeedbackFully, isSuperAdmin, type SessionRole } from "@/lib/rbac";
 import { saveAuditSubmission, updateAuditSubmission } from "@/lib/actions/audit";
 import { calculateResults } from "@/lib/audit/calculate-results";
 import { getScoringOptions } from "@/lib/audit/scoring-options";
@@ -162,6 +163,8 @@ type AuditFormProps = {
   cancelHref?: string;
   /** Supervisor name → agents linked via provisioning and audit history. */
   supervisorAgentMap?: Record<string, string[]>;
+  /** Server session role — used so Superadmin / QM / QA can pick status on the form. */
+  feedbackStatusRole?: SessionRole | null;
 };
 
 function scoringMaxForTemplate(template: TemplateListItem): number {
@@ -187,11 +190,13 @@ export function AuditForm({
   successRedirect = "/audit-logs",
   cancelHref,
   supervisorAgentMap = {},
+  feedbackStatusRole = null,
 }: AuditFormProps) {
   const isEditMode = Boolean(editAuditId);
   const router = useRouter();
   const { toast } = useToast();
   const { user } = useDashboardShell();
+  const statusRole = feedbackStatusRole ?? user.role;
   const [pending, startTransition] = useTransition();
   const submissionKeyRef = useRef<string | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState(initialTemplateId);
@@ -228,12 +233,22 @@ export function AuditForm({
     null
   );
   const feedbackStatusConfig = getFeedbackStatusSelectConfig(
-    user.role,
+    statusRole,
     formData.feedbackStatus
   );
-  const canChooseFeedbackStatus = feedbackStatusConfig.editable;
+  const canChooseFeedbackStatus =
+    isSuperAdmin(statusRole) ||
+    canEditFeedbackFully(statusRole) ||
+    feedbackStatusConfig.editable;
   const feedbackStatusOptions = canChooseFeedbackStatus
-    ? feedbackStatusConfig.options
+    ? feedbackStatusConfig.options.length > 0
+      ? feedbackStatusConfig.options
+      : [
+          { value: "Pending", label: "Pending" },
+          { value: "Shared", label: "Shared" },
+          { value: "Acknowledged", label: "Acknowledged" },
+          { value: "Disputed", label: "Disputed" },
+        ]
     : [{ value: formData.feedbackStatus, label: formData.feedbackStatus }];
 
   useEffect(() => {
@@ -1224,7 +1239,7 @@ export function AuditForm({
                       )}
                       value={formData.feedbackStatus || "Pending"}
                       required
-                      disabled={!canChooseFeedbackStatus}
+                      disabled={!canChooseFeedbackStatus || pending}
                       title={feedbackStatusConfig.hint}
                       aria-label="Feedback status"
                       options={feedbackStatusOptions.map((option) => ({

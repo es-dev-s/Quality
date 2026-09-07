@@ -690,6 +690,10 @@
 }
 
 .audit-feedback-status.ui-custom-select__trigger {
+  cursor: pointer;
+  background: var(--color-surface);
+  color: var(--color-fg);
+  opacity: 1;
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
@@ -697,9 +701,13 @@
     color 160ms ease;
 }
 
+.audit-feedback-status.ui-custom-select__trigger:not(:disabled) {
+  pointer-events: auto;
+}
+
 .audit-feedback-status.audit-logs__feedback--pending:not(:disabled) {
-  background: color-mix(in srgb, var(--color-muted) 55%, var(--color-surface));
-  color: var(--color-muted-fg);
+  background: var(--color-surface);
+  color: var(--color-fg);
 }
 
 .audit-feedback-status.audit-logs__feedback--shared:not(:disabled) {
