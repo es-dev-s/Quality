@@ -206,7 +206,6 @@ async function executeAgentTransfer(
       auditCountAtTransfer: taggedCount,
       status: "APPROVED",
       transferredAt: new Date(),
-      fromQaUserId,
     },
   });
 
@@ -230,6 +229,21 @@ async function executeAgentTransfer(
   }
 
   return { taggedCount, fromQaUserId };
+}
+
+async function snapshotTransferQa(
+  transferId: string,
+  fromQaUserId: string | null | undefined
+) {
+  if (!fromQaUserId) return;
+  try {
+    await prisma.agentTransfer.update({
+      where: { id: transferId },
+      data: { fromQaUserId },
+    });
+  } catch (error) {
+    console.error("Could not snapshot transferring QA on agent transfer:", error);
+  }
 }
 
 function canReviewTransfer(
@@ -449,6 +463,7 @@ export async function transferAgentToSupervisor(input: {
         };
       });
 
+      await snapshotTransferQa(result.transferId, result.fromQaUserId);
       invalidateAgentAssignmentCaches(
         session.user.id,
         targetSupervisor.id,
@@ -652,6 +667,7 @@ export async function approveAgentTransferRequest(input: {
       });
     });
 
+    await snapshotTransferQa(transfer.id, execution.fromQaUserId);
     invalidateAgentAssignmentCaches(
       transfer.fromSupervisorId,
       transfer.toSupervisorId,
@@ -889,7 +905,17 @@ export async function getAgentTransferHistory(): Promise<{
       ],
     };
   } else if (session.user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
-    transferWhere = { fromQaUserId: session.user.id };
+    const submittedAgents = await prisma.auditSubmission.findMany({
+      where: { submittedById: session.user.id },
+      select: { agent: true },
+      distinct: ["agent"],
+    });
+    const agentNameFilter = caseInsensitiveIn(
+      submittedAgents.map((row) => row.agent)
+    );
+    transferWhere = agentNameFilter
+      ? { agentNameSnapshot: agentNameFilter }
+      : { transferredById: session.user.id };
   } else if (session.user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
     transferWhere = undefined;
   } else {

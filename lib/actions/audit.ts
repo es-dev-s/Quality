@@ -33,7 +33,12 @@ import { validateAuditFormAgainstConfig } from "@/lib/audit/validate-audit-form-
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { getTemplateById } from "@/lib/actions/templates";
 import { fetchAuditTemplateForEdit } from "@/lib/audit/template-db";
-import { isNextDataCacheOverflowError, withDbRetry } from "@/lib/db/with-db-retry";
+import {
+  isNextDataCacheOverflowError,
+  isPrismaSchemaMismatchError,
+  isRetryableDbError,
+  withDbRetry,
+} from "@/lib/db/with-db-retry";
 import { assertWriteRateLimit } from "@/lib/server/rate-limit";
 import {
   auditIdSchema,
@@ -1376,7 +1381,11 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
       fetchedAt: new Date().toISOString(),
       dbError: cacheOverflow
         ? "Dashboard could not load this many audits from cache. Refresh and try again."
-        : "Unable to reach the database. Use the Supabase session pooler (pooler.supabase.com:5432) in DATABASE_URL or DATABASE_URL_SESSION — not db.*.supabase.co.",
+        : isPrismaSchemaMismatchError(error)
+          ? "Dashboard could not load audits. Refresh and try again."
+        : isRetryableDbError(error)
+          ? "Unable to reach the database. Use the Supabase session pooler (pooler.supabase.com:5432) in DATABASE_URL or DATABASE_URL_SESSION — not db.*.supabase.co."
+          : "Dashboard could not load audits. Refresh and try again.",
       agentTarget: targets.perAgent,
       totalMonthlyTarget: targets.totalMonthly,
     };

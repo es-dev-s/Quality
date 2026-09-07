@@ -189,44 +189,50 @@ export async function reconcileTransferHistoryForViewer(
   userId: string,
   roleSlug: string
 ): Promise<number> {
-  if (isSupervisorTierRole(roleSlug)) {
-    return reconcileOutgoingTransferHistory(userId);
-  }
+  try {
+    if (isSupervisorTierRole(roleSlug)) {
+      return await reconcileOutgoingTransferHistory(userId);
+    }
 
-  if (roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
-    const supervisors = await prisma.user.findMany({
-      where: {
-        createdById: userId,
-        role: { slug: SUPERVISOR_TIER_ROLE_SLUG_FILTER },
-      },
-      select: { id: true },
-    });
-    return reconcileOutgoingTransferHistory(supervisors.map((row) => row.id));
-  }
+    if (roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
+      const supervisors = await prisma.user.findMany({
+        where: {
+          createdById: userId,
+          role: { slug: SUPERVISOR_TIER_ROLE_SLUG_FILTER },
+        },
+        select: { id: true },
+      });
+      return await reconcileOutgoingTransferHistory(
+        supervisors.map((row) => row.id)
+      );
+    }
 
-  if (roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
-    const submittedAgents = await prisma.auditSubmission.findMany({
-      where: { submittedById: userId },
-      select: { agent: true },
-      distinct: ["agent"],
-    });
-    const agentNames = uniqueNames(submittedAgents.map((row) => row.agent));
-    const agentNameFilter = caseInsensitiveIn(agentNames);
-    const transfers = await prisma.agentTransfer.findMany({
-      where: {
-        status: "APPROVED",
-        OR: [
-          { fromQaUserId: userId },
-          ...(agentNameFilter ? [{ agentNameSnapshot: agentNameFilter }] : []),
-        ],
-      },
-      select: { fromSupervisorId: true },
-      take: 100,
-    });
-    return reconcileOutgoingTransferHistory([
-      ...new Set(transfers.map((row) => row.fromSupervisorId)),
-    ]);
-  }
+    if (roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
+      const submittedAgents = await prisma.auditSubmission.findMany({
+        where: { submittedById: userId },
+        select: { agent: true },
+        distinct: ["agent"],
+      });
+      const agentNames = uniqueNames(submittedAgents.map((row) => row.agent));
+      const agentNameFilter = caseInsensitiveIn(agentNames);
+      const transfers = await prisma.agentTransfer.findMany({
+        where: {
+          status: "APPROVED",
+          ...(agentNameFilter
+            ? { agentNameSnapshot: agentNameFilter }
+            : { id: "__none__" }),
+        },
+        select: { fromSupervisorId: true },
+        take: 100,
+      });
+      return await reconcileOutgoingTransferHistory([
+        ...new Set(transfers.map((row) => row.fromSupervisorId)),
+      ]);
+    }
 
-  return 0;
+    return 0;
+  } catch (error) {
+    console.error("Transfer history reconcile failed:", error);
+    return 0;
+  }
 }

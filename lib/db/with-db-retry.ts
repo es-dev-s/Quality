@@ -16,7 +16,17 @@ export function isNextDataCacheOverflowError(error: unknown): boolean {
   );
 }
 
+export function isPrismaSchemaMismatchError(error: unknown): boolean {
+  const message = errorMessage(error).toLowerCase();
+  return (
+    message.includes("does not exist in the current database") ||
+    message.includes("columnnotfound") ||
+    message.includes("p2022")
+  );
+}
+
 export function isRetryableDbError(error: unknown): boolean {
+  if (isPrismaSchemaMismatchError(error)) return false;
   const message = errorMessage(error).toLowerCase();
   return (
     message.includes("timeout exceeded when trying to connect") ||

@@ -45,12 +45,21 @@ function withSsl(url: string): string {
   return next;
 }
 
+const POOLER_HINT =
+  "Unable to reach the database. Use the Supabase session pooler (pooler.supabase.com:5432) in DATABASE_URL or DATABASE_URL_SESSION — not db.*.supabase.co.";
+
 function isPoolerHost(url: string): boolean {
   return url.includes(".pooler.supabase.com");
 }
 
 function isDirectSupabaseDbHost(url: string): boolean {
   return /db\.[^./]+\.supabase\.co/i.test(url);
+}
+
+function usableRuntimeUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  if (isDirectSupabaseDbHost(url)) return undefined;
+  return isPoolerHost(url) ? toSessionPoolerUrl(url) : withSsl(url);
 }
 
 /** Use session pooler port when only transaction URL is configured. */
@@ -72,31 +81,19 @@ export function resolveDatabaseUrl(): string {
   const database = process.env.DATABASE_URL?.trim();
   const direct = process.env.DIRECT_URL?.trim();
 
-  if (session) {
-    return isPoolerHost(session) ? toSessionPoolerUrl(session) : withSsl(session);
-  }
+  const picked =
+    usableRuntimeUrl(session) ??
+    usableRuntimeUrl(database) ??
+    usableRuntimeUrl(direct);
 
-  if (database && isPoolerHost(database)) {
-    return toSessionPoolerUrl(database);
-  }
+  if (picked) return picked;
 
-  if (direct && isPoolerHost(direct)) {
-    return toSessionPoolerUrl(direct);
-  }
-
-  if (database) {
-    return withSsl(database);
-  }
-
-  if (direct && isDirectSupabaseDbHost(direct)) {
-    throw new Error(
-      "DIRECT_URL points to db.*.supabase.co, which is often unreachable from local/dev runtime. " +
-        "Set DATABASE_URL to your Supabase pooler URL (pooler.supabase.com) or add DATABASE_URL_SESSION with the Session pooler on port 5432."
-    );
-  }
-
-  if (direct) {
-    return withSsl(direct);
+  if (
+    isDirectSupabaseDbHost(session ?? "") ||
+    isDirectSupabaseDbHost(database ?? "") ||
+    isDirectSupabaseDbHost(direct ?? "")
+  ) {
+    throw new Error(POOLER_HINT);
   }
 
   throw new Error(

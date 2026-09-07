@@ -151,10 +151,6 @@ export async function buildQaScopeWhere(
       // Current assignments are live working data only. After a member
       // transfers, the new QA must not inherit the previous team's history.
       ...(agentFilter ? [{ agent: agentFilter, isHistory: false }] : []),
-      {
-        isHistory: true,
-        historyTransfer: { fromQaUserId: userId },
-      },
     ])
   );
 }
