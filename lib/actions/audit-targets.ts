@@ -9,7 +9,7 @@ import {
   canEditMonthlyAuditTargets,
 } from "@/lib/rbac";
 import {
-  readAuditTargets,
+  readAuditTargetsForViewer,
   writeAuditTargetPerAgent,
   writeAuditTargetTotalMonthly,
   type AuditTargets,
@@ -32,7 +32,7 @@ function revalidateTargetPaths() {
 
 export async function getAuditTargets(): Promise<AuditTargets> {
   const session = await requireAuth();
-  return readAuditTargets(session.user.id);
+  return readAuditTargetsForViewer(session.user.id, session.user.role.slug);
 }
 
 export async function setAuditTargetPerAgent(value: number) {

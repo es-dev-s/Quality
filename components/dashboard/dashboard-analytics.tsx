@@ -943,7 +943,9 @@ export function DashboardAnalytics({
                 title={
                   canEditAuditTargets
                     ? "Set monthly audit target per agent"
-                    : "Only Superadmin, Quality Manager, Supervisor, or Training Supervisor can change this"
+                    : isQualityAnalyst
+                      ? "Monthly audit target per agent set by your Quality Manager"
+                      : "Only Superadmin, Quality Manager, Supervisor, or Training Supervisor can change this"
                 }
                 aria-label="Monthly audit target per agent"
                 onChange={(e) => {

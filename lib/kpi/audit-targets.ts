@@ -5,6 +5,9 @@ import {
   getSystemMeta,
   setSystemMeta,
 } from "@/lib/db/system-meta";
+import { prisma } from "@/lib/prisma";
+import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { resolveDisplayedAuditTargetOwnerId } from "@/lib/kpi/audit-target-owner";
 
 export const META_AUDIT_TARGET_PER_AGENT = "audit_target_per_agent";
 export const META_AUDIT_TARGET_TOTAL_MONTHLY = "audit_target_total_monthly";
@@ -67,6 +70,56 @@ async function resolveOwnedMetaValue(
   // One-time copy so this user owns the value and later edits stay private.
   await setSystemMeta(personalKey, String(legacy));
   return String(legacy);
+}
+
+async function resolveAuditTargetOwnerUserId(
+  userId: string,
+  roleSlug: string
+): Promise<string> {
+  if (roleSlug !== SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
+    return userId;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      createdBy: {
+        select: {
+          id: true,
+          role: { select: { slug: true } },
+          createdBy: {
+            select: { id: true, role: { select: { slug: true } } },
+          },
+        },
+      },
+    },
+  });
+
+  const fromHierarchy = resolveDisplayedAuditTargetOwnerId({
+    viewerUserId: userId,
+    viewerRoleSlug: roleSlug,
+    createdById: user?.createdBy?.id ?? null,
+    createdByRoleSlug: user?.createdBy?.role.slug ?? null,
+    managerCreatedById: user?.createdBy?.createdBy?.id ?? null,
+    managerCreatedByRoleSlug: user?.createdBy?.createdBy?.role.slug ?? null,
+  });
+  if (fromHierarchy !== userId) return fromHierarchy;
+
+  const assignment = await prisma.agentAssignment.findFirst({
+    where: { assignedToId: userId },
+    select: { assignedById: true },
+    orderBy: { assignedAt: "desc" },
+  });
+  return assignment?.assignedById ?? userId;
+}
+
+/** Targets the viewer should see. QA reads the respective QM's saved number. */
+export async function readAuditTargetsForViewer(
+  userId: string,
+  roleSlug: string
+): Promise<AuditTargets> {
+  const ownerId = await resolveAuditTargetOwnerUserId(userId, roleSlug);
+  return readAuditTargets(ownerId);
 }
 
 export async function readAuditTargets(userId: string): Promise<AuditTargets> {

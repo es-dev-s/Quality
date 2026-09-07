@@ -72,7 +72,7 @@ import { canFilterByAgent } from "@/lib/audit/agent-filter-access";
 import { dataScopeFromSession } from "@/lib/audit/data-scope";
 import { resolveAuditSourceKind } from "@/lib/audit/audit-source";
 import { ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
-import { readAuditTargets } from "@/lib/kpi/audit-targets";
+import { readAuditTargetsForViewer } from "@/lib/kpi/audit-targets";
 import { KPI_DEFAULT_AGENT_TARGET } from "@/lib/kpi/records";
 import { resolveTeamNameSnapshot } from "@/lib/audit/resolve-team-name";
 import { reconcileTransferHistoryForViewer } from "@/lib/audit/transfer-history";
@@ -1327,7 +1327,10 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
   const session = await requirePermission(PERMISSIONS.OVERVIEW_READ);
   const cacheScope = cacheScopeFromSession(session);
   const ctx = dataScopeFromSession(session);
-  const targetsPromise = readAuditTargets(session.user.id);
+  const targetsPromise = readAuditTargetsForViewer(
+    session.user.id,
+    session.user.role.slug
+  );
 
   try {
     await reconcileTransferHistoryForViewer(

@@ -2509,8 +2509,10 @@ textarea {
 
 .dash-target-input input:disabled,
 .dash-target-input input:read-only {
-  opacity: 0.72;
-  cursor: not-allowed;
+  opacity: 1;
+  cursor: default;
+  color: var(--color-text-primary);
+  font-weight: 700;
 }
 
 .dash-target-summary {
