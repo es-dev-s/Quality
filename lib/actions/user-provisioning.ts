@@ -264,6 +264,7 @@ export async function getTeamManagementData() {
     !hasScope(role, PERMISSIONS.ADMIN_USERS)
   ) {
     return {
+      viewerRoleSlug: role.slug,
       canProvisionAgent: false,
       canProvisionAnalyst: false,
       canApproveAgent: false,
@@ -489,6 +490,7 @@ export async function getTeamManagementData() {
   }
 
   return {
+    viewerRoleSlug: role.slug,
     canProvisionAgent,
     canProvisionAnalyst,
     canApproveAgent,

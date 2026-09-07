@@ -63,6 +63,7 @@ type MemberAccessPanelData = {
 };
 
 type TeamManagementProps = {
+  viewerRoleSlug?: string;
   canProvisionAgent: boolean;
   canProvisionAnalyst: boolean;
   canProvisionSupervisor: boolean;
@@ -2035,6 +2036,7 @@ function MemberAccessPanel({
 }
 
 export function TeamManagement({
+  viewerRoleSlug,
   canProvisionAgent,
   canProvisionAnalyst,
   canProvisionSupervisor,
@@ -2126,6 +2128,7 @@ export function TeamManagement({
 
   const myRequestsPagination = usePaginatedRows(filteredMyRequests);
   const managedPagination = usePaginatedRows(filteredManagedUsers);
+  const isQualityAnalyst = viewerRoleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST;
 
   const pendingAgentApprovals = useMemo(
     () =>
@@ -2143,7 +2146,8 @@ export function TeamManagement({
   );
 
   const showMyRequests =
-    canProvisionAgent || canProvisionAnalyst || myRequests.length > 0;
+    !isQualityAnalyst &&
+    (canProvisionAgent || canProvisionAnalyst || myRequests.length > 0);
 
   const teamTabs = useMemo(() => {
     const tabs: { id: TeamSubTabId; label: string; count?: number }[] = [];
@@ -2240,7 +2244,7 @@ export function TeamManagement({
           Create member
         </Button>
       )}
-      {canProvisionAgent && (
+      {canProvisionAgent && !isQualityAnalyst && (
         <Button onClick={() => setRequestMode("agent")}>
           <Plus size={16} />
           {canApproveAgent ? "Create agent" : "Request agent"}
@@ -2523,7 +2527,7 @@ export function TeamManagement({
                           <th>Team</th>
                           <th>Joined</th>
                           <th>Related audits</th>
-                          {canManageManaged ? (
+                          {canManageManaged && !isQualityAnalyst ? (
                             <th className="col-actions" aria-label="Actions" />
                           ) : null}
                         </tr>
@@ -2537,7 +2541,7 @@ export function TeamManagement({
                             <td>{user.teamName ?? "—"}</td>
                             <td>{user.dateOfJoining ?? "—"}</td>
                             <td>{user.auditCount}</td>
-                            {canManageManaged ? (
+                            {canManageManaged && !isQualityAnalyst ? (
                               <TableRowActionsCell ariaLabel={`Actions for ${user.email}`}>
                                 <TableRowAction onClick={() => setPasswordUser(user)}>
                                   <KeyRound size={14} aria-hidden />
@@ -2637,11 +2641,13 @@ export function TeamManagement({
         onOpenChange={setMemberModalOpen}
       />
 
-      <ResetPasswordModal
-        user={passwordUser}
-        open={Boolean(passwordUser)}
-        onOpenChange={(open) => !open && setPasswordUser(null)}
-      />
+      {isQualityAnalyst ? null : (
+        <ResetPasswordModal
+          user={passwordUser}
+          open={Boolean(passwordUser)}
+          onOpenChange={(open) => !open && setPasswordUser(null)}
+        />
+      )}
     </div>
   );
 }
