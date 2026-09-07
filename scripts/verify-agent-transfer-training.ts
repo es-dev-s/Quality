@@ -10,6 +10,7 @@ import {
 } from "@/lib/permissions";
 import { mergeRosterIntoFilterOptions, extractFilterOptions } from "@/lib/audit/dashboard-metrics";
 import { defaultAuditHistoryFilter } from "@/lib/audit/history-filter";
+import { resolveDisplayedAuditTargetOwnerId } from "@/lib/kpi/audit-target-owner";
 
 let errors = 0;
 
@@ -216,6 +217,30 @@ if (superadminWorking !== "working") {
   fail("super admin should stay on Working by default");
 } else {
   ok("super admin stays on Working by default");
+}
+
+const qaSeesQmTarget = resolveDisplayedAuditTargetOwnerId({
+  viewerUserId: "qa-1",
+  viewerRoleSlug: SYSTEM_ROLE_SLUGS.QUALITY_ANALYST,
+  createdById: "qm-1",
+  createdByRoleSlug: SYSTEM_ROLE_SLUGS.QUALITY_MANAGER,
+});
+if (qaSeesQmTarget !== "qm-1") {
+  fail("QA should display the Quality Manager's per-agent audit target");
+} else {
+  ok("QA dashboard target owner is the creating Quality Manager");
+}
+
+const qmKeepsOwnTarget = resolveDisplayedAuditTargetOwnerId({
+  viewerUserId: "qm-1",
+  viewerRoleSlug: SYSTEM_ROLE_SLUGS.QUALITY_MANAGER,
+  createdById: "sa-1",
+  createdByRoleSlug: SYSTEM_ROLE_SLUGS.SUPERADMIN,
+});
+if (qmKeepsOwnTarget !== "qm-1") {
+  fail("Quality Manager should keep their own per-agent audit target");
+} else {
+  ok("Quality Manager target owner stays themselves");
 }
 
 console.log("");
