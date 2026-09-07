@@ -8,7 +8,10 @@ import { Field, Input, Label, Select } from "@/components/primitives/field";
 import { useToast } from "@/components/primitives/toast";
 import { useDashboardShell } from "@/components/dashboard/shell";
 import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
-import { getFeedbackStatusSelectConfig } from "@/lib/audit/feedback-status-access";
+import {
+  getFeedbackStatusSelectConfig,
+  type FeedbackStatusOption,
+} from "@/lib/audit/feedback-status-access";
 import { applyFormFeedbackStatusChange } from "@/lib/audit/form-feedback-save";
 import { feedbackStatusClass } from "@/components/audit-logs/feedback-status-select";
 import { canEditFeedbackFully, isSuperAdmin, type SessionRole } from "@/lib/rbac";
@@ -240,7 +243,7 @@ export function AuditForm({
     isSuperAdmin(statusRole) ||
     canEditFeedbackFully(statusRole) ||
     feedbackStatusConfig.editable;
-  const feedbackStatusOptions = canChooseFeedbackStatus
+  const feedbackStatusOptions: FeedbackStatusOption[] = canChooseFeedbackStatus
     ? feedbackStatusConfig.options.length > 0
       ? feedbackStatusConfig.options
       : [
