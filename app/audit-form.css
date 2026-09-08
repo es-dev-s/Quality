@@ -701,38 +701,53 @@
     color 160ms ease;
 }
 
-.audit-feedback-status.ui-custom-select__trigger:not(:disabled) {
+.audit-feedback-status.ui-custom-select__trigger:not(:disabled),
+.audit-feedback-status--live.ui-custom-select__trigger {
   pointer-events: auto;
+  cursor: pointer;
+  opacity: 1;
 }
 
+.audit-feedback-status--live.audit-logs__feedback--pending,
 .audit-feedback-status.audit-logs__feedback--pending:not(:disabled) {
   background: var(--color-surface);
   color: var(--color-fg);
+  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border));
 }
 
+.audit-feedback-status--live.audit-logs__feedback--shared,
 .audit-feedback-status.audit-logs__feedback--shared:not(:disabled) {
   background: color-mix(in srgb, var(--color-accent-soft) 80%, var(--color-surface));
   color: var(--color-accent);
   border-color: var(--color-accent-muted);
 }
 
+.audit-feedback-status--live.audit-logs__feedback--acknowledged,
 .audit-feedback-status.audit-logs__feedback--acknowledged:not(:disabled) {
   background: #ecfdf5;
   color: #15803d;
   border-color: #bbf7d0;
 }
 
+.audit-feedback-status--live.audit-logs__feedback--disputed,
 .audit-feedback-status.audit-logs__feedback--disputed:not(:disabled) {
   background: #fef2f2;
   color: var(--color-danger);
   border-color: #fecaca;
 }
 
-.audit-feedback-status.ui-custom-select__trigger:not(:disabled):hover {
+.audit-feedback-status--premium.ui-custom-select__trigger {
+  font-weight: 650;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.audit-feedback-status.ui-custom-select__trigger:not(:disabled):hover,
+.audit-feedback-status--live.ui-custom-select__trigger:hover {
   box-shadow: 0 0 0 3px rgb(59 130 246 / 0.08);
 }
 
-.audit-feedback-status.ui-custom-select__trigger:not(:disabled):focus-visible {
+.audit-feedback-status.ui-custom-select__trigger:not(:disabled):focus-visible,
+.audit-feedback-status--live.ui-custom-select__trigger:focus-visible {
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgb(59 130 246 / 0.12);
 }

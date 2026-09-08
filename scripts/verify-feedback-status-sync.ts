@@ -4,7 +4,11 @@
  */
 import { resolveStatusTimestamps } from "@/lib/audit/feedback-datetime";
 import { applyFeedbackStatusChange } from "@/components/audit-logs/feedback-status-datetime";
-import { getFeedbackStatusSelectConfig } from "@/lib/audit/feedback-status-access";
+import {
+  getAuditFormFeedbackSelectConfig,
+  getFeedbackStatusSelectConfig,
+  resolveAuditFormFeedbackMode,
+} from "@/lib/audit/feedback-status-access";
 import {
   applyFormFeedbackStatusChange,
   resolveFormFeedbackForSave,
@@ -109,6 +113,7 @@ assert(
 
 const qa = role(SYSTEM_ROLE_SLUGS.QUALITY_ANALYST);
 const supervisor = role(SYSTEM_ROLE_SLUGS.SUPERVISOR);
+const superadmin = role(SYSTEM_ROLE_SLUGS.SUPERADMIN);
 
 const formShared = applyFormFeedbackStatusChange(
   { feedbackStatus: "Pending", feedbackDate: "" },
@@ -145,7 +150,7 @@ assert(
   "QA form share stamps feedback date"
 );
 
-const supervisorIgnored = resolveFormFeedbackForSave({
+const supervisorShared = resolveFormFeedbackForSave({
   role: supervisor,
   requested: {
     feedbackSecurity: "Low",
@@ -154,9 +159,53 @@ const supervisorIgnored = resolveFormFeedbackForSave({
   },
 });
 assert(
-  !("error" in supervisorIgnored) &&
-    supervisorIgnored.feedbackStatus === "Pending",
-  "Supervisor form payload cannot force Shared"
+  !("error" in supervisorShared) &&
+    supervisorShared.feedbackStatus === "Shared",
+  "Supervisor can share feedback from the form"
+);
+
+const supervisorAckBlocked = resolveFormFeedbackForSave({
+  role: supervisor,
+  requested: {
+    feedbackSecurity: "Low",
+    feedbackStatus: "Acknowledged",
+    feedbackDate: "",
+  },
+});
+assert(
+  "error" in supervisorAckBlocked,
+  "Supervisor form cannot set Acknowledged"
+);
+
+const superadminDisputed = resolveFormFeedbackForSave({
+  role: superadmin,
+  requested: {
+    feedbackSecurity: "Low",
+    feedbackStatus: "Disputed",
+    feedbackDate: "",
+  },
+});
+assert(
+  !("error" in superadminDisputed) &&
+    superadminDisputed.feedbackStatus === "Disputed",
+  "Super Admin can choose any feedback status on the form"
+);
+
+assert(
+  resolveAuditFormFeedbackMode(superadmin) === "full",
+  "Super Admin form mode is full"
+);
+assert(
+  getAuditFormFeedbackSelectConfig(superadmin, "Pending").editable,
+  "Super Admin form dropdown is active for Pending"
+);
+assert(
+  getAuditFormFeedbackSelectConfig(superadmin, "Pending").options.length === 4,
+  "Super Admin form lists all four statuses"
+);
+assert(
+  !getFeedbackStatusSelectConfig(supervisor, "Pending").editable,
+  "Supervisor Audit Logs status remains locked"
 );
 
 const qaAckLocked = resolveFormFeedbackForSave({

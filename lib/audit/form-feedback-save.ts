@@ -12,7 +12,7 @@ import {
   canChangeFeedbackStatusInAuditLogs,
 } from "@/lib/audit/feedback-status-access";
 import type { MemberFeedbackMode } from "@/lib/audit/member-access";
-import { canEditFeedbackFully, type SessionRole } from "@/lib/rbac";
+import { canEditFeedbackFully, canWriteAuditForm, type SessionRole } from "@/lib/rbac";
 
 export function applyFormFeedbackStatusChange(
   current: { feedbackStatus: FeedbackStatus; feedbackDate: string },
@@ -54,20 +54,30 @@ export function resolveFormFeedbackForSave(input: {
     : "Pending";
   const requestedStatus = parseFeedbackStatus(input.requested.feedbackStatus);
   const canChange =
+    canWriteAuditForm(input.role) ||
     canEditFeedbackFully(input.role) ||
     canChangeFeedbackStatusInAuditLogs(input.role);
 
   const nextStatus = canChange ? requestedStatus : previousStatus;
 
   if (canChange && nextStatus !== previousStatus && !canEditFeedbackFully(input.role)) {
-    const statusError = assertFeedbackStatusChangeAllowed(
-      input.role,
-      previousStatus,
-      nextStatus,
-      input.memberMode
-    );
-    if (statusError) {
-      return { error: statusError };
+    if (canWriteAuditForm(input.role) && !canChangeFeedbackStatusInAuditLogs(input.role)) {
+      if (previousStatus === "Acknowledged") {
+        return { error: "Acknowledged status cannot be changed after the agent responds." };
+      }
+      if (!["Pending", "Shared"].includes(nextStatus)) {
+        return { error: "This form can only set Pending or Shared." };
+      }
+    } else {
+      const statusError = assertFeedbackStatusChangeAllowed(
+        input.role,
+        previousStatus,
+        nextStatus,
+        input.memberMode
+      );
+      if (statusError) {
+        return { error: statusError };
+      }
     }
   }
 

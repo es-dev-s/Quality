@@ -7,6 +7,7 @@ import { requirePageAccess } from "@/lib/auth-guards";
 import { getAuditors, getAuditForEdit, getAuditReferenceOptions } from "@/lib/actions/audit";
 import { getInteractionConfig } from "@/lib/actions/interaction-config";
 import { getAuditFormWorkbenchForEdit } from "@/lib/actions/templates";
+import { resolveAuditFormFeedbackMode } from "@/lib/audit/feedback-status-access";
 import { buildSupervisorAgentMap } from "@/lib/audit/supervisor-agent-map";
 import { canEditAuditSubmissions } from "@/lib/rbac";
 
@@ -58,6 +59,7 @@ async function EditAuditContent({ id }: { id: string }) {
       cancelHref="/audit-logs"
       supervisorAgentMap={supervisorAgentMap}
       feedbackStatusRole={session.user.role}
+      formFeedbackMode={resolveAuditFormFeedbackMode(session.user.role)}
     />
   );
 }
