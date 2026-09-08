@@ -4575,3 +4575,24 @@
     padding: 0 !important;
   }
 }
+
+/* Form Feedback Status — keep live controls out of muted Audit Logs Pending styling */
+.ui-custom-select:has(.audit-feedback-status--live) {
+  opacity: 1;
+}
+
+.audit-feedback-status--live.ui-custom-select__trigger {
+  cursor: pointer;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.audit-feedback-status--live.audit-logs__feedback--pending {
+  background: var(--color-surface);
+  color: var(--color-fg);
+  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border));
+}
+
+.audit-feedback-status--premium.ui-custom-select__trigger {
+  font-weight: 650;
+}

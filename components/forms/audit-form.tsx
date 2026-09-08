@@ -9,12 +9,14 @@ import { useToast } from "@/components/primitives/toast";
 import { useDashboardShell } from "@/components/dashboard/shell";
 import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
 import {
-  getFeedbackStatusSelectConfig,
+  getAuditFormFeedbackSelectConfig,
+  resolveAuditFormFeedbackMode,
+  type AuditFormFeedbackMode,
   type FeedbackStatusOption,
 } from "@/lib/audit/feedback-status-access";
 import { applyFormFeedbackStatusChange } from "@/lib/audit/form-feedback-save";
 import { feedbackStatusClass } from "@/components/audit-logs/feedback-status-select";
-import { canEditFeedbackFully, isSuperAdmin, type SessionRole } from "@/lib/rbac";
+import { type SessionRole } from "@/lib/rbac";
 import { saveAuditSubmission, updateAuditSubmission } from "@/lib/actions/audit";
 import { calculateResults } from "@/lib/audit/calculate-results";
 import { getScoringOptions } from "@/lib/audit/scoring-options";
@@ -168,6 +170,8 @@ type AuditFormProps = {
   supervisorAgentMap?: Record<string, string[]>;
   /** Server session role — used so Superadmin / QM / QA can pick status on the form. */
   feedbackStatusRole?: SessionRole | null;
+  /** Server-resolved form mode so Super Admin is never blocked by client role shape. */
+  formFeedbackMode?: AuditFormFeedbackMode;
 };
 
 function scoringMaxForTemplate(template: TemplateListItem): number {
@@ -194,12 +198,15 @@ export function AuditForm({
   cancelHref,
   supervisorAgentMap = {},
   feedbackStatusRole = null,
+  formFeedbackMode: formFeedbackModeProp,
 }: AuditFormProps) {
   const isEditMode = Boolean(editAuditId);
   const router = useRouter();
   const { toast } = useToast();
   const { user } = useDashboardShell();
   const statusRole = feedbackStatusRole ?? user.role;
+  const formFeedbackMode =
+    formFeedbackModeProp ?? resolveAuditFormFeedbackMode(statusRole);
   const [pending, startTransition] = useTransition();
   const submissionKeyRef = useRef<string | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState(initialTemplateId);
@@ -235,24 +242,16 @@ export function AuditForm({
   const [interactionNotice, setInteractionNotice] = useState<string | null>(
     null
   );
-  const feedbackStatusConfig = getFeedbackStatusSelectConfig(
+  const feedbackStatusConfig = getAuditFormFeedbackSelectConfig(
     statusRole,
-    formData.feedbackStatus
+    formData.feedbackStatus,
+    formFeedbackMode
   );
-  const canChooseFeedbackStatus =
-    isSuperAdmin(statusRole) ||
-    canEditFeedbackFully(statusRole) ||
-    feedbackStatusConfig.editable;
-  const feedbackStatusOptions: FeedbackStatusOption[] = canChooseFeedbackStatus
-    ? feedbackStatusConfig.options.length > 0
+  const canChooseFeedbackStatus = feedbackStatusConfig.editable;
+  const feedbackStatusOptions: FeedbackStatusOption[] =
+    feedbackStatusConfig.options.length > 0
       ? feedbackStatusConfig.options
-      : [
-          { value: "Pending", label: "Pending" },
-          { value: "Shared", label: "Shared" },
-          { value: "Acknowledged", label: "Acknowledged" },
-          { value: "Disputed", label: "Disputed" },
-        ]
-    : [{ value: formData.feedbackStatus, label: formData.feedbackStatus }];
+      : [{ value: formData.feedbackStatus, label: formData.feedbackStatus }];
 
   useEffect(() => {
     if (!isEditMode && !submissionKeyRef.current) {
@@ -1201,7 +1200,9 @@ export function AuditForm({
               <div className="audit-details">
                 <p className="audit-field__hint audit-field__hint--block">
                   {canChooseFeedbackStatus
-                    ? "Choose a status here. The date fills in automatically when you share."
+                    ? formFeedbackMode === "full"
+                      ? "Choose Pending, Shared, Acknowledged, or Disputed. The date fills in when you share."
+                      : "Choose Pending or Shared. The date fills in automatically when you share."
                     : "Feedback status can be changed from Audit Logs."}
                 </p>
                 <div className="audit-details__row">
@@ -1238,6 +1239,9 @@ export function AuditForm({
                       id="feedbackStatus"
                       className={cn(
                         "audit-control audit-feedback-status",
+                        canChooseFeedbackStatus && "audit-feedback-status--live",
+                        formFeedbackMode === "full" &&
+                          "audit-feedback-status--premium",
                         feedbackStatusClass(formData.feedbackStatus)
                       )}
                       value={formData.feedbackStatus || "Pending"}

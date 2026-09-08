@@ -5,8 +5,10 @@
 import {
   AGENT_FEEDBACK_STATUSES,
   assertFeedbackStatusChangeAllowed,
+  getAuditFormFeedbackSelectConfig,
   getFeedbackStatusSelectConfig,
   QA_FEEDBACK_STATUSES,
+  resolveAuditFormFeedbackMode,
 } from "@/lib/audit/feedback-status-access";
 import { SYSTEM_ROLE_DEFINITIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import type { SessionRole } from "@/lib/rbac";
@@ -107,6 +109,65 @@ assert(
 assert(
   assertFeedbackStatusChangeAllowed(agent, "Shared", "Pending") !== null,
   "Agent cannot revert to Pending"
+);
+
+const superadmin = role(SYSTEM_ROLE_SLUGS.SUPERADMIN);
+const supervisor = role(SYSTEM_ROLE_SLUGS.SUPERVISOR);
+const training = role(SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR);
+const admin = role(SYSTEM_ROLE_SLUGS.ADMIN);
+
+assert(
+  resolveAuditFormFeedbackMode(superadmin) === "full",
+  "Super Admin form feedback mode is full"
+);
+assert(
+  resolveAuditFormFeedbackMode(qa) === "share",
+  "QA form feedback mode is share"
+);
+assert(
+  resolveAuditFormFeedbackMode(qm) === "share",
+  "QM form feedback mode is share"
+);
+assert(
+  resolveAuditFormFeedbackMode(supervisor) === "share",
+  "Supervisor form feedback mode is share"
+);
+assert(
+  resolveAuditFormFeedbackMode(training) === "share",
+  "Training Supervisor form feedback mode is share"
+);
+assert(
+  resolveAuditFormFeedbackMode(admin) === "share",
+  "Admin form feedback mode is share"
+);
+assert(
+  resolveAuditFormFeedbackMode(agent) === "locked",
+  "Agent cannot use form feedback"
+);
+
+const saForm = getAuditFormFeedbackSelectConfig(superadmin, "Pending", "full");
+assert(saForm.editable, "Super Admin form status is active");
+assert(saForm.options.length === 4, "Super Admin form has all four statuses");
+assert(
+  saForm.options.every((option) => !option.disabled),
+  "Super Admin form options are all choosable"
+);
+
+const supervisorForm = getAuditFormFeedbackSelectConfig(
+  supervisor,
+  "Pending",
+  "share"
+);
+assert(supervisorForm.editable, "Supervisor form status is active");
+assert(
+  supervisorForm.options.some((option) => option.value === "Shared" && !option.disabled),
+  "Supervisor can choose Shared on the form"
+);
+
+const supervisorLogs = getFeedbackStatusSelectConfig(supervisor, "Pending");
+assert(
+  !supervisorLogs.showSelect && !supervisorLogs.editable,
+  "Supervisor Audit Logs status stays locked"
 );
 
 console.log("verify-feedback-status-access: OK");

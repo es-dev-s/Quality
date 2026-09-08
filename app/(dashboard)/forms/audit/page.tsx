@@ -10,6 +10,7 @@ import { getAuditFormWorkbench } from "@/lib/actions/templates";
 import { resolveAuditFormTemplateId } from "@/lib/audit/audit-form-utils";
 import { fetchMemberGrantedQaNames } from "@/lib/audit/member-access";
 import { buildSupervisorAgentMap } from "@/lib/audit/supervisor-agent-map";
+import { resolveAuditFormFeedbackMode } from "@/lib/audit/feedback-status-access";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { resolveAuditSaveRedirect } from "@/lib/rbac";
 import type { InteractionType } from "@/lib/audit/types";
@@ -88,6 +89,7 @@ async function AuditFormContent({
       supervisorAgentMap={supervisorAgentMap}
       successRedirect={resolveAuditSaveRedirect(session.user.role)}
       feedbackStatusRole={session.user.role}
+      formFeedbackMode={resolveAuditFormFeedbackMode(session.user.role)}
     />
   );
 }

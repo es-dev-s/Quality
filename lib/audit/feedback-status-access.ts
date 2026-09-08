@@ -4,7 +4,7 @@ import {
 } from "@/lib/audit/feedback";
 import type { MemberFeedbackMode } from "@/lib/audit/member-access";
 import { isDefinedSystemRole, PERMISSIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
-import { hasScope, isSuperAdmin, type SessionRole } from "@/lib/rbac";
+import { hasScope, isSuperAdmin, canWriteAuditForm, type SessionRole } from "@/lib/rbac";
 
 /** QA sets feedback lifecycle start (Pending → Shared). */
 export const QA_FEEDBACK_STATUSES: FeedbackStatus[] = ["Pending", "Shared"];
@@ -291,4 +291,64 @@ export function assertFeedbackStatusChangeAllowed(
   }
 
   return "You do not have permission to change feedback status.";
+}
+
+export type AuditFormFeedbackMode = "full" | "share" | "locked";
+
+/** Anyone who can create an audit can set feedback status on the form. */
+export function resolveAuditFormFeedbackMode(
+  role?: SessionRole | null
+): AuditFormFeedbackMode {
+  if (!role) return "locked";
+  if (isSuperAdmin(role) || hasScope(role, PERMISSIONS.FEEDBACK_WRITE)) {
+    return "full";
+  }
+  if (!canWriteAuditForm(role)) return "locked";
+  return "share";
+}
+
+export function getAuditFormFeedbackSelectConfig(
+  role: SessionRole | null | undefined,
+  current: FeedbackStatus,
+  mode?: AuditFormFeedbackMode
+): FeedbackStatusSelectConfig {
+  const resolved = mode ?? resolveAuditFormFeedbackMode(role);
+
+  if (resolved === "locked") {
+    return {
+      showSelect: true,
+      editable: false,
+      options: [{ value: current, label: current }],
+      selectValue: current,
+      hint: "Feedback status can be changed from Audit Logs.",
+    };
+  }
+
+  if (resolved === "full") {
+    return {
+      showSelect: true,
+      editable: true,
+      options: statusOptions([...FEEDBACK_STATUS_OPTIONS]),
+      selectValue: current,
+      hint: "Choose Pending, Shared, Acknowledged, or Disputed.",
+    };
+  }
+
+  if (current === "Acknowledged") {
+    return {
+      showSelect: true,
+      editable: false,
+      options: [{ value: current, label: current }],
+      selectValue: current,
+      hint: "Agent acknowledged this audit. Status can no longer be changed.",
+    };
+  }
+
+  return {
+    showSelect: true,
+    editable: true,
+    options: feedbackOptionsForRole(QA_FEEDBACK_STATUSES, current),
+    selectValue: current,
+    hint: "Choose Pending or Shared. The date fills in when you share.",
+  };
 }
