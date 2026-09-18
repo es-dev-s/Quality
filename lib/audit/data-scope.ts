@@ -148,7 +148,9 @@ export async function buildQaScopeWhere(
   userId: string
 ): Promise<Prisma.AuditSubmissionWhereInput> {
   const [agentNames, auditorNames, historyTransferIds] = await Promise.all([
-    fetchAgentRosterNames(userId, SYSTEM_ROLE_SLUGS.QUALITY_ANALYST),
+    fetchAgentRosterNames(userId, SYSTEM_ROLE_SLUGS.QUALITY_ANALYST, {
+      includeInactive: true,
+    }),
     fetchUserAuditMatchNamesById(userId),
     fetchApprovedTransferIdsForQa(userId),
   ]);
@@ -158,8 +160,8 @@ export async function buildQaScopeWhere(
     orClauses([
       { submittedById: userId },
       ...(auditorFilter ? [{ auditor: auditorFilter }] : []),
-      // Current assignments are live working data only. After a member
-      // transfers, the new QA must not inherit the previous team's history.
+      // Current assignments include deactivated agents still on this QA.
+      // After a member transfers, the new QA must not inherit previous history.
       ...(agentFilter ? [{ agent: agentFilter, isHistory: false }] : []),
     ])
   );
@@ -207,11 +209,14 @@ export async function auditSubmissionScopeWhere(
     return { NOT: supervisorSubmittedClause() };
   }
 
-  // QM: current roster is working-only. History is Team 1 data for
-  // supervisors this QM created, transfers they reviewed, and agents they approved.
+  // QM: current roster (including deactivated agents still on this QM) is
+  // working-only. History is Team 1 data for supervisors this QM created,
+  // transfers they reviewed, and agents they approved.
   if (roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
     const [rosterNames, approvedNames, supervisorIds] = await Promise.all([
-      fetchAgentRosterNames(ctx.userId, SYSTEM_ROLE_SLUGS.QUALITY_MANAGER),
+      fetchAgentRosterNames(ctx.userId, SYSTEM_ROLE_SLUGS.QUALITY_MANAGER, {
+        includeInactive: true,
+      }),
       fetchQmApprovedAgentDisplayNames(ctx.userId),
       fetchCreatedSupervisorIds(ctx.userId),
     ]);
