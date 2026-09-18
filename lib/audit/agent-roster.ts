@@ -4,7 +4,11 @@
  * Supervisor: active agents they provisioned (createdById).
  * Quality Analyst: active agents assigned by QM + active agents they provisioned.
  * Quality Manager: active agents they approved or assigned through the platform.
+ *
+ * Forms / team pickers stay active-only. Audit log scope can include deactivated
+ * agents who are still assigned, provisioned, approved, or assigned-by that viewer.
  */
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
 import { isSupervisorRoleSlug } from "@/lib/audit/supervisor-tier";
@@ -22,6 +26,29 @@ import {
 } from "@/lib/user-active-filter";
 
 export type AgentRosterSource = "provisioned" | "assigned";
+
+export type AgentRosterOptions = {
+  /** Keep deactivated agents on audit-log scope. Forms stay active-only. */
+  includeInactive?: boolean;
+};
+
+function withRosterUserFilter(
+  where: Prisma.UserWhereInput,
+  includeInactive = false
+): Prisma.UserWhereInput {
+  if (!includeInactive) return withActiveUserFilter(where);
+  return {
+    AND: [where, { OR: [ACTIVE_USER_WHERE, { isActive: false }] }],
+  };
+}
+
+function agentEligibleOnRoster(
+  user: { isActive: boolean; approvalStatus: string },
+  includeInactive = false
+): boolean {
+  if (isLoginEligibleUser(user)) return true;
+  return includeInactive && user.isActive === false;
+}
 
 export type AgentRosterEntry = {
   id: string;
@@ -59,13 +86,17 @@ function mergeRosterEntries(entries: AgentRosterEntry[]): AgentRosterEntry[] {
 }
 
 export async function fetchProvisionedAgentEntries(
-  ownerUserId: string
+  ownerUserId: string,
+  options?: AgentRosterOptions
 ): Promise<AgentRosterEntry[]> {
   const users = await prisma.user.findMany({
-    where: withActiveUserFilter({
-      createdById: ownerUserId,
-      role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
-    }),
+    where: withRosterUserFilter(
+      {
+        createdById: ownerUserId,
+        role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
+      },
+      options?.includeInactive
+    ),
     select: { id: true, name: true, email: true },
     orderBy: [{ name: "asc" }, { email: "asc" }],
   });
@@ -77,7 +108,8 @@ export async function fetchProvisionedAgentEntries(
 }
 
 export async function fetchAssignedAgentEntries(
-  assigneeUserId: string
+  assigneeUserId: string,
+  options?: AgentRosterOptions
 ): Promise<AgentRosterEntry[]> {
   const rows = await prisma.agentAssignment.findMany({
     where: { assignedToId: assigneeUserId },
@@ -99,7 +131,7 @@ export async function fetchAssignedAgentEntries(
   const entries: AgentRosterEntry[] = [];
   for (const row of rows) {
     if (row.agent.role.slug !== SYSTEM_ROLE_SLUGS.AGENT) continue;
-    if (!isLoginEligibleUser(row.agent)) continue;
+    if (!agentEligibleOnRoster(row.agent, options?.includeInactive)) continue;
     entries.push({
       ...mapAgentUser(row.agent),
       source: "assigned",
@@ -159,7 +191,8 @@ export async function fetchQmApprovedAgentDisplayNames(
 }
 
 async function fetchQmAgentEntries(
-  qualityManagerId: string
+  qualityManagerId: string,
+  options?: AgentRosterOptions
 ): Promise<AgentRosterEntry[]> {
   const [approvedIds, assignedIds] = await Promise.all([
     fetchQmApprovedAgentUserIds(qualityManagerId),
@@ -170,11 +203,13 @@ async function fetchQmAgentEntries(
   if (userIds.length === 0) return [];
 
   const users = await prisma.user.findMany({
-    where: {
-      id: { in: userIds },
-      role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
-      ...ACTIVE_USER_WHERE,
-    },
+    where: withRosterUserFilter(
+      {
+        id: { in: userIds },
+        role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
+      },
+      options?.includeInactive
+    ),
     select: { id: true, name: true, email: true },
     orderBy: [{ name: "asc" }, { email: "asc" }],
   });
@@ -186,24 +221,25 @@ async function fetchQmAgentEntries(
   }));
 }
 
-/** Role-aware roster for a platform user (active agents only). */
+/** Role-aware roster for a platform user (active agents only unless opted in). */
 export async function fetchAgentRosterEntries(
   userId: string,
-  roleSlug: string
+  roleSlug: string,
+  options?: AgentRosterOptions
 ): Promise<AgentRosterEntry[]> {
   switch (roleSlug) {
     case SYSTEM_ROLE_SLUGS.SUPERVISOR:
     case SYSTEM_ROLE_SLUGS.TRAINING_SUPERVISOR:
-      return fetchProvisionedAgentEntries(userId);
+      return fetchProvisionedAgentEntries(userId, options);
 
     case SYSTEM_ROLE_SLUGS.QUALITY_ANALYST:
       return mergeRosterEntries([
-        ...(await fetchAssignedAgentEntries(userId)),
-        ...(await fetchProvisionedAgentEntries(userId)),
+        ...(await fetchAssignedAgentEntries(userId, options)),
+        ...(await fetchProvisionedAgentEntries(userId, options)),
       ]);
 
     case SYSTEM_ROLE_SLUGS.QUALITY_MANAGER:
-      return fetchQmAgentEntries(userId);
+      return fetchQmAgentEntries(userId, options);
 
     default:
       return [];
@@ -212,17 +248,19 @@ export async function fetchAgentRosterEntries(
 
 export async function fetchAgentRosterNames(
   userId: string,
-  roleSlug: string
+  roleSlug: string,
+  options?: AgentRosterOptions
 ): Promise<string[]> {
-  const entries = await fetchAgentRosterEntries(userId, roleSlug);
+  const entries = await fetchAgentRosterEntries(userId, roleSlug, options);
   return entries.map((entry) => entry.name);
 }
 
 export async function fetchAgentRosterIds(
   userId: string,
-  roleSlug: string
+  roleSlug: string,
+  options?: AgentRosterOptions
 ): Promise<string[]> {
-  const entries = await fetchAgentRosterEntries(userId, roleSlug);
+  const entries = await fetchAgentRosterEntries(userId, roleSlug, options);
   return entries.map((entry) => entry.id);
 }
 
