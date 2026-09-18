@@ -68,6 +68,7 @@ import { invalidateAuditCaches } from "@/lib/invalidate-cache";
 import { AUDIT_LOG_LIST_SELECT } from "@/lib/select-shapes";
 import { assertAuditNotHistory } from "@/lib/audit/history-guard";
 import { fetchAgentRosterNames } from "@/lib/audit/agent-roster";
+import { fetchDeactivatedAgentMatchNames } from "@/lib/audit/deactivated-agent-targets";
 import { canFilterByAgent } from "@/lib/audit/agent-filter-access";
 import { dataScopeFromSession } from "@/lib/audit/data-scope";
 import { resolveAuditSourceKind } from "@/lib/audit/audit-source";
@@ -1344,6 +1345,9 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
         : Promise.resolve([] as string[]),
       targetsPromise,
     ]);
+    const deactivatedAgentNames = await fetchDeactivatedAgentMatchNames(
+      submissions.map((submission) => submission.agent)
+    );
 
     return {
       records: submissions.map((s) => ({
@@ -1366,6 +1370,7 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
         auditSource: resolveAuditSourceKind(s.submittedBy.role?.slug),
       })),
       rosterAgentNames,
+      deactivatedAgentNames,
       fetchedAt: new Date().toISOString(),
       dbError: null as string | null,
       agentTarget: targets.perAgent,
@@ -1381,6 +1386,7 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
     return {
       records: [],
       rosterAgentNames: [],
+      deactivatedAgentNames: [],
       fetchedAt: new Date().toISOString(),
       dbError: cacheOverflow
         ? "Dashboard could not load this many audits from cache. Refresh and try again."

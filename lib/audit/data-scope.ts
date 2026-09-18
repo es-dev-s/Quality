@@ -9,7 +9,7 @@ import {
   fetchQualityAnalystRoleUsers,
   resolveRoleUserName,
 } from "@/lib/audit/role-users";
-import { fetchAgentRosterNames } from "@/lib/audit/agent-roster";
+import { fetchAgentRosterNames, fetchQmApprovedAgentDisplayNames } from "@/lib/audit/agent-roster";
 import {
   isSupervisorTierRole,
   SUPERVISOR_TIER_ROLE_SLUG_FILTER,
@@ -20,6 +20,13 @@ import {
   fetchUserAuditMatchNamesById,
 } from "@/lib/audit/user-audit-match";
 import { fetchMemberGrantedTargetUserIds } from "@/lib/audit/member-access";
+import {
+  fetchApprovedTransferIdsForQa,
+  fetchApprovedTransferIdsForQm,
+  fetchCreatedSupervisorIds,
+  historyAuditsForSupervisors,
+  historyAuditsForTransferIds,
+} from "@/lib/audit/transfer-history-scope";
 
 export type DataScopeContext = {
   userId: string;
@@ -118,19 +125,21 @@ function excludePendingFeedback(
 
 /** Agent visibility for a specific user id (used by Agent role and Member grants). */
 export async function buildAgentScopeWhere(
-  userId: string
+  userId: string,
+  options?: { includeTransferHistory?: boolean }
 ): Promise<Prisma.AuditSubmissionWhereInput> {
   const matchNames = await fetchAgentUserAuditMatchNames(userId);
   const agentFilter = caseInsensitiveIn(matchNames);
+  const identity = orClauses([
+    { submittedById: userId },
+    ...(agentFilter ? [{ agent: agentFilter }] : []),
+  ]);
+  const scoped =
+    options?.includeTransferHistory === false
+      ? { AND: [identity, { isHistory: false }] }
+      : identity;
   return excludePendingFeedback(
-    await excludeQualityManagerSubmitted(
-      excludeSupervisorSubmitted(
-        orClauses([
-          { submittedById: userId },
-          ...(agentFilter ? [{ agent: agentFilter }] : []),
-        ])
-      )
-    )
+    await excludeQualityManagerSubmitted(excludeSupervisorSubmitted(scoped))
   );
 }
 
@@ -138,13 +147,14 @@ export async function buildAgentScopeWhere(
 export async function buildQaScopeWhere(
   userId: string
 ): Promise<Prisma.AuditSubmissionWhereInput> {
-  const [agentNames, auditorNames] = await Promise.all([
+  const [agentNames, auditorNames, historyTransferIds] = await Promise.all([
     fetchAgentRosterNames(userId, SYSTEM_ROLE_SLUGS.QUALITY_ANALYST),
     fetchUserAuditMatchNamesById(userId),
+    fetchApprovedTransferIdsForQa(userId),
   ]);
   const agentFilter = caseInsensitiveIn(agentNames);
   const auditorFilter = caseInsensitiveIn(auditorNames);
-  return excludeSupervisorSubmitted(
+  const live = excludeSupervisorSubmitted(
     orClauses([
       { submittedById: userId },
       ...(auditorFilter ? [{ auditor: auditorFilter }] : []),
@@ -153,6 +163,8 @@ export async function buildQaScopeWhere(
       ...(agentFilter ? [{ agent: agentFilter, isHistory: false }] : []),
     ])
   );
+  const pastTeamHistory = historyAuditsForTransferIds(historyTransferIds);
+  return pastTeamHistory ? orClauses([live, pastTeamHistory]) : live;
 }
 
 async function buildMemberScopeWhere(
@@ -195,23 +207,27 @@ export async function auditSubmissionScopeWhere(
     return { NOT: supervisorSubmittedClause() };
   }
 
-  // QM: current roster plus history from supervisors this QM created.
+  // QM: current roster is working-only. History is Team 1 data for
+  // supervisors this QM created, transfers they reviewed, and agents they approved.
   if (roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
-    const agentNames = await fetchAgentRosterNames(
+    const [rosterNames, approvedNames, supervisorIds] = await Promise.all([
+      fetchAgentRosterNames(ctx.userId, SYSTEM_ROLE_SLUGS.QUALITY_MANAGER),
+      fetchQmApprovedAgentDisplayNames(ctx.userId),
+      fetchCreatedSupervisorIds(ctx.userId),
+    ]);
+    const transferIds = await fetchApprovedTransferIdsForQm(
       ctx.userId,
-      SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
+      supervisorIds
     );
-    const agentFilter = caseInsensitiveIn(agentNames);
-    const pastTeamHistory: Prisma.AuditSubmissionWhereInput = {
-      isHistory: true,
-      OR: [
-        { historyOwner: { createdById: ctx.userId } },
-        { historyTransfer: { fromSupervisor: { createdById: ctx.userId } } },
-      ],
-    };
+    const rosterFilter = caseInsensitiveIn(rosterNames);
+    const approvedFilter = caseInsensitiveIn(approvedNames);
+    const supervisorHistory = historyAuditsForSupervisors(supervisorIds);
+    const reviewedHistory = historyAuditsForTransferIds(transferIds);
     return orClauses([
-      ...(agentFilter ? [{ agent: agentFilter }] : []),
-      pastTeamHistory,
+      ...(rosterFilter ? [{ agent: rosterFilter, isHistory: false }] : []),
+      ...(approvedFilter ? [{ agent: approvedFilter, isHistory: true }] : []),
+      ...(supervisorHistory ? [supervisorHistory] : []),
+      ...(reviewedHistory ? [reviewedHistory] : []),
     ]);
   }
 
@@ -245,7 +261,7 @@ export async function auditSubmissionScopeWhere(
 
   switch (roleSlug) {
     case SYSTEM_ROLE_SLUGS.AGENT:
-      return buildAgentScopeWhere(ctx.userId);
+      return buildAgentScopeWhere(ctx.userId, { includeTransferHistory: false });
     case SYSTEM_ROLE_SLUGS.QUALITY_ANALYST:
       return buildQaScopeWhere(ctx.userId);
     case SYSTEM_ROLE_SLUGS.MEMBER:

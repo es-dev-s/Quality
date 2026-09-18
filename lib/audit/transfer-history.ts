@@ -4,14 +4,17 @@ import { caseInsensitiveIn } from "@/lib/audit/prisma-string-filters";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import {
-  isSupervisorTierRole,
-  SUPERVISOR_TIER_ROLE_SLUG_FILTER,
-} from "@/lib/audit/supervisor-tier";
+import { isSupervisorTierRole } from "@/lib/audit/supervisor-tier";
 import {
   invalidateAgentCaches,
   invalidateAuditCaches,
 } from "@/lib/invalidate-cache";
+import {
+  fetchApprovedTransferIdsForQa,
+  fetchApprovedTransferIdsForQm,
+  fetchCreatedSupervisorIds,
+  fetchFromSupervisorIdsForTransfers,
+} from "@/lib/audit/transfer-history-scope";
 
 type AuditNameDb = Pick<
   Prisma.TransactionClient,
@@ -195,27 +198,31 @@ export async function reconcileTransferHistoryForViewer(
     }
 
     if (roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
-      const supervisors = await prisma.user.findMany({
-        where: {
-          createdById: userId,
-          role: { slug: SUPERVISOR_TIER_ROLE_SLUG_FILTER },
-        },
-        select: { id: true },
-      });
-      return await reconcileOutgoingTransferHistory(
-        supervisors.map((row) => row.id)
+      const supervisorIds = await fetchCreatedSupervisorIds(userId);
+      const transferIds = await fetchApprovedTransferIdsForQm(
+        userId,
+        supervisorIds
       );
+      const transferSupervisors =
+        await fetchFromSupervisorIdsForTransfers(transferIds);
+      return await reconcileOutgoingTransferHistory([
+        ...supervisorIds,
+        ...transferSupervisors,
+      ]);
     }
 
     if (roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
-      const submittedAgents = await prisma.auditSubmission.findMany({
-        where: { submittedById: userId },
-        select: { agent: true },
-        distinct: ["agent"],
-      });
+      const [submittedAgents, qaTransferIds] = await Promise.all([
+        prisma.auditSubmission.findMany({
+          where: { submittedById: userId },
+          select: { agent: true },
+          distinct: ["agent"],
+        }),
+        fetchApprovedTransferIdsForQa(userId),
+      ]);
       const agentNames = uniqueNames(submittedAgents.map((row) => row.agent));
       const agentNameFilter = caseInsensitiveIn(agentNames);
-      const transfers = await prisma.agentTransfer.findMany({
+      const namedTransfers = await prisma.agentTransfer.findMany({
         where: {
           status: "APPROVED",
           ...(agentNameFilter
@@ -225,9 +232,23 @@ export async function reconcileTransferHistoryForViewer(
         select: { fromSupervisorId: true },
         take: 100,
       });
+      const qaTransferSupervisors =
+        await fetchFromSupervisorIdsForTransfers(qaTransferIds);
       return await reconcileOutgoingTransferHistory([
-        ...new Set(transfers.map((row) => row.fromSupervisorId)),
+        ...namedTransfers.map((row) => row.fromSupervisorId),
+        ...qaTransferSupervisors,
       ]);
+    }
+
+    if (roleSlug === SYSTEM_ROLE_SLUGS.SUPERADMIN) {
+      const transfers = await prisma.agentTransfer.findMany({
+        where: { status: "APPROVED" },
+        select: { fromSupervisorId: true },
+        take: 500,
+      });
+      return await reconcileOutgoingTransferHistory(
+        transfers.map((row) => row.fromSupervisorId)
+      );
     }
 
     return 0;

@@ -3,6 +3,7 @@ import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { isSupervisorTierRole } from "@/lib/audit/supervisor-tier";
 
 export type AuditHistoryFilter = "working" | "history" | "all";
+export type AuditHistorySurface = "logs" | "metrics";
 
 export function filterByAuditHistory<T extends { isHistory?: boolean }>(
   records: readonly T[],
@@ -13,14 +14,32 @@ export function filterByAuditHistory<T extends { isHistory?: boolean }>(
   return records.filter((row) => row.isHistory);
 }
 
-/** These roles only receive history rows that already belong to them. */
-export function viewerDefaultsToOwnedHistory(roleSlug?: string): boolean {
-  if (!roleSlug) return false;
-  return (
+/**
+ * Team-scoped roles default to All whenever history is already in their payload.
+ * QM / Super Admin do the same on Audit Logs, and stay on Working for dashboard
+ * / analytics so current-team metrics are not mixed with transferred-out rows.
+ * Agents never see transferred-out history.
+ */
+export function viewerCanAccessTransferHistory(roleSlug?: string): boolean {
+  return Boolean(roleSlug) && roleSlug !== SYSTEM_ROLE_SLUGS.AGENT;
+}
+
+export function viewerDefaultsToOwnedHistory(
+  roleSlug?: string,
+  surface: AuditHistorySurface = "logs"
+): boolean {
+  if (!roleSlug || !viewerCanAccessTransferHistory(roleSlug)) return false;
+  if (
     isSupervisorTierRole(roleSlug) ||
     roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST ||
-    roleSlug === SYSTEM_ROLE_SLUGS.AGENT ||
     roleSlug === SYSTEM_ROLE_SLUGS.MEMBER
+  ) {
+    return true;
+  }
+  if (surface === "metrics") return false;
+  return (
+    roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER ||
+    roleSlug === SYSTEM_ROLE_SLUGS.SUPERADMIN
   );
 }
 
@@ -30,10 +49,12 @@ export function defaultAuditHistoryFilter(
     historyOwnerId?: string | null;
   }[],
   viewerUserId?: string,
-  roleSlug?: string
+  roleSlug?: string,
+  surface: AuditHistorySurface = "logs"
 ): AuditHistoryFilter {
+  if (roleSlug === SYSTEM_ROLE_SLUGS.AGENT) return "working";
   if (
-    viewerDefaultsToOwnedHistory(roleSlug) &&
+    viewerDefaultsToOwnedHistory(roleSlug, surface) &&
     records?.some((row) => row.isHistory)
   ) {
     return "all";

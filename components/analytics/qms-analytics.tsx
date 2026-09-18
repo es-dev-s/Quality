@@ -60,6 +60,7 @@ import { HistoryFilterSection } from "@/components/audit/history-filter-section"
 import {
   defaultAuditHistoryFilter,
   filterByAuditHistory,
+  viewerCanAccessTransferHistory,
   type AuditHistoryFilter,
 } from "@/lib/audit/history-filter";
 
@@ -94,7 +95,7 @@ export function QmsAnalytics({
   const [interactionFilter, setInteractionFilter] =
     useState<AnalyticsInteractionFilter>(DEFAULT_ANALYTICS_INTERACTION_FILTER);
   const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
-    defaultAuditHistoryFilter(initialData.records, viewerUserId, roleSlug)
+    defaultAuditHistoryFilter(initialData.records, viewerUserId, roleSlug, "metrics")
   );
   const filterSidebar = useFilterSidebar();
   const { busy: isLoading, run: runBusy } = useBusyAction();
@@ -121,8 +122,12 @@ export function QmsAnalytics({
   );
 
   const historyScopedRecords = useMemo(
-    () => filterByAuditHistory(records, historyFilter),
-    [records, historyFilter]
+    () =>
+      filterByAuditHistory(
+        records,
+        viewerCanAccessTransferHistory(roleSlug) ? historyFilter : "working"
+      ),
+    [records, historyFilter, roleSlug]
   );
 
   const analyticsView = useMemo(
@@ -455,7 +460,10 @@ export function QmsAnalytics({
         <HistoryFilterSection
           value={historyFilter}
           onChange={setHistoryFilter}
-          show={records.some((row) => row.isHistory)}
+          show={
+            viewerCanAccessTransferHistory(roleSlug) &&
+            records.some((row) => row.isHistory)
+          }
         />
 
         <FilterSidebarSection label="Interaction type">

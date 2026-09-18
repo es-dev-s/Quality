@@ -180,10 +180,10 @@ const agentHistory = defaultAuditHistoryFilter(
   "agent-1",
   SYSTEM_ROLE_SLUGS.AGENT
 );
-if (agentHistory !== "all") {
-  fail("agent should default to All so their own transferred-team audits stay visible");
+if (agentHistory !== "working") {
+  fail("agent must stay on Working and not see transferred-out history");
 } else {
-  ok("agent defaults to All when history is in their scope");
+  ok("agent stays on Working after transfer; history is hidden");
 }
 
 const memberHistory = defaultAuditHistoryFilter(
@@ -197,26 +197,50 @@ if (memberHistory !== "all") {
   ok("member defaults to All when granted history is in their scope");
 }
 
-const qmWorking = defaultAuditHistoryFilter(
+const qmLogs = defaultAuditHistoryFilter(
   [{ isHistory: true, historyOwnerId: "supervisor-1" }],
   "qm-1",
   SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
 );
-if (qmWorking !== "working") {
-  fail("quality manager should stay on Working by default");
+if (qmLogs !== "all") {
+  fail("quality manager Audit Logs should default to All when history is in scope");
 } else {
-  ok("quality manager stays on Working by default");
+  ok("quality manager Audit Logs default to All when history is in scope");
+}
+
+const qmMetrics = defaultAuditHistoryFilter(
+  [{ isHistory: true, historyOwnerId: "supervisor-1" }],
+  "qm-1",
+  SYSTEM_ROLE_SLUGS.QUALITY_MANAGER,
+  "metrics"
+);
+if (qmMetrics !== "working") {
+  fail("quality manager dashboard/analytics should stay on Working by default");
+} else {
+  ok("quality manager dashboard/analytics stay on Working by default");
+}
+
+const superadminLogs = defaultAuditHistoryFilter(
+  [{ isHistory: true, historyOwnerId: "supervisor-1" }],
+  "sa-1",
+  SYSTEM_ROLE_SLUGS.SUPERADMIN
+);
+if (superadminLogs !== "all") {
+  fail("super admin Audit Logs should default to All when history is in scope");
+} else {
+  ok("super admin Audit Logs default to All when history is in scope");
 }
 
 const superadminWorking = defaultAuditHistoryFilter(
   [{ isHistory: true, historyOwnerId: "supervisor-1" }],
   "sa-1",
-  SYSTEM_ROLE_SLUGS.SUPERADMIN
+  SYSTEM_ROLE_SLUGS.SUPERADMIN,
+  "metrics"
 );
 if (superadminWorking !== "working") {
-  fail("super admin should stay on Working by default");
+  fail("super admin dashboard/analytics should stay on Working by default");
 } else {
-  ok("super admin stays on Working by default");
+  ok("super admin dashboard/analytics stay on Working by default");
 }
 
 const qaSeesQmTarget = resolveDisplayedAuditTargetOwnerId({
