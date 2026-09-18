@@ -44,6 +44,7 @@ import type { AuditLogEntry } from "@/lib/audit/audit-records";
 import {
   defaultAuditHistoryFilter,
   filterByAuditHistory,
+  viewerCanAccessTransferHistory,
   type AuditHistoryFilter,
 } from "@/lib/audit/history-filter";
 import {
@@ -241,7 +242,7 @@ export function AuditLogsTable({
   const [auditSource, setAuditSource] = useState<AuditSourceKind | "">("");
   const [dateSort, setDateSort] = useState<"asc" | "desc">("desc");
   const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
-    defaultAuditHistoryFilter(submissions, viewerUserId, roleSlug)
+    defaultAuditHistoryFilter(submissions, viewerUserId, roleSlug, "logs")
   );
   const [dateRange, setDateRange] = useState<DateRangeFilter>("all");
   const [customRange, setCustomRange] = useState<DateRangeValue>({ from: "", to: "" });
@@ -456,7 +457,10 @@ export function AuditLogsTable({
 
   const filtered = useMemo(() => {
     const hasCustom = !!(customRange.from || customRange.to);
-    const historyScoped = filterByAuditHistory(rows, historyFilter);
+    const historyScoped = filterByAuditHistory(
+      rows,
+      viewerCanAccessTransferHistory(roleSlug) ? historyFilter : "working"
+    );
     const matched = historyScoped.filter((row) => {
       if (!matchesSearch(row, search)) return false;
       if (!matchesScore(row, scorePreset)) return false;
@@ -488,7 +492,7 @@ export function AuditLogsTable({
       if (createdCmp !== 0) return createdCmp * direction;
       return a.auditCode.localeCompare(b.auditCode) * direction;
     });
-  }, [rows, historyFilter, search, scorePreset, dateRange, customRange, grade, type, businessType, auditType, agent, feedbackStatus, auditSource, dateSort]);
+  }, [rows, historyFilter, roleSlug, search, scorePreset, dateRange, customRange, grade, type, businessType, auditType, agent, feedbackStatus, auditSource, dateSort]);
 
   const paginationResetKey = useMemo(
     () =>
@@ -722,7 +726,7 @@ export function AuditLogsTable({
     setAgent("");
     setFeedbackStatus("");
     setAuditSource("");
-    setHistoryFilter(defaultAuditHistoryFilter(rows, viewerUserId, roleSlug));
+    setHistoryFilter(defaultAuditHistoryFilter(rows, viewerUserId, roleSlug, "logs"));
   };
 
   function patchRowFeedback(
@@ -972,7 +976,10 @@ export function AuditLogsTable({
           <HistoryFilterSection
             value={historyFilter}
             onChange={setHistoryFilter}
-            show={rows.some((row) => row.isHistory)}
+            show={
+              viewerCanAccessTransferHistory(roleSlug) &&
+              rows.some((row) => row.isHistory)
+            }
           />
 
           <FilterSidebarSection label="Details">

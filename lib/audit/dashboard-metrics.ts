@@ -1,3 +1,4 @@
+import { normalizeAgentName } from "@/lib/audit/agent-name";
 import {
   PASS_RATE_QUALITY_THRESHOLD,
   qualityPctForAverage,
@@ -613,6 +614,23 @@ export function computeTrendData(
       count: filtered.length,
     };
   });
+}
+
+/** Drop deactivated-user rows from the per-agent target list only. */
+export function excludeDeactivatedAgentRecords<T extends { agent: string }>(
+  records: T[],
+  deactivatedNames: readonly string[]
+): T[] {
+  if (records.length === 0 || deactivatedNames.length === 0) return records;
+  const keys = new Set(
+    deactivatedNames
+      .map((name) => normalizeAgentName(name).nameKey)
+      .filter(Boolean)
+  );
+  if (keys.size === 0) return records;
+  return records.filter(
+    (record) => !keys.has(normalizeAgentName(record.agent).nameKey)
+  );
 }
 
 export function computeAgentTargets(

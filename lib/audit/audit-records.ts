@@ -117,6 +117,8 @@ export type DashboardAuditRecord = {
 export type DashboardAuditData = {
   records: DashboardAuditRecord[];
   rosterAgentNames: string[];
+  /** Names of deactivated users; used only by Audit target — per agent. */
+  deactivatedAgentNames: string[];
   fetchedAt: string;
   dbError: string | null;
   agentTarget: number;

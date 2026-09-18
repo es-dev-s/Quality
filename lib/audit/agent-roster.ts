@@ -136,6 +136,28 @@ export async function fetchQmAssignedAgentUserIds(
   return [...new Set(rows.map((row) => row.agentId))];
 }
 
+/** Display names for agents this QM approved — used for Team 1 history after transfer. */
+export async function fetchQmApprovedAgentDisplayNames(
+  qualityManagerId: string
+): Promise<string[]> {
+  const ids = await fetchQmApprovedAgentUserIds(qualityManagerId);
+  if (ids.length === 0) return [];
+
+  const users = await prisma.user.findMany({
+    where: {
+      id: { in: ids },
+      role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
+    },
+    select: { name: true, email: true },
+  });
+
+  return [
+    ...new Set(
+      users.map((user) => resolveRoleUserName(user)).filter(Boolean)
+    ),
+  ];
+}
+
 async function fetchQmAgentEntries(
   qualityManagerId: string
 ): Promise<AgentRosterEntry[]> {

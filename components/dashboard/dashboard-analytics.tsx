@@ -25,12 +25,14 @@ import type { DashboardAuditData } from "@/lib/audit/audit-records";
 import {
   defaultAuditHistoryFilter,
   filterByAuditHistory,
+  viewerCanAccessTransferHistory,
   type AuditHistoryFilter,
 } from "@/lib/audit/history-filter";
 import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
 import {
   auditorInitials,
   computeAgentTargets,
+  excludeDeactivatedAgentRecords,
   computeAuditorTargets,
   restrictAuditorTargetsToViewer,
   computePeriodStats,
@@ -162,7 +164,7 @@ export function DashboardAnalytics({
   const [includeFilters, setIncludeFilters] =
     useState<DashboardIncludeFilters>(EMPTY_INCLUDE_FILTERS);
   const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
-    defaultAuditHistoryFilter(data.records ?? [], historyViewerId, roleSlug)
+    defaultAuditHistoryFilter(data.records ?? [], historyViewerId, roleSlug, "metrics")
   );
   const [agentTarget, setAgentTarget] = useState(
     data.agentTarget ?? DEFAULT_AGENT_TARGET
@@ -209,8 +211,12 @@ export function DashboardAnalytics({
     (filterOptions.agents.length > 0 || (data.rosterAgentNames?.length ?? 0) > 0);
 
   const historyScopedRecords = useMemo(
-    () => filterByAuditHistory(records, historyFilter),
-    [records, historyFilter]
+    () =>
+      filterByAuditHistory(
+        records,
+        viewerCanAccessTransferHistory(roleSlug) ? historyFilter : "working"
+      ),
+    [records, historyFilter, roleSlug]
   );
 
   const scopedRecords = useMemo(
@@ -248,12 +254,24 @@ export function DashboardAnalytics({
   );
 
   const agentTargetRecords = useMemo(() => {
+    const withoutDeactivated = <T extends { agent: string }>(rows: T[]) =>
+      excludeDeactivatedAgentRecords(rows, data.deactivatedAgentNames ?? []);
     if (!targetAuditSource) {
-      return { all: scopedRecords, month: monthRecords };
+      return {
+        all: withoutDeactivated(scopedRecords),
+        month: withoutDeactivated(monthRecords),
+      };
     }
-    const bySource = filterRecordsByAuditSource(monthRecords, targetAuditSource);
+    const bySource = withoutDeactivated(
+      filterRecordsByAuditSource(monthRecords, targetAuditSource)
+    );
     return { all: bySource, month: bySource };
-  }, [scopedRecords, monthRecords, targetAuditSource]);
+  }, [
+    scopedRecords,
+    monthRecords,
+    targetAuditSource,
+    data.deactivatedAgentNames,
+  ]);
 
   const auditorTargetSource = useMemo(() => {
     if (auditorTargetRange.from || auditorTargetRange.to) {
@@ -715,7 +733,10 @@ export function DashboardAnalytics({
         <HistoryFilterSection
           value={historyFilter}
           onChange={setHistoryFilter}
-          show={records.some((row) => row.isHistory)}
+          show={
+            viewerCanAccessTransferHistory(roleSlug) &&
+            records.some((row) => row.isHistory)
+          }
         />
 
         <FilterSidebarSection label="Trend view">

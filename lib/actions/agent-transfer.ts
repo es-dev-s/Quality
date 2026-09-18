@@ -27,6 +27,11 @@ import {
   reconcileTransferHistoryForViewer,
   tagWorkingAuditsForTransfer,
 } from "@/lib/audit/transfer-history";
+import {
+  fetchApprovedTransferIdsForQa,
+  fetchCreatedSupervisorIds,
+} from "@/lib/audit/transfer-history-scope";
+import { fetchQmApprovedAgentDisplayNames } from "@/lib/audit/agent-roster";
 
 class TransferExecutionError extends Error {
   constructor(
@@ -905,19 +910,41 @@ export async function getAgentTransferHistory(): Promise<{
       ],
     };
   } else if (session.user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
-    const submittedAgents = await prisma.auditSubmission.findMany({
-      where: { submittedById: session.user.id },
-      select: { agent: true },
-      distinct: ["agent"],
-    });
+    const [submittedAgents, qaTransferIds] = await Promise.all([
+      prisma.auditSubmission.findMany({
+        where: { submittedById: session.user.id },
+        select: { agent: true },
+        distinct: ["agent"],
+      }),
+      fetchApprovedTransferIdsForQa(session.user.id),
+    ]);
     const agentNameFilter = caseInsensitiveIn(
       submittedAgents.map((row) => row.agent)
     );
-    transferWhere = agentNameFilter
-      ? { agentNameSnapshot: agentNameFilter }
-      : { transferredById: session.user.id };
+    const or: Prisma.AgentTransferWhereInput[] = [
+      { transferredById: session.user.id },
+      ...(qaTransferIds.length > 0 ? [{ id: { in: qaTransferIds } }] : []),
+      ...(agentNameFilter ? [{ agentNameSnapshot: agentNameFilter }] : []),
+    ];
+    transferWhere = { OR: or };
   } else if (session.user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER) {
-    transferWhere = undefined;
+    const [supervisorIds, approvedNames] = await Promise.all([
+      fetchCreatedSupervisorIds(session.user.id),
+      fetchQmApprovedAgentDisplayNames(session.user.id),
+    ]);
+    const agentNameFilter = caseInsensitiveIn(approvedNames);
+    const or: Prisma.AgentTransferWhereInput[] = [
+      { assignedReviewerId: session.user.id },
+      { reviewedById: session.user.id },
+      { transferredById: session.user.id },
+    ];
+    if (supervisorIds.length > 0) {
+      or.push({ fromSupervisorId: { in: supervisorIds } });
+    }
+    if (agentNameFilter) {
+      or.push({ agentNameSnapshot: agentNameFilter });
+    }
+    transferWhere = { OR: or };
   } else {
     transferWhere = { id: "__none__" };
   }
