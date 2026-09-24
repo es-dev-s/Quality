@@ -26,6 +26,7 @@ export const reportFiltersSchema = z
     supervisor: personNameSchema.optional().default(""),
     type: z.enum(["", "Call", "Chat"]).optional().default(""),
     period: z.enum(REPORT_PERIODS).optional().default("custom"),
+    auditSource: z.enum(["", "supervisor", "qa", "other"]).optional().default(""),
   })
   .superRefine((value, ctx) => {
     if (!isValidIsoDate(value.startDate)) {
@@ -68,4 +69,5 @@ export type ReportFilters = {
   supervisor: string;
   type: ReportInteractionType;
   period: ReportPeriod;
+  auditSource: "" | "supervisor" | "qa" | "other";
 };

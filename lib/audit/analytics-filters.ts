@@ -10,12 +10,14 @@ import {
 } from "@/lib/audit/dashboard-metrics";
 import type { DashboardAuditRecord } from "@/lib/audit/dashboard-metrics";
 import { computeLeaderboardAnalytics } from "@/lib/audit/leaderboard-metrics";
+import type { AuditSourceKind } from "@/lib/audit/audit-source";
 
 export type AnalyticsIncludeFilters = {
   agent: string;
   teamName: string;
   auditor: string;
   businessType: string;
+  auditSource: AuditSourceKind | "";
 };
 
 export type AnalyticsInteractionFilter = "both" | "call" | "chat";
@@ -38,6 +40,7 @@ export const EMPTY_ANALYTICS_INCLUDE_FILTERS: AnalyticsIncludeFilters = {
   teamName: "",
   auditor: "",
   businessType: "",
+  auditSource: "",
 };
 
 export type AnalyticsFilterOptions = {
@@ -123,6 +126,9 @@ export function filterAnalyticsByInclude(
     if (filters.businessType && record.businessType !== filters.businessType) {
       return false;
     }
+    if (filters.auditSource) {
+      if ((record.auditSource ?? "other") !== filters.auditSource) return false;
+    }
     return true;
   });
 }
@@ -134,7 +140,8 @@ export function hasActiveAnalyticsIncludeFilters(
     filters.agent ||
       filters.teamName ||
       filters.auditor ||
-      filters.businessType
+      filters.businessType ||
+      filters.auditSource
   );
 }
 

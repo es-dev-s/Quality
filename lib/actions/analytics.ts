@@ -11,6 +11,7 @@ import { scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
 import type { AuditRow, CategoryScore } from "@/lib/audit/types";
 import type { AnalyticsAuditRecord } from "@/lib/audit/analytics-metrics";
 import { parseFeedbackSecurity } from "@/lib/audit/feedback";
+import { resolveAuditSourceKind } from "@/lib/audit/audit-source";
 import {
   fetchPersonTeamNameMap,
   resolveRecordTeamName,
@@ -79,6 +80,7 @@ async function fetchAnalyticsRecords(
       teamNameSnapshot: true,
       rows: true,
       catScores: true,
+      submittedBy: { select: { role: { select: { slug: true } } } },
     },
   });
   const teamByPerson = await fetchPersonTeamNameMap();
@@ -111,6 +113,7 @@ async function fetchAnalyticsRecords(
       },
       teamByPerson
     ),
+    auditSource: resolveAuditSourceKind(s.submittedBy.role?.slug),
     rows: parseRows(s.rows),
     catScores: parseCatScores(s.catScores),
   }));

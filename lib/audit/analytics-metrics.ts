@@ -5,6 +5,7 @@ import {
 import { resolveMetricDate } from "@/lib/audit/metric-dates";
 import type { FeedbackSecurity } from "@/lib/audit/feedback";
 import type { AuditRow, CategoryScore } from "@/lib/audit/types";
+import type { AuditSourceKind } from "@/lib/audit/audit-source";
 import {
   canonicalCategoryKey,
   categoryLabelForInteraction,
@@ -43,6 +44,7 @@ export type AnalyticsAuditRecord = {
   fatalList?: unknown;
   /** Frozen snapshot first, then live User.teamName (supervisor, then agent). Not the person name. */
   teamName?: string | null;
+  auditSource?: AuditSourceKind;
   rows: AuditRow[];
   catScores: Record<string, CategoryScore>;
 };

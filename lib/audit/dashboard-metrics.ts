@@ -57,6 +57,7 @@ export type DashboardIncludeFilters = {
   businessType: string;
   auditor: string;
   auditType: string;
+  auditSource: AuditSourceKind | "";
 };
 
 export const EMPTY_INCLUDE_FILTERS: DashboardIncludeFilters = {
@@ -65,6 +66,7 @@ export const EMPTY_INCLUDE_FILTERS: DashboardIncludeFilters = {
   businessType: "",
   auditor: "",
   auditType: "",
+  auditSource: "",
 };
 
 export type DashboardFilterOptions = {
@@ -153,6 +155,11 @@ export function filterByIncludeFilters(
     if (filters.auditType && record.type !== filters.auditType) {
       return false;
     }
+    if (filters.auditSource) {
+      if ((record.auditSource ?? "other") !== filters.auditSource) {
+        return false;
+      }
+    }
     return true;
   });
 }
@@ -163,7 +170,8 @@ export function hasActiveIncludeFilters(filters: DashboardIncludeFilters): boole
       filters.teamName ||
       filters.businessType ||
       filters.auditor ||
-      filters.auditType
+      filters.auditType ||
+      filters.auditSource
   );
 }
 
