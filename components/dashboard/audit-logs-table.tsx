@@ -16,7 +16,8 @@ import { AuditDetailModal } from "@/components/audit-logs/audit-detail-modal";
 import { HistoryBadge } from "@/components/audit/history-badge";
 import { HistoryFilterSection } from "@/components/audit/history-filter-section";
 import {
-  auditSourceFilterLabel,
+  AUDIT_SOURCE_FILTER_OPTIONS,
+  auditSourceChipLabel,
   type AuditSourceKind,
 } from "@/lib/audit/audit-source";
 import { AUDIT_TYPE_OPTIONS } from "@/lib/audit/audit-type";
@@ -445,15 +446,7 @@ export function AuditLogsTable({
     []
   );
 
-  const sourceFilterOptions = useMemo(
-    () => [
-      { value: "", label: auditSourceFilterLabel("all") },
-      { value: "supervisor", label: "Supervisor audits" },
-      { value: "qa", label: "QA audits" },
-      { value: "other", label: "Other sources" },
-    ],
-    []
-  );
+  const sourceFilterOptions = useMemo(() => AUDIT_SOURCE_FILTER_OPTIONS, []);
 
   const filtered = useMemo(() => {
     const hasCustom = !!(customRange.from || customRange.to);
@@ -701,12 +694,7 @@ export function AuditLogsTable({
     if (auditSource) {
       chips.push({
         key: "source",
-        label:
-          auditSource === "supervisor"
-            ? "Supervisor audits"
-            : auditSource === "qa"
-              ? "QA audits"
-              : "Other sources",
+        label: auditSourceChipLabel(auditSource),
         onRemove: () => setAuditSource(""),
       });
     }

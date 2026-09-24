@@ -48,7 +48,6 @@ import {
   filterByPeriod,
   filterByCustomRange,
   filterCurrentMonth,
-  filterRecordsByAuditSource,
   hasActiveIncludeFilters,
   resolveTrendRangeBounds,
   type DashboardIncludeFilters,
@@ -66,7 +65,11 @@ import {
   canEditMonthlyAuditTargets,
 } from "@/lib/rbac";
 import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
-import { type AuditSourceKind } from "@/lib/audit/audit-source";
+import {
+  AUDIT_SOURCE_FILTER_OPTIONS,
+  auditSourceChipLabel,
+  type AuditSourceKind,
+} from "@/lib/audit/audit-source";
 import {
   setAuditTargetPerAgent,
   setAuditTargetTotalMonthly,
@@ -98,12 +101,6 @@ const TREND_OPTIONS: { id: TrendGranularity; label: string }[] = [
 
 const DEFAULT_AGENT_TARGET = KPI_DEFAULT_AGENT_TARGET;
 
-const AGENT_TARGET_SOURCE_OPTIONS: { value: AuditSourceKind | ""; label: string }[] = [
-  { value: "", label: "Audit source" },
-  { value: "supervisor", label: "Supervisor audits" },
-  { value: "qa", label: "QA audits" },
-];
-
 function agentTargetSourceCopy(source: AuditSourceKind | "") {
   if (source === "supervisor") {
     return {
@@ -117,6 +114,13 @@ function agentTargetSourceCopy(source: AuditSourceKind | "") {
       desc: "QA audits this month vs target per agent",
       summary: "QA audits this month",
       empty: "No agents with QA audits this month yet.",
+    };
+  }
+  if (source === "other") {
+    return {
+      desc: "Other-source audits this month vs target per agent",
+      summary: "Other sources this month",
+      empty: "No agents with other-source audits this month yet.",
     };
   }
   return {
@@ -181,9 +185,6 @@ export function DashboardAnalytics({
   const agentTargetTimer = useRef<number | null>(null);
   const monthlyTargetTimer = useRef<number | null>(null);
   const [selectedFatal, setSelectedFatal] = useState<string | null>(null);
-  const [targetAuditSource, setTargetAuditSource] = useState<
-    AuditSourceKind | ""
-  >("");
   const [auditorTargetRange, setAuditorTargetRange] = useState<DateRangeValue>({
     from: "",
     to: "",
@@ -256,22 +257,11 @@ export function DashboardAnalytics({
   const agentTargetRecords = useMemo(() => {
     const withoutDeactivated = <T extends { agent: string }>(rows: T[]) =>
       excludeDeactivatedAgentRecords(rows, data.deactivatedAgentNames ?? []);
-    if (!targetAuditSource) {
-      return {
-        all: withoutDeactivated(scopedRecords),
-        month: withoutDeactivated(monthRecords),
-      };
-    }
-    const bySource = withoutDeactivated(
-      filterRecordsByAuditSource(monthRecords, targetAuditSource)
-    );
-    return { all: bySource, month: bySource };
-  }, [
-    scopedRecords,
-    monthRecords,
-    targetAuditSource,
-    data.deactivatedAgentNames,
-  ]);
+    return {
+      all: withoutDeactivated(scopedRecords),
+      month: withoutDeactivated(monthRecords),
+    };
+  }, [scopedRecords, monthRecords, data.deactivatedAgentNames]);
 
   const auditorTargetSource = useMemo(() => {
     if (auditorTargetRange.from || auditorTargetRange.to) {
@@ -346,7 +336,7 @@ export function DashboardAnalytics({
     user.email,
   ]);
   const isQualityAnalyst = roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST;
-  const agentTargetCopy = agentTargetSourceCopy(targetAuditSource);
+  const agentTargetCopy = agentTargetSourceCopy(includeFilters.auditSource);
 
   const topAgents = useMemo(() => computeTopAgents(filtered), [filtered]);
   const topFatals = useMemo(() => computeTopFatals(filtered), [filtered]);
@@ -568,6 +558,13 @@ export function DashboardAnalytics({
         onRemove: () => updateFilter("auditType", ""),
       });
     }
+    if (includeFilters.auditSource) {
+      chips.push({
+        key: "auditSource",
+        label: auditSourceChipLabel(includeFilters.auditSource),
+        onRemove: () => updateFilter("auditSource", ""),
+      });
+    }
     if (trendGranularity !== "week") {
       chips.push({
         key: "trend",
@@ -692,7 +689,7 @@ export function DashboardAnalytics({
         open={filterSidebar.open}
         onOpenChange={filterSidebar.onOpenChange}
         title="Dashboard filters"
-        description="Set the time period, trend view, and segment filters for KPIs and charts."
+        description="Set the time period, trend view, segment, and audit source filters for KPIs and charts."
         activeCount={sidebarFilterCount}
         onClearAll={clearFilters}
         clearDisabled={!hasAnyDashboardFilters}
@@ -803,6 +800,17 @@ export function DashboardAnalytics({
                 onChange={(value) => updateFilter("auditType", value)}
                 options={auditTypeFilterOptions}
                 ariaLabel="Filter by audit type"
+              />
+            </label>
+            <label className="dash-filter">
+              <span>Audit source</span>
+              <FilterSelect
+                value={includeFilters.auditSource}
+                onChange={(value) =>
+                  updateFilter("auditSource", value as AuditSourceKind | "")
+                }
+                options={AUDIT_SOURCE_FILTER_OPTIONS}
+                ariaLabel="Filter by audit source"
               />
             </label>
           </FilterSidebarGrid>
@@ -942,16 +950,6 @@ export function DashboardAnalytics({
               <p className="dash-panel__desc">{agentTargetCopy.desc}</p>
             </div>
             <div className="dash-target-head-actions">
-              <div className="dash-target-auditor-filter">
-                <FilterSelect
-                  value={targetAuditSource}
-                  onChange={(value) =>
-                    setTargetAuditSource(value as AuditSourceKind | "")
-                  }
-                  options={AGENT_TARGET_SOURCE_OPTIONS}
-                  ariaLabel="Audit source"
-                />
-              </div>
               <label className="dash-target-input">
               <span>Target/month:</span>
               <input

@@ -59,6 +59,7 @@ export function defaultReportFilters(now = new Date()): {
   supervisor: string;
   type: ReportInteractionType;
   period: ReportPeriod;
+  auditSource: "" | "supervisor" | "qa" | "other";
 } {
   const range = defaultReportDateRange(now);
   return {
@@ -68,6 +69,7 @@ export function defaultReportFilters(now = new Date()): {
     supervisor: "",
     type: "",
     period: "custom",
+    auditSource: "",
   };
 }
 

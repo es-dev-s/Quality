@@ -15,6 +15,11 @@ import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
 import { useBusyAction } from "@/lib/hooks/use-busy-action";
 import { getAnalyticsData, type AnalyticsPageData } from "@/lib/actions/analytics";
 import {
+  AUDIT_SOURCE_FILTER_OPTIONS,
+  auditSourceChipLabel,
+  type AuditSourceKind,
+} from "@/lib/audit/audit-source";
+import {
   ANALYTICS_INTERACTION_PRESETS,
   ANALYTICS_PERIOD_PRESETS,
   applyAnalyticsFilters,
@@ -258,6 +263,13 @@ export function QmsAnalytics({
         onRemove: () => updateFilter("businessType", ""),
       });
     }
+    if (includeFilters.auditSource) {
+      chips.push({
+        key: "auditSource",
+        label: auditSourceChipLabel(includeFilters.auditSource),
+        onRemove: () => updateFilter("auditSource", ""),
+      });
+    }
     if (hasActiveAnalyticsInteractionFilter(interactionFilter)) {
       const preset = ANALYTICS_INTERACTION_PRESETS.find(
         (entry) => entry.id === interactionFilter
@@ -404,7 +416,7 @@ export function QmsAnalytics({
         open={filterSidebar.open}
         onOpenChange={filterSidebar.onOpenChange}
         title="Analytics filters"
-        description="Set the timeline and segment filters for all analytics tabs."
+        description="Set the timeline, segment, and audit source filters for all analytics tabs."
         activeCount={sidebarFilterCount}
         onClearAll={clearFilters}
         clearDisabled={!hasAnyAnalyticsFilters}
@@ -536,6 +548,17 @@ export function QmsAnalytics({
                 />
               </label>
             ) : null}
+            <label className="dash-filter">
+              <span>Audit source</span>
+              <FilterSelect
+                value={includeFilters.auditSource}
+                onChange={(value) =>
+                  updateFilter("auditSource", value as AuditSourceKind | "")
+                }
+                options={AUDIT_SOURCE_FILTER_OPTIONS}
+                ariaLabel="Filter by audit source"
+              />
+            </label>
           </FilterSidebarGrid>
         </FilterSidebarSection>
       </FilterSidebar>

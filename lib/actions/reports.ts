@@ -34,6 +34,7 @@ import {
   mapSubmissionToPageRow,
   type AuditExportRow,
 } from "@/lib/reports/audit-export-row";
+import { auditSourceWhere } from "@/lib/audit/audit-source";
 
 /** @deprecated Use AuditExportRow from `@/lib/reports/audit-export-row`. */
 export type ReportRow = AuditExportRow;
@@ -82,21 +83,22 @@ function uniqueSortedNames(values: Array<string | null | undefined>): string[] {
 
 function parseReportFilters(input: unknown) {
   const parsed = reportFiltersSchema.safeParse(input);
-  if (!parsed.success) {
-    const fallback = input && typeof input === "object" ? (input as Partial<ReportFilters>) : null;
-    return {
-      error: parsed.error.issues[0]?.message ?? "Invalid report filters.",
-      filters: {
-        startDate: fallback?.startDate ?? "",
-        endDate: fallback?.endDate ?? "",
-        agent: "",
-        supervisor: "",
-        type: "" as const,
-        period: "custom" as const,
-      },
-    };
+  if (parsed.success) {
+    return { error: null, filters: parsed.data };
   }
-  return { error: null, filters: parsed.data };
+  const fallback = input && typeof input === "object" ? (input as Partial<ReportFilters>) : null;
+  return {
+    error: parsed.error.issues[0]?.message ?? "Invalid report filters.",
+    filters: {
+      startDate: fallback?.startDate ?? "",
+      endDate: fallback?.endDate ?? "",
+      agent: "",
+      supervisor: "",
+      type: "" as const,
+      period: "custom" as const,
+      auditSource: "" as const,
+    },
+  };
 }
 
 async function reportWhere(
@@ -119,6 +121,11 @@ async function reportWhere(
   const type = caseInsensitiveEquals(filters.type);
   if (type && (filters.type === "Call" || filters.type === "Chat")) {
     extra.type = type;
+  }
+
+  const sourceWhere = auditSourceWhere(filters.auditSource);
+  if (sourceWhere) {
+    Object.assign(extra, sourceWhere);
   }
 
   return scopedAuditWhere(session, extra);

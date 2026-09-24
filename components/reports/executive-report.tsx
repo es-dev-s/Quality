@@ -44,6 +44,11 @@ import {
   reportFiltersSchema,
   type ReportFilters,
 } from "@/lib/validation/reports";
+import {
+  AUDIT_SOURCE_FILTER_OPTIONS,
+  auditSourceChipLabel,
+  type AuditSourceKind,
+} from "@/lib/audit/audit-source";
 import { cn } from "@/lib/utils";
 
 type ReportTableDensity = "compact" | "standard" | "expanded";
@@ -75,6 +80,7 @@ function queryKey(filters: ReportFilters) {
     filters.agent,
     filters.supervisor,
     filters.type,
+    filters.auditSource,
   ].join("|");
 }
 
@@ -128,6 +134,9 @@ function emptyStateMessage(data: ReportPageData, filters: ReportFilters) {
   if (filters.agent) parts.push(`agent ${filters.agent}`);
   if (filters.supervisor) parts.push(`supervisor ${filters.supervisor}`);
   if (filters.type) parts.push(filters.type.toLowerCase());
+  if (filters.auditSource === "supervisor") parts.push("supervisor audits");
+  if (filters.auditSource === "qa") parts.push("QA audits");
+  if (filters.auditSource === "other") parts.push("other sources");
   const who = parts.length ? ` for ${parts.join(", ")}` : "";
   return `No audits found${who} between ${data.startDate} and ${data.endDate} (by audit date).`;
 }
@@ -243,6 +252,13 @@ export function ExecutiveReport({
         key: "type",
         label: item?.ariaLabel ?? applied.type,
         onRemove: () => commitFilters({ ...applied, type: "" }),
+      });
+    }
+    if (applied.auditSource) {
+      chips.push({
+        key: "auditSource",
+        label: auditSourceChipLabel(applied.auditSource),
+        onRemove: () => commitFilters({ ...applied, auditSource: "" }),
       });
     }
 
@@ -497,7 +513,7 @@ export function ExecutiveReport({
         open={filterSidebar.open}
         onOpenChange={handleSidebarOpenChange}
         title="Report filters"
-        description="Narrow the report by agent, supervisor, call or chat, and audit date. Changes apply when you click Apply filters."
+        description="Narrow the report by agent, supervisor, call or chat, audit source, and audit date. Changes apply when you click Apply filters."
         activeCount={filterChips.length}
         onClearAll={handleClearAll}
         clearDisabled={!hasActiveFilters}
@@ -649,6 +665,20 @@ export function ExecutiveReport({
                 ariaLabel="Filter by supervisor"
                 searchable
                 searchPlaceholder="Search supervisors…"
+              />
+            </label>
+            <label className="dash-filter">
+              <span>Audit source</span>
+              <FilterSelect
+                value={draft.auditSource}
+                onChange={(value) =>
+                  setDraft((current) => ({
+                    ...current,
+                    auditSource: value as AuditSourceKind | "",
+                  }))
+                }
+                options={AUDIT_SOURCE_FILTER_OPTIONS}
+                ariaLabel="Filter by audit source"
               />
             </label>
           </FilterSidebarGrid>
