@@ -14,6 +14,61 @@ export type ReferenceAttachmentKind = "url" | "image" | "audio" | "audit";
 
 
 
+/** Max references (URLs, uploads, linked audits) stored on one audit. */
+export const MAX_REFERENCE_ITEMS = 10;
+
+
+
+export const MAX_REFERENCE_ITEM_LENGTH = 2048;
+
+
+
+/**
+ * One audit can carry several references, stored newline-separated in the
+ * single `reference_url` column. Legacy single-value rows parse as one item.
+ */
+export function parseReferenceList(value: string | null | undefined): string[] {
+
+  if (!value) return [];
+
+  const seen = new Set<string>();
+
+  const items: string[] = [];
+
+  for (const line of value.split(/\r?\n/)) {
+
+    const item = line.trim();
+
+    if (!item || seen.has(item)) continue;
+
+    seen.add(item);
+
+    items.push(item);
+
+  }
+
+  return items;
+
+}
+
+
+
+export function serializeReferenceList(items: readonly string[]): string {
+
+  return parseReferenceList(items.join("\n")).join("\n");
+
+}
+
+
+
+export function normalizeReferenceValue(value: string | null | undefined): string {
+
+  return serializeReferenceList(parseReferenceList(value));
+
+}
+
+
+
 export function normalizeUploadedReferencePath(value: string): string {
 
   if (value.startsWith(LEGACY_IMAGE_PREFIX)) {

@@ -37,3 +37,16 @@ export function interactionReferenceSectionLabel(
   }
   return type === "Chat" ? "Interaction reference" : "Reference URL";
 }
+
+export function interactionReferenceListLabel(
+  type: InteractionType | string,
+  referenceKinds: readonly ("url" | "image" | "audio" | "audit")[]
+): string {
+  const count = referenceKinds.length;
+  if (count === 0) return interactionReferenceFieldLabel(type);
+  if (new Set(referenceKinds).size === 1) {
+    const base = interactionReferenceSectionLabel(type, referenceKinds[0]);
+    return count > 1 ? `${base}s (${count})` : base;
+  }
+  return `${interactionReferenceFieldLabel(type)}s (${count})`;
+}

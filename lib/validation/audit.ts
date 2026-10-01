@@ -5,6 +5,11 @@ import {
 } from "@/lib/audit/feedback";
 import { AUDIT_TYPE_OPTIONS } from "@/lib/audit/audit-type";
 import { cuidSchema, submissionKeySchema } from "@/lib/validation/common";
+import {
+  MAX_REFERENCE_ITEM_LENGTH,
+  MAX_REFERENCE_ITEMS,
+  parseReferenceList,
+} from "@/lib/upload/reference-url-paths";
 
 const scoreValueSchema = z.string().trim().max(32);
 
@@ -23,7 +28,21 @@ export const auditFormDataSchema = z
     lob: z.string(),
     sublob: z.string(),
     mobile: z.string(),
-    referenceUrl: z.string(),
+    referenceUrl: z
+      .string()
+      .refine(
+        (value) => parseReferenceList(value).length <= MAX_REFERENCE_ITEMS,
+        { message: `Attach at most ${MAX_REFERENCE_ITEMS} references.` }
+      )
+      .refine(
+        (value) =>
+          parseReferenceList(value).every(
+            (item) => item.length <= MAX_REFERENCE_ITEM_LENGTH
+          ),
+        {
+          message: `Each reference must be ${MAX_REFERENCE_ITEM_LENGTH} characters or fewer.`,
+        }
+      ),
     reason: z.string(),
     subReason: z.string(),
     response: z.string(),

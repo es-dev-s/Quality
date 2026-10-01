@@ -5,15 +5,14 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, FileText, MessageSquare, Pencil, Phone, ShieldAlert, X } from "lucide-react";
 import { getAuditDetail, updateSupervisorRemarks } from "@/lib/actions/audit";
-import { ReferenceAttachmentView } from "@/components/audit-logs/reference-attachment-view";
 import {
-  detectReferenceAttachmentKind,
-  normalizeUploadedReferencePath,
-} from "@/lib/upload/reference-url-paths";
+  parseReferenceItems,
+  ReferenceAttachmentView,
+} from "@/components/audit-logs/reference-attachment-view";
 import type { AuditDetail } from "@/lib/audit/audit-records";
 import { AuditSourceBadge } from "@/components/audit/audit-source-badge";
 import { auditSourceLabel } from "@/lib/audit/audit-source";
-import { interactionContactFieldLabel, interactionReferenceSectionLabel } from "@/lib/audit/interaction-labels";
+import { interactionContactFieldLabel, interactionReferenceListLabel } from "@/lib/audit/interaction-labels";
 import type { AuditRow } from "@/lib/audit/types";
 import { selectionToneClass } from "@/lib/audit/selection-tone";
 import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
@@ -302,21 +301,15 @@ export function AuditDetailModal({
                 </div>
 
                 {detail.referenceUrl ? (() => {
-                  const refKind = detectReferenceAttachmentKind(
-                    normalizeUploadedReferencePath(detail.referenceUrl)
-                  );
-                  const sectionKind =
-                    refKind === "audit"
-                      ? "audit"
-                      : refKind === "audio"
-                        ? "audio"
-                        : refKind === "image"
-                          ? "image"
-                          : "url";
+                  const refItems = parseReferenceItems(detail.referenceUrl);
+                  if (refItems.length === 0) return null;
                   return (
                   <div className="adi-reference">
                     <span className="adi-field__label">
-                      {interactionReferenceSectionLabel(detail.type, sectionKind)}
+                      {interactionReferenceListLabel(
+                        detail.type,
+                        refItems.map((item) => item.kind)
+                      )}
                     </span>
                     <ReferenceAttachmentView
                       referenceUrl={detail.referenceUrl}

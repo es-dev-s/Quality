@@ -79,6 +79,7 @@ import { resolveTeamNameSnapshot } from "@/lib/audit/resolve-team-name";
 import { reconcileTransferHistoryForViewer } from "@/lib/audit/transfer-history";
 import { resolveFormFeedbackForSave } from "@/lib/audit/form-feedback-save";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
+import { normalizeReferenceValue } from "@/lib/upload/reference-url-paths";
 import {
   defaultAuditFeedback,
   normalizeFeedbackForSave,
@@ -318,7 +319,7 @@ export async function saveAuditSubmission(
     sublob: record.sublob || null,
     reason: record.reason || null,
     mobile: record.mobile?.trim() || null,
-    referenceUrl: record.referenceUrl?.trim() || null,
+    referenceUrl: normalizeReferenceValue(record.referenceUrl) || null,
     response: record.response || null,
     qualityPct: record.qualityPct,
     finalPct: record.finalPct,
@@ -943,7 +944,7 @@ export async function updateAuditSubmission(
         sublob: record.sublob || null,
         reason: record.reason || null,
         mobile: record.mobile?.trim() || null,
-        referenceUrl: record.referenceUrl?.trim() || null,
+        referenceUrl: normalizeReferenceValue(record.referenceUrl) || null,
         response: record.response || null,
         qualityPct: record.qualityPct,
         finalPct: record.finalPct,
