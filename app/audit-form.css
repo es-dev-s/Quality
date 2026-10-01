@@ -1757,6 +1757,42 @@
   gap: 10px;
 }
 
+.audit-ref-attach__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 24rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.audit-ref-attach__list .audit-reference-image {
+  width: 96px;
+  flex-shrink: 0;
+}
+
+.audit-ref-attach__list .audit-reference-image__thumb {
+  height: 64px;
+  max-height: 64px;
+}
+
+.audit-ref-attach__list .audit-reference-image__overlay span {
+  display: none;
+}
+
+.audit-ref-attach__count {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--color-muted-fg);
+  font-variant-numeric: tabular-nums;
+}
+
 .audit-ref-attach__chip {
   display: flex;
   flex-wrap: wrap;

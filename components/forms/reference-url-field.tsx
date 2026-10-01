@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronDown,
@@ -31,14 +38,18 @@ import {
 } from "@/lib/upload/limits";
 import { interactionReferenceFieldLabel } from "@/lib/audit/interaction-labels";
 import {
+  MAX_REFERENCE_ITEM_LENGTH,
+  MAX_REFERENCE_ITEMS,
   auditCodeFromReferencePath,
   buildAuditReferenceValue,
   detectReferenceAttachmentKind,
   fileLabelFromUploadPath,
   isUploadedAudioPath,
   isUploadedImagePath,
-  isUploadedReferencePath,
+  normalizeUploadedReferencePath,
+  parseReferenceList,
   referenceAttachmentLabel,
+  serializeReferenceList,
   type ReferenceAttachmentKind,
 } from "@/lib/upload/reference-url-paths";
 import { cn } from "@/lib/utils";
@@ -69,14 +80,14 @@ const ATTACHMENT_OPTIONS: {
   },
   {
     id: "image",
-    label: "Image",
-    hint: `Screenshot or capture (up to ${AUDIT_IMAGE_MAX_MB} MB)`,
+    label: "Images",
+    hint: `Screenshots or captures — select several at once (up to ${AUDIT_IMAGE_MAX_MB} MB each)`,
     icon: ImageIcon,
   },
   {
     id: "audio",
     label: "Audio",
-    hint: `Recording or voice note (up to ${AUDIT_MEDIA_MAX_MB} MB)`,
+    hint: `Recordings or voice notes — select several at once (up to ${AUDIT_MEDIA_MAX_MB} MB each)`,
     icon: Mic,
   },
   {
@@ -86,6 +97,13 @@ const ATTACHMENT_OPTIONS: {
     icon: ClipboardList,
   },
 ];
+
+const KIND_LABEL: Record<ReferenceAttachmentKind, string> = {
+  url: "URL",
+  image: "Image",
+  audio: "Audio",
+  audit: "Audit",
+};
 
 function kindIcon(kind: ReferenceAttachmentKind) {
   return ATTACHMENT_OPTIONS.find((option) => option.id === kind)?.icon ?? Link2;
@@ -103,6 +121,8 @@ type UploadState = {
   fileName: string;
   fileSize: number;
   percent: number;
+  index: number;
+  total: number;
 };
 
 function measureAttachMenu(trigger: HTMLElement): MenuLayout {
@@ -118,6 +138,15 @@ function measureAttachMenu(trigger: HTMLElement): MenuLayout {
   const openUp = spaceBelow < 180 && rect.top > spaceBelow;
   const top = openUp ? rect.top - gap : rect.bottom + gap;
   return { top, left, width, openUp };
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return count === 1 ? singular : plural;
+}
+
+function summarizeFailures(failures: string[], verb: string): string {
+  if (failures.length === 1) return failures[0]!;
+  return `${failures.length} files ${verb} — ${failures[0]}`;
 }
 
 export function ReferenceUrlField({
@@ -142,20 +171,27 @@ export function ReferenceUrlField({
   const [modalKind, setModalKind] = useState<ReferenceAttachmentKind | null>(
     null
   );
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [draftUrl, setDraftUrl] = useState("");
   const [draftAuditCode, setDraftAuditCode] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadState, setUploadState] = useState<UploadState | null>(null);
   const [dragActive, setDragActive] = useState(false);
-  const [uploadLabel, setUploadLabel] = useState<string | null>(() =>
-    isUploadedReferencePath(value) && !value.startsWith("audit-ref:")
-      ? fileLabelFromUploadPath(value)
-      : null
-  );
 
-  const activeKind = detectReferenceAttachmentKind(value);
-  const hasValue = Boolean(value.trim());
-  const ActiveIcon = kindIcon(activeKind);
+  const items = useMemo(() => parseReferenceList(value), [value]);
+  // Uploads run sequentially and commit one by one; the ref always holds the
+  // latest list so a later commit never overwrites an earlier one.
+  const itemsRef = useRef(items);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  useEffect(() => {
+    return () => uploadAbortRef.current?.abort();
+  }, []);
+
+  const remainingSlots = Math.max(0, MAX_REFERENCE_ITEMS - items.length);
+  const atCapacity = remainingSlots === 0;
 
   const filteredAuditOptions = useMemo(() => {
     const query = draftAuditCode.trim().toLowerCase();
@@ -170,13 +206,15 @@ export function ReferenceUrlField({
   }, [auditReferenceOptions, draftAuditCode]);
 
   const label = interactionReferenceFieldLabel(interactionType);
-  const fieldHint = required
-    ? isChat
-      ? "Required — URL, screenshot, recording, or linked audit"
-      : "Required — URL, recording, image, or linked audit"
-    : isChat
-      ? "Optional — URL, screenshot, recording, or linked audit"
-      : "Optional — URL, recording, image, or linked audit";
+  const fieldHint = atCapacity
+    ? `Maximum of ${MAX_REFERENCE_ITEMS} references reached — remove one to add another.`
+    : required
+      ? isChat
+        ? "Required — add one or more: URL, screenshots, recordings, or linked audits"
+        : "Required — add one or more: URL, recordings, images, or linked audits"
+      : isChat
+        ? "Optional — add one or more: URL, screenshots, recordings, or linked audits"
+        : "Optional — add one or more: URL, recordings, images, or linked audits";
 
   useLayoutEffect(() => {
     if (!menuOpen) {
@@ -199,14 +237,46 @@ export function ReferenceUrlField({
     };
   }, [menuOpen]);
 
-  function openModal(kind: ReferenceAttachmentKind) {
+  function commitItems(next: string[]) {
+    const serialized = serializeReferenceList(next);
+    itemsRef.current = parseReferenceList(serialized);
+    onChange(serialized);
+  }
+
+  function removeItem(index: number) {
+    commitItems(itemsRef.current.filter((_, i) => i !== index));
+  }
+
+  /** Adds or replaces (when editing) a single reference. Returns false if rejected. */
+  function upsertItem(next: string, index: number | null): boolean {
+    const current = itemsRef.current;
+    const duplicateAt = current.indexOf(next);
+    if (duplicateAt !== -1 && duplicateAt !== index) {
+      toast("That reference is already attached.", "error");
+      return false;
+    }
+    if (index !== null && index < current.length) {
+      commitItems(current.map((item, i) => (i === index ? next : item)));
+      return true;
+    }
+    if (current.length >= MAX_REFERENCE_ITEMS) {
+      toast(`You can attach up to ${MAX_REFERENCE_ITEMS} references.`, "error");
+      return false;
+    }
+    commitItems([...current, next]);
+    return true;
+  }
+
+  function openModal(kind: ReferenceAttachmentKind, index: number | null = null) {
     setMenuOpen(false);
     setModalKind(kind);
+    setEditingIndex(index);
+    const existing = index !== null ? items[index] ?? "" : "";
     if (kind === "url") {
-      setDraftUrl(isUploadedReferencePath(value) ? "" : value);
+      setDraftUrl(existing);
     }
     if (kind === "audit") {
-      setDraftAuditCode(auditCodeFromReferencePath(value) ?? "");
+      setDraftAuditCode(auditCodeFromReferencePath(existing) ?? "");
     }
     if (kind === "image" || kind === "audio") {
       requestAnimationFrame(() => {
@@ -218,103 +288,161 @@ export function ReferenceUrlField({
   function closeModal() {
     if (uploading) return;
     setModalKind(null);
+    setEditingIndex(null);
+    setDragActive(false);
+  }
+
+  function finishModal() {
+    setModalKind(null);
+    setEditingIndex(null);
     setDragActive(false);
   }
 
   function cancelUpload() {
     uploadAbortRef.current?.abort();
-    uploadAbortRef.current = null;
-    setUploading(false);
-    setUploadState(null);
   }
 
-  function applyValue(next: string, labelHint?: string) {
-    onChange(next);
-    if (labelHint) setUploadLabel(labelHint);
-    setModalKind(null);
-    setUploadState(null);
-    setDragActive(false);
-  }
+  async function handleFiles(files: File[], uploadMode: "image" | "audio") {
+    if (files.length === 0 || uploading) return;
 
-  function clearValue() {
-    onChange("");
-    setUploadLabel(null);
-  }
+    const slots = MAX_REFERENCE_ITEMS - itemsRef.current.length;
+    if (slots <= 0) {
+      toast(`You can attach up to ${MAX_REFERENCE_ITEMS} references.`, "error");
+      return;
+    }
 
-  const handleFileSelect = useCallback(
-    async (file: File | undefined, uploadMode: "image" | "audio") => {
-      if (!file) return;
-
+    const accepted: File[] = [];
+    const rejected: string[] = [];
+    for (const file of files) {
       const validation =
         uploadMode === "image"
           ? validateClientImageFile(file)
           : validateClientMediaFile(file);
-
-      if (!validation.ok) {
-        toast(validation.error, "error");
-        return;
+      if (validation.ok) {
+        accepted.push(file);
+      } else {
+        rejected.push(`${file.name}: ${validation.error}`);
       }
+    }
 
-      setModalKind(uploadMode);
-      setUploading(true);
+    if (rejected.length > 0) {
+      toast(summarizeFailures(rejected, "skipped"), "error");
+    }
+
+    let queue = accepted;
+    if (queue.length > slots) {
+      toast(
+        `Only ${slots} more ${pluralize(slots, "reference")} can be attached — uploading the first ${slots}.`,
+        "warning"
+      );
+      queue = queue.slice(0, slots);
+    }
+    if (queue.length === 0) return;
+
+    uploadAbortRef.current?.abort();
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
+
+    setModalKind(uploadMode);
+    setEditingIndex(null);
+    setUploading(true);
+
+    let uploadedCount = 0;
+    let uploadedBytes = 0;
+    const failures: string[] = [];
+
+    for (let index = 0; index < queue.length; index += 1) {
+      if (controller.signal.aborted) break;
+      const file = queue[index]!;
       setUploadState({
         mode: uploadMode,
         fileName: file.name,
         fileSize: file.size,
         percent: 0,
+        index,
+        total: queue.length,
       });
-
-      uploadAbortRef.current?.abort();
-      const controller = new AbortController();
-      uploadAbortRef.current = controller;
 
       try {
         const result = await uploadAuditAttachment(file, uploadMode, {
           signal: controller.signal,
           onProgress: ({ percent }) => {
-            setUploadState((prev) =>
-              prev ? { ...prev, percent } : prev
-            );
+            setUploadState((prev) => (prev ? { ...prev, percent } : prev));
           },
         });
-
-        applyValue(result.path, file.name);
-        toast(
-          uploadMode === "image"
-            ? `Image attached (${formatFileSize(file.size)})`
-            : `Audio attached (${formatFileSize(file.size)})`,
-          "success"
-        );
+        commitItems([...itemsRef.current, result.path]);
+        uploadedCount += 1;
+        uploadedBytes += file.size;
       } catch (error) {
-        if (
-          error instanceof Error &&
-          error.message !== "Upload cancelled."
-        ) {
-          toast(error.message, "error");
-        }
-      } finally {
-        setUploading(false);
-        setUploadState(null);
-        uploadAbortRef.current = null;
-        if (imageInputRef.current) imageInputRef.current.value = "";
-        if (audioInputRef.current) audioInputRef.current.value = "";
+        if (controller.signal.aborted) break;
+        failures.push(
+          `${file.name}: ${error instanceof Error ? error.message : "Upload failed."}`
+        );
       }
-    },
-    [toast, onChange]
-  );
+    }
 
-  function onDropFile(file: File | undefined, mode: "image" | "audio") {
+    const cancelled = controller.signal.aborted;
+    if (uploadAbortRef.current === controller) {
+      uploadAbortRef.current = null;
+    }
+    setUploading(false);
+    setUploadState(null);
+
+    if (uploadedCount > 0) {
+      const noun =
+        uploadMode === "image"
+          ? pluralize(uploadedCount, "Image", "images")
+          : pluralize(uploadedCount, "Audio file", "audio files");
+      toast(
+        uploadedCount === 1
+          ? `${noun} attached (${formatFileSize(uploadedBytes)})`
+          : `${uploadedCount} ${noun} attached (${formatFileSize(uploadedBytes)})`,
+        "success"
+      );
+    }
+    if (failures.length > 0) {
+      toast(summarizeFailures(failures, "failed to upload"), "error");
+    }
+    if (cancelled && uploadedCount < queue.length) {
+      toast(
+        `Upload cancelled — ${uploadedCount} of ${queue.length} ${pluralize(queue.length, "file")} attached.`,
+        "info"
+      );
+    }
+
+    if (!cancelled && failures.length === 0) {
+      finishModal();
+    }
+  }
+
+  function onFileInputChange(
+    event: ChangeEvent<HTMLInputElement>,
+    mode: "image" | "audio"
+  ) {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    void handleFiles(files, mode);
+  }
+
+  function onDropFiles(fileList: FileList | undefined, mode: "image" | "audio") {
     setDragActive(false);
-    void handleFileSelect(file, mode);
+    void handleFiles(Array.from(fileList ?? []), mode);
   }
 
   function saveUrl() {
-    const trimmed = draftUrl.trim();
+    const trimmed = draftUrl.replace(/\s*[\r\n]+\s*/g, " ").trim();
     if (!trimmed) {
       toast("Enter a URL or reference text.", "error");
       return;
     }
-    applyValue(trimmed);
+    if (trimmed.length > MAX_REFERENCE_ITEM_LENGTH) {
+      toast(
+        `References must be ${MAX_REFERENCE_ITEM_LENGTH} characters or fewer.`,
+        "error"
+      );
+      return;
+    }
+    if (upsertItem(trimmed, editingIndex)) finishModal();
   }
 
   function saveAudit(code: string) {
@@ -323,39 +451,56 @@ export function ReferenceUrlField({
       toast("Select or enter an audit code.", "error");
       return;
     }
-    applyValue(buildAuditReferenceValue(trimmed));
+    if (upsertItem(buildAuditReferenceValue(trimmed), editingIndex)) finishModal();
   }
+
+  const isEditing = editingIndex !== null;
 
   const modalTitle =
     modalKind === "url"
-      ? "Add URL reference"
+      ? isEditing
+        ? "Edit URL reference"
+        : "Add URL reference"
       : modalKind === "image"
-        ? "Add image"
+        ? "Add images"
         : modalKind === "audio"
-          ? "Add audio recording"
+          ? "Add audio recordings"
           : modalKind === "audit"
-            ? "Link audit record"
+            ? isEditing
+              ? "Change linked audit"
+              : "Link audit record"
             : "";
 
   const modalDescription =
     modalKind === "url"
       ? "Paste a CRM link, ticket URL, or chat reference."
       : modalKind === "image"
-        ? `Upload a screenshot or chat capture (JPG, PNG, WebP, GIF — up to ${AUDIT_IMAGE_MAX_MB} MB).`
+        ? `Upload one or more screenshots or chat captures (JPG, PNG, WebP, GIF — up to ${AUDIT_IMAGE_MAX_MB} MB each).`
         : modalKind === "audio"
-          ? `Upload a call or voice recording (MP3, WAV, M4A, AAC, WebM, OGG, FLAC — up to ${AUDIT_MEDIA_MAX_MB} MB).`
+          ? `Upload one or more call or voice recordings (MP3, WAV, M4A, AAC, WebM, OGG, FLAC — up to ${AUDIT_MEDIA_MAX_MB} MB each).`
           : modalKind === "audit"
             ? "Pick a recent audit from your scope or enter an audit code."
             : undefined;
+
+  const overallPercent = uploadState
+    ? Math.round(
+        ((uploadState.index + uploadState.percent / 100) / uploadState.total) * 100
+      )
+    : 0;
 
   const uploadProgressBlock = uploadState ? (
     <div className="audit-ref-upload-progress" role="status" aria-live="polite">
       <div className="audit-ref-upload-progress__head">
         <Loader2 size={16} className="audit-reference-field__spin" aria-hidden />
         <div className="audit-ref-upload-progress__copy">
-          <strong>Uploading {uploadState.fileName}</strong>
+          <strong title={uploadState.fileName}>
+            {uploadState.total > 1
+              ? `Uploading ${uploadState.index + 1} of ${uploadState.total}: ${uploadState.fileName}`
+              : `Uploading ${uploadState.fileName}`}
+          </strong>
           <span>
             {formatFileSize(uploadState.fileSize)} · {uploadState.percent}%
+            {uploadState.total > 1 ? ` · ${overallPercent}% overall` : ""}
           </span>
         </div>
         <button
@@ -363,13 +508,13 @@ export function ReferenceUrlField({
           className="audit-ref-upload-progress__cancel"
           onClick={cancelUpload}
         >
-          Cancel
+          {uploadState.total > 1 ? "Cancel all" : "Cancel"}
         </button>
       </div>
       <div className="audit-ref-upload-progress__track">
         <div
           className="audit-ref-upload-progress__fill"
-          style={{ width: `${uploadState.percent}%` }}
+          style={{ width: `${uploadState.total > 1 ? overallPercent : uploadState.percent}%` }}
         />
       </div>
     </div>
@@ -393,63 +538,71 @@ export function ReferenceUrlField({
           {label}
           {required ? <span className="audit-required"> *</span> : null}
         </Label>
+        {items.length > 0 ? (
+          <span className="audit-ref-attach__count" aria-label={`${items.length} of ${MAX_REFERENCE_ITEMS} references attached`}>
+            {items.length} / {MAX_REFERENCE_ITEMS}
+          </span>
+        ) : null}
       </div>
 
       <div className="audit-ref-attach">
-        {uploadProgressBlock}
-
-        {hasValue && !uploadState ? (
-          <div className="audit-ref-attach__chip">
-            <span className="audit-ref-attach__chip-icon" aria-hidden>
-              <ActiveIcon size={15} />
-            </span>
-            <div className="audit-ref-attach__chip-body">
-              <span className="audit-ref-attach__chip-kind">
-                {activeKind === "url"
-                  ? "URL"
-                  : activeKind === "image"
-                    ? "Image"
-                    : activeKind === "audio"
-                      ? "Audio"
-                      : "Audit"}
-              </span>
-              <span className="audit-ref-attach__chip-label" title={value}>
-                {referenceAttachmentLabel(value)}
-              </span>
-            </div>
-            {activeKind === "image" && isUploadedImagePath(value) ? (
-              <ReferenceImageViewer
-                src={value}
-                filename={uploadLabel ?? fileLabelFromUploadPath(value)}
-              />
-            ) : activeKind === "audio" && isUploadedAudioPath(value) ? (
-              <audio
-                controls
-                preload="metadata"
-                src={value}
-                className="audit-ref-attach__player"
-              />
-            ) : null}
-            <div className="audit-ref-attach__chip-actions">
-              <button
-                type="button"
-                className="audit-ref-attach__text-btn"
-                disabled={disabled || uploading}
-                onClick={() => openModal(activeKind)}
-              >
-                Change
-              </button>
-              <button
-                type="button"
-                className="audit-ref-attach__icon-btn"
-                disabled={disabled || uploading}
-                aria-label="Remove reference"
-                onClick={clearValue}
-              >
-                <X size={14} />
-              </button>
-            </div>
-          </div>
+        {items.length > 0 ? (
+          <ul className="audit-ref-attach__list" aria-label={`${label} attachments`}>
+            {items.map((item, index) => {
+              const kind = detectReferenceAttachmentKind(item);
+              const Icon = kindIcon(kind);
+              const src = normalizeUploadedReferencePath(item);
+              const itemLabel = referenceAttachmentLabel(item);
+              const editable = kind === "url" || kind === "audit";
+              return (
+                <li key={item} className="audit-ref-attach__chip">
+                  <span className="audit-ref-attach__chip-icon" aria-hidden>
+                    <Icon size={15} />
+                  </span>
+                  <div className="audit-ref-attach__chip-body">
+                    <span className="audit-ref-attach__chip-kind">{KIND_LABEL[kind]}</span>
+                    <span className="audit-ref-attach__chip-label" title={item}>
+                      {itemLabel}
+                    </span>
+                  </div>
+                  {kind === "image" && isUploadedImagePath(item) ? (
+                    <ReferenceImageViewer
+                      src={src}
+                      filename={fileLabelFromUploadPath(item)}
+                    />
+                  ) : kind === "audio" && isUploadedAudioPath(item) ? (
+                    <audio
+                      controls
+                      preload="metadata"
+                      src={src}
+                      className="audit-ref-attach__player"
+                    />
+                  ) : null}
+                  <div className="audit-ref-attach__chip-actions">
+                    {editable ? (
+                      <button
+                        type="button"
+                        className="audit-ref-attach__text-btn"
+                        disabled={disabled || uploading}
+                        onClick={() => openModal(kind, index)}
+                      >
+                        Edit
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="audit-ref-attach__icon-btn"
+                      disabled={disabled || uploading}
+                      aria-label={`Remove ${itemLabel}`}
+                      onClick={() => removeItem(index)}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         ) : !uploadState ? (
           <div className="audit-ref-attach__empty">
             <FileText size={16} aria-hidden />
@@ -457,18 +610,20 @@ export function ReferenceUrlField({
           </div>
         ) : null}
 
+        {uploadProgressBlock}
+
         <div className="audit-ref-attach__menu-wrap">
           <button
             ref={menuTriggerRef}
             type="button"
             className="audit-ref-attach__add-btn"
-            disabled={disabled || uploading}
+            disabled={disabled || uploading || atCapacity}
             aria-expanded={menuOpen}
             aria-haspopup="menu"
             onClick={() => setMenuOpen((open) => !open)}
           >
             <Plus size={15} aria-hidden />
-            Add reference
+            {items.length > 0 ? "Add more" : "Add reference"}
             <ChevronDown
               size={14}
               className={cn(
@@ -511,7 +666,7 @@ export function ReferenceUrlField({
                       type="button"
                       role="menuitem"
                       className="audit-ref-attach__menu-item"
-                      disabled={uploading}
+                      disabled={uploading || atCapacity}
                       onMouseDown={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -541,24 +696,22 @@ export function ReferenceUrlField({
       <input
         ref={imageInputRef}
         type="file"
+        multiple
         className="audit-reference-field__file-input"
         tabIndex={-1}
         aria-hidden
         accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
-        onChange={(e) => {
-          void handleFileSelect(e.target.files?.[0], "image");
-        }}
+        onChange={(e) => onFileInputChange(e, "image")}
       />
       <input
         ref={audioInputRef}
         type="file"
+        multiple
         className="audit-reference-field__file-input"
         tabIndex={-1}
         aria-hidden
         accept="audio/*,.mp3,.wav,.m4a,.aac,.webm,.ogg,.flac"
-        onChange={(e) => {
-          void handleFileSelect(e.target.files?.[0], "audio");
-        }}
+        onChange={(e) => onFileInputChange(e, "audio")}
       />
 
       <Modal
@@ -582,8 +735,15 @@ export function ReferenceUrlField({
                   : "https://crm.example.com/ticket/12345"
               }
               value={draftUrl}
+              maxLength={MAX_REFERENCE_ITEM_LENGTH}
               disabled={disabled || uploading}
               onChange={(e) => setDraftUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  saveUrl();
+                }
+              }}
             />
             <div className="audit-ref-modal__actions">
               <button
@@ -600,7 +760,7 @@ export function ReferenceUrlField({
                 disabled={uploading}
                 onClick={saveUrl}
               >
-                Save URL
+                {isEditing ? "Save changes" : "Save URL"}
               </button>
             </div>
           </div>
@@ -615,7 +775,7 @@ export function ReferenceUrlField({
                   "audit-ref-modal__dropzone",
                   dragActive && "audit-ref-modal__dropzone--active"
                 )}
-                disabled={disabled || uploading}
+                disabled={disabled || uploading || atCapacity}
                 onClick={() =>
                   (modalKind === "image" ? imageInputRef : audioInputRef).current?.click()
                 }
@@ -637,19 +797,24 @@ export function ReferenceUrlField({
                 onDrop={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  onDropFile(e.dataTransfer.files?.[0], modalKind);
+                  onDropFiles(e.dataTransfer.files, modalKind);
                 }}
               >
                 <Upload size={22} aria-hidden />
                 <strong>
                   {modalKind === "image"
-                    ? "Choose or drop image"
-                    : "Choose or drop audio"}
+                    ? "Choose or drop images"
+                    : "Choose or drop audio files"}
                 </strong>
                 <span>
                   {modalKind === "image"
-                    ? `JPG, PNG, WebP, or GIF · up to ${AUDIT_IMAGE_MAX_MB} MB`
-                    : `MP3, WAV, M4A, AAC, WebM, OGG, or FLAC · up to ${AUDIT_MEDIA_MAX_MB} MB`}
+                    ? `JPG, PNG, WebP, or GIF · up to ${AUDIT_IMAGE_MAX_MB} MB each`
+                    : `MP3, WAV, M4A, AAC, WebM, OGG, or FLAC · up to ${AUDIT_MEDIA_MAX_MB} MB each`}
+                </span>
+                <span>
+                  {atCapacity
+                    ? `Maximum of ${MAX_REFERENCE_ITEMS} references reached`
+                    : `Select multiple files at once · ${remainingSlots} of ${MAX_REFERENCE_ITEMS} slots left`}
                 </span>
               </button>
             )}
@@ -657,7 +822,6 @@ export function ReferenceUrlField({
               <button
                 type="button"
                 className="ui-btn ui-btn--secondary ui-btn--sm"
-                disabled={uploading}
                 onClick={uploading ? cancelUpload : closeModal}
               >
                 {uploading ? "Cancel upload" : "Close"}
@@ -715,7 +879,7 @@ export function ReferenceUrlField({
                 disabled={uploading || !draftAuditCode.trim()}
                 onClick={() => saveAudit(draftAuditCode)}
               >
-                Link audit
+                {isEditing ? "Save changes" : "Link audit"}
               </button>
             </div>
           </div>
