@@ -48,6 +48,7 @@ import {
   filterByPeriod,
   filterByCustomRange,
   filterCurrentMonth,
+  filterRecordsByAuditSource,
   hasActiveIncludeFilters,
   resolveTrendRangeBounds,
   type DashboardIncludeFilters,
@@ -100,6 +101,17 @@ const TREND_OPTIONS: { id: TrendGranularity; label: string }[] = [
 ];
 
 const DEFAULT_AGENT_TARGET = KPI_DEFAULT_AGENT_TARGET;
+
+const AGENT_TARGET_SOURCE_SEGMENTS: {
+  value: AuditSourceKind | "";
+  label: string;
+  hint: string;
+}[] = [
+  { value: "", label: "All", hint: "All audits this month" },
+  { value: "supervisor", label: "Supervisor", hint: "Supervisor audits this month" },
+  { value: "qa", label: "QA", hint: "QA audits this month" },
+  { value: "other", label: "Other", hint: "Other-source audits this month" },
+];
 
 function agentTargetSourceCopy(source: AuditSourceKind | "") {
   if (source === "supervisor") {
@@ -173,6 +185,7 @@ export function DashboardAnalytics({
   const [agentTarget, setAgentTarget] = useState(
     data.agentTarget ?? DEFAULT_AGENT_TARGET
   );
+  const [targetAuditSource, setTargetAuditSource] = useState<AuditSourceKind | "">("");
   const [totalMonthlyTarget, setTotalMonthlyTarget] = useState<number | null>(
     data.totalMonthlyTarget ?? null
   );
@@ -254,7 +267,10 @@ export function DashboardAnalytics({
     [scopedRecords, referenceNow]
   );
 
-  const agentTargetRecords = useMemo(() => {
+  const sidebarAuditSource = includeFilters.auditSource;
+  const effectiveTargetSource = sidebarAuditSource || targetAuditSource;
+
+  const agentTargetBase = useMemo(() => {
     const withoutDeactivated = <T extends { agent: string }>(rows: T[]) =>
       excludeDeactivatedAgentRecords(rows, data.deactivatedAgentNames ?? []);
     return {
@@ -262,6 +278,29 @@ export function DashboardAnalytics({
       month: withoutDeactivated(monthRecords),
     };
   }, [scopedRecords, monthRecords, data.deactivatedAgentNames]);
+
+  const agentTargetSourceCounts = useMemo(() => {
+    const counts: Record<AuditSourceKind | "", number> = {
+      "": agentTargetBase.month.length,
+      supervisor: 0,
+      qa: 0,
+      other: 0,
+    };
+    for (const record of agentTargetBase.month) {
+      counts[record.auditSource ?? "other"] += 1;
+    }
+    return counts;
+  }, [agentTargetBase]);
+
+  // The roster (all) stays unfiltered so agents with no audits from the
+  // selected source still show 0 / target; only this month's count is filtered.
+  const agentTargetRecords = useMemo(
+    () => ({
+      all: agentTargetBase.all,
+      month: filterRecordsByAuditSource(agentTargetBase.month, effectiveTargetSource),
+    }),
+    [agentTargetBase, effectiveTargetSource]
+  );
 
   const auditorTargetSource = useMemo(() => {
     if (auditorTargetRange.from || auditorTargetRange.to) {
@@ -336,7 +375,7 @@ export function DashboardAnalytics({
     user.email,
   ]);
   const isQualityAnalyst = roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST;
-  const agentTargetCopy = agentTargetSourceCopy(includeFilters.auditSource);
+  const agentTargetCopy = agentTargetSourceCopy(effectiveTargetSource);
 
   const topAgents = useMemo(() => computeTopAgents(filtered), [filtered]);
   const topFatals = useMemo(() => computeTopFatals(filtered), [filtered]);
@@ -986,6 +1025,51 @@ export function DashboardAnalytics({
             </div>
           </div>
 
+          <div className="dash-target-source">
+            <span className="dash-target-source__label" id="agent-target-source-label">
+              Audit source
+            </span>
+            <div
+              className="dash-target-source__segments"
+              role="radiogroup"
+              aria-labelledby="agent-target-source-label"
+            >
+              {AGENT_TARGET_SOURCE_SEGMENTS.map((segment) => {
+                const active = effectiveTargetSource === segment.value;
+                const locked = Boolean(sidebarAuditSource) && !active;
+                return (
+                  <button
+                    key={segment.value || "all"}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    disabled={locked}
+                    title={
+                      locked
+                        ? "Audit source is set in the sidebar filters"
+                        : `${segment.hint}: ${agentTargetSourceCounts[segment.value]}`
+                    }
+                    className={cn(
+                      "dash-target-source__segment",
+                      active && "dash-target-source__segment--active"
+                    )}
+                    onClick={() => {
+                      if (!sidebarAuditSource) setTargetAuditSource(segment.value);
+                    }}
+                  >
+                    {segment.label}
+                    <span className="dash-target-source__count">
+                      {agentTargetSourceCounts[segment.value]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {sidebarAuditSource ? (
+              <span className="dash-target-source__note">Set by sidebar filter</span>
+            ) : null}
+          </div>
+
           <div className="dash-target-summary dash-target-summary--agent">
             <span>{agentTargetCopy.summary}</span>
             <strong>
@@ -996,7 +1080,9 @@ export function DashboardAnalytics({
 
           <div className="dash-target-list">
             {agentTargets.agents.length === 0 ? (
-              <p className="dash-empty">{agentTargetCopy.empty}</p>
+              <p className="dash-empty">
+                {sidebarAuditSource ? agentTargetCopy.empty : "No agents in audit history yet."}
+              </p>
             ) : (
               agentTargets.agents.map((agent) => (
                 <div key={agent.name} className="dash-target-row">
