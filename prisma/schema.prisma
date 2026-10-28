@@ -44,6 +44,11 @@ model User {
   agentTransfersReviewed    AgentTransfer[] @relation("TransferReviewedBy")
   agentTransfersFromQa      AgentTransfer[] @relation("TransferFromQa")
   historyOwnedAudits        AuditSubmission[] @relation("HistoryOwner")
+  agentTransfersReverted    AgentTransfer[] @relation("TransferRevertedBy")
+  teamMembershipsAsAgent    AgentTeamMembership[] @relation("MembershipAgent")
+  teamMembershipsAsSupervisor AgentTeamMembership[] @relation("MembershipSupervisor")
+  auditsAsAgentUser         AuditSubmission[] @relation("AuditAgentUser")
+  auditsOwned               AuditSubmission[] @relation("AuditOwnerSupervisor")
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
 
@@ -102,6 +107,12 @@ enum AgentTransferStatus {
   PENDING
   APPROVED
   REJECTED
+  REVERTED
+}
+
+enum AgentTransferKind {
+  TRANSFER
+  REVERT
 }
 
 model AgentTransfer {
@@ -122,6 +133,17 @@ model AgentTransfer {
   reviewedById          String?              @map("reviewed_by_id")
   reviewedAt            DateTime?            @map("reviewed_at")
   reviewNote            String?              @map("review_note")
+  kind                  AgentTransferKind    @default(TRANSFER)
+  fromTeamNameSnapshot  String?              @map("from_team_name_snapshot")
+  toTeamNameSnapshot    String?              @map("to_team_name_snapshot")
+  agentTeamNameBefore   String?              @map("agent_team_name_before")
+  fromQaAssignedById    String?              @map("from_qa_assigned_by_id")
+  revertOfTransferId    String?              @unique @map("revert_of_transfer_id")
+  revertedAt            DateTime?            @map("reverted_at")
+  revertedById          String?              @map("reverted_by_id")
+  revertReason          String?              @map("revert_reason")
+  idempotencyKey        String?              @unique @map("idempotency_key")
+  version               Int                  @default(0)
 
   agentUser         User  @relation("TransferAgent", fields: [agentUserId], references: [id], onDelete: Restrict)
   fromSupervisor    User  @relation("TransferFromSupervisor", fields: [fromSupervisorId], references: [id], onDelete: Restrict)
@@ -131,6 +153,11 @@ model AgentTransfer {
   assignedReviewer  User? @relation("TransferAssignedReviewer", fields: [assignedReviewerId], references: [id], onDelete: SetNull)
   reviewedBy        User? @relation("TransferReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
   historyAudits     AuditSubmission[]
+  revertedBy        User? @relation("TransferRevertedBy", fields: [revertedById], references: [id], onDelete: SetNull)
+  revertOf          AgentTransfer?  @relation("TransferRevert", fields: [revertOfTransferId], references: [id], onDelete: SetNull)
+  revertTransfer    AgentTransfer?  @relation("TransferRevert")
+  membershipsStarted AgentTeamMembership[] @relation("MembershipStartedBy")
+  membershipsEnded   AgentTeamMembership[] @relation("MembershipEndedBy")
 
   @@index([fromSupervisorId])
   @@index([toSupervisorId])
@@ -140,7 +167,34 @@ model AgentTransfer {
   @@index([assignedReviewerId])
   @@index([requestedAt])
   @@index([transferredAt])
+  @@index([agentUserId, status])
   @@map("agent_transfers")
+}
+
+/// One row per period an agent belonged to a supervisor's team.
+/// At most one open row (ended_at IS NULL) per agent — enforced by a partial
+/// unique index created in the migration SQL.
+model AgentTeamMembership {
+  id                  String    @id @default(cuid())
+  agentUserId         String    @map("agent_user_id")
+  supervisorId        String    @map("supervisor_id")
+  teamNameSnapshot    String?   @map("team_name_snapshot")
+  qaUserId            String?   @map("qa_user_id")
+  startedAt           DateTime  @default(now()) @map("started_at")
+  endedAt             DateTime? @map("ended_at")
+  startedByTransferId String?   @map("started_by_transfer_id")
+  endedByTransferId   String?   @map("ended_by_transfer_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  agentUser         User           @relation("MembershipAgent", fields: [agentUserId], references: [id], onDelete: Cascade)
+  supervisor        User           @relation("MembershipSupervisor", fields: [supervisorId], references: [id], onDelete: Cascade)
+  startedByTransfer AgentTransfer? @relation("MembershipStartedBy", fields: [startedByTransferId], references: [id], onDelete: SetNull)
+  endedByTransfer   AgentTransfer? @relation("MembershipEndedBy", fields: [endedByTransferId], references: [id], onDelete: SetNull)
+  audits            AuditSubmission[]
+
+  @@index([agentUserId, startedAt])
+  @@index([supervisorId])
+  @@map("agent_team_memberships")
 }
 
 model SecurityAuditLog {
@@ -340,6 +394,13 @@ model AuditSubmission {
   historyTransferId String?       @map("history_transfer_id")
   historyTransfer   AgentTransfer? @relation(fields: [historyTransferId], references: [id], onDelete: SetNull)
   teamNameSnapshot  String?       @map("team_name_snapshot")
+  /// Stable ownership (set at creation, backfilled for legacy rows).
+  agentUserId       String?       @map("agent_user_id")
+  agentUser         User?         @relation("AuditAgentUser", fields: [agentUserId], references: [id], onDelete: SetNull)
+  ownerSupervisorId String?       @map("owner_supervisor_id")
+  ownerSupervisor   User?         @relation("AuditOwnerSupervisor", fields: [ownerSupervisorId], references: [id], onDelete: SetNull)
+  teamMembershipId  String?       @map("team_membership_id")
+  teamMembership    AgentTeamMembership? @relation(fields: [teamMembershipId], references: [id], onDelete: SetNull)
   notifications  Notification[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -348,6 +409,9 @@ model AuditSubmission {
   @@index([isHistory])
   @@index([historyOwnerId])
   @@index([historyTransferId])
+  @@index([agentUserId, isHistory])
+  @@index([ownerSupervisorId])
+  @@index([teamMembershipId])
   @@index([lob])
   @@index([grade])
   @@index([createdAt])
