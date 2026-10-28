@@ -9,6 +9,7 @@
     "start": "next start --hostname 0.0.0.0 -p 4782",
     "start:prod": "npm run clean && npm run build && npm run start",
     "lint": "eslint",
+    "test": "vitest run",
     "verify:resilience": "tsx scripts/verify-production-resilience.ts",
     "verify:form-supervisors": "tsx scripts/verify-form-supervisor-access.ts",
     "verify:audit-import": "tsx scripts/verify-audit-import.ts",
@@ -60,6 +61,7 @@
     "eslint-config-next": "16.2.7",
     "tailwindcss": "^4",
     "tsx": "^4.22.4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }
