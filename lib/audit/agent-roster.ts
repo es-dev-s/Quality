@@ -18,7 +18,10 @@ export {
   normalizeAgentDisplayName,
 } from "@/lib/audit/agent-name-match";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
-import { isSupervisorTierRole } from "@/lib/audit/supervisor-tier";
+import {
+  isSupervisorTierRole,
+  SUPERVISOR_TIER_ROLE_SLUG_FILTER,
+} from "@/lib/audit/supervisor-tier";
 import {
   ACTIVE_USER_WHERE,
   isLoginEligibleUser,
@@ -168,6 +171,26 @@ export async function fetchQmAssignedAgentUserIds(
   return [...new Set(rows.map((row) => row.agentId))];
 }
 
+/**
+ * Agents currently under supervisors this QM created — keeps the QM roster
+ * correct after agents are transferred into (or reverted back to) their teams.
+ */
+export async function fetchQmTeamAgentUserIds(
+  qualityManagerId: string
+): Promise<string[]> {
+  const rows = await prisma.user.findMany({
+    where: {
+      role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
+      createdBy: {
+        createdById: qualityManagerId,
+        role: { slug: SUPERVISOR_TIER_ROLE_SLUG_FILTER },
+      },
+    },
+    select: { id: true },
+  });
+  return rows.map((row) => row.id);
+}
+
 /** Display names for agents this QM approved — used for Team 1 history after transfer. */
 export async function fetchQmApprovedAgentDisplayNames(
   qualityManagerId: string
@@ -194,12 +217,13 @@ async function fetchQmAgentEntries(
   qualityManagerId: string,
   options?: AgentRosterOptions
 ): Promise<AgentRosterEntry[]> {
-  const [approvedIds, assignedIds] = await Promise.all([
+  const [approvedIds, assignedIds, teamIds] = await Promise.all([
     fetchQmApprovedAgentUserIds(qualityManagerId),
     fetchQmAssignedAgentUserIds(qualityManagerId),
+    fetchQmTeamAgentUserIds(qualityManagerId),
   ]);
 
-  const userIds = [...new Set([...approvedIds, ...assignedIds])];
+  const userIds = [...new Set([...approvedIds, ...assignedIds, ...teamIds])];
   if (userIds.length === 0) return [];
 
   const users = await prisma.user.findMany({

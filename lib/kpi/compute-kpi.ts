@@ -107,9 +107,9 @@ export function filterKpiRecords(
   filters: KpiFiltersState,
   qmAgentNames?: string[] | null
 ): KpiAuditRecord[] {
+  // History rows are the same audits flagged after an agent transfer; they
+  // still belong to the team that owned them, so KPIs keep counting them.
   return records.filter((record) => {
-    if (record.isHistory) return false;
-
     if (filters.qm) {
       const roster = qmAgentNames ?? [];
       if (roster.length === 0) return false;

@@ -27,6 +27,7 @@ import {
 } from "@/lib/audit/feedback-status-access";
 import { resolveMemberFeedbackMode } from "@/lib/audit/member-access";
 import { calculateResults } from "@/lib/audit/calculate-results";
+import { resolveAuditOwnership } from "@/lib/agent-transfer/ownership";
 import { parseAuditType } from "@/lib/audit/audit-type";
 import { getInteractionConfig } from "@/lib/actions/interaction-config";
 import { validateAuditFormAgainstConfig } from "@/lib/audit/validate-audit-form-config";
@@ -298,10 +299,12 @@ export async function saveAuditSubmission(
 
   const record = result.record;
 
-  const teamNameSnapshot = await resolveTeamNameSnapshot(
-    record.agent,
-    record.supervisor || null
-  );
+  const [teamNameSnapshot, ownership] = await Promise.all([
+    resolveTeamNameSnapshot(record.agent, record.supervisor || null),
+    // Stable ownership (agent user + owning supervisor) so transfers and
+    // reverts do not depend on display-name matching.
+    resolveAuditOwnership(prisma, record.agent),
+  ]);
 
   const submissionData = {
     auditCode: record.id,
@@ -339,6 +342,9 @@ export async function saveAuditSubmission(
     record: record as unknown as object,
     submissionKey: submissionKey ?? null,
     teamNameSnapshot,
+    agentUserId: ownership.agentUserId,
+    ownerSupervisorId: ownership.ownerSupervisorId,
+    teamMembershipId: ownership.teamMembershipId,
   };
 
   let createdId: string | undefined;
