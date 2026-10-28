@@ -86,7 +86,8 @@ export function AgentTransferModal({
 
     startTransition(async () => {
       const [targets, count] = await Promise.all([
-        listTransferTargetSupervisors(),
+        // Never offer the agent's current supervisor as a target.
+        listTransferTargetSupervisors(undefined, { agentUserId: resolvedAgent.id }),
         countPendingHistoryAuditsForAgent(resolvedAgent.id),
       ]);
       if (cancelled) return;

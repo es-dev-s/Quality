@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowRightLeft } from "lucide-react";
+import { ArrowRightLeft, Undo2 } from "lucide-react";
 import {
   DataTablePanel,
   usePaginatedRows,
@@ -10,6 +10,7 @@ import { Button } from "@/components/primitives/button";
 import { HistoryBadge } from "@/components/audit/history-badge";
 import { AuditDetailModal } from "@/components/audit-logs/audit-detail-modal";
 import { AgentTransferModal } from "@/components/admin/agent-transfer-modal";
+import { RevertTransferModal } from "@/components/audit-transfer/revert-transfer-modal";
 import type { AgentListItem } from "@/lib/actions/agents";
 import type {
   AgentTransferRow,
@@ -32,12 +33,14 @@ function formatWhen(value: string) {
 function transferStatusLabel(status: AgentTransferRow["status"]) {
   if (status === "APPROVED") return "Approved";
   if (status === "REJECTED") return "Rejected";
+  if (status === "REVERTED") return "Reverted";
   return "Pending";
 }
 
 function transferStatusClass(status: AgentTransferRow["status"]) {
   if (status === "APPROVED") return "platform-tag platform-tag--success";
   if (status === "REJECTED") return "platform-tag platform-tag--danger";
+  if (status === "REVERTED") return "platform-tag platform-tag--muted";
   return "platform-tag platform-tag--warning";
 }
 
@@ -52,6 +55,10 @@ export function TransferHistoryPanel({
   const [auditSearch, setAuditSearch] = useState("");
   const [viewAuditId, setViewAuditId] = useState<string | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [revertTarget, setRevertTarget] = useState<AgentTransferRow | null>(null);
+  const showActions = transfers.some(
+    (row) => row.canRevert || row.revertBlockedReason !== null
+  );
 
   const filteredTransfers = useMemo(() => {
     const q = transferSearch.trim().toLowerCase();
@@ -64,7 +71,9 @@ export function TransferHistoryPanel({
         row.toSupervisorName,
         row.transferredByName,
         row.status,
+        row.kind === "REVERT" ? "revert" : "",
         row.note ?? "",
+        row.revertReason ?? "",
       ]
         .join(" ")
         .toLowerCase()
@@ -132,6 +141,7 @@ export function TransferHistoryPanel({
                   <th>By</th>
                   <th>Audits</th>
                   <th>Note</th>
+                  {showActions ? <th>Actions</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -141,6 +151,14 @@ export function TransferHistoryPanel({
                       <span className={transferStatusClass(row.status)}>
                         {transferStatusLabel(row.status)}
                       </span>
+                      {row.kind === "REVERT" ? (
+                        <span
+                          className="platform-tag platform-tag--warning"
+                          style={{ marginLeft: 6 }}
+                        >
+                          Revert
+                        </span>
+                      ) : null}
                     </td>
                     <td>{formatWhen(row.requestedAt)}</td>
                     <td>
@@ -156,7 +174,36 @@ export function TransferHistoryPanel({
                     <td>
                       {row.status === "APPROVED" ? row.auditCountAtTransfer : "—"}
                     </td>
-                    <td>{row.note?.trim() || "—"}</td>
+                    <td>
+                      <div>{row.note?.trim() || "—"}</div>
+                      {row.status === "REVERTED" && row.revertedAt ? (
+                        <div className="dash-cell-muted">
+                          Reverted {formatWhen(row.revertedAt)}
+                          {row.revertedByName ? ` by ${row.revertedByName}` : ""}
+                          {row.revertReason ? `: ${row.revertReason}` : ""}
+                        </div>
+                      ) : null}
+                    </td>
+                    {showActions ? (
+                      <td>
+                        {row.canRevert || row.revertBlockedReason ? (
+                          <button
+                            type="button"
+                            className="ui-btn ui-btn--ghost ui-btn--sm"
+                            disabled={!row.canRevert}
+                            title={
+                              row.canRevert
+                                ? "Move the agent back to the previous supervisor"
+                                : (row.revertBlockedReason ?? undefined)
+                            }
+                            onClick={() => setRevertTarget(row)}
+                          >
+                            <Undo2 size={14} />
+                            Revert
+                          </button>
+                        ) : null}
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -233,6 +280,11 @@ export function TransferHistoryPanel({
         canEditAudits={false}
         canEditSupervisorRemarks={false}
         onClose={() => setViewAuditId(null)}
+      />
+
+      <RevertTransferModal
+        transfer={revertTarget}
+        onClose={() => setRevertTarget(null)}
       />
 
       {canTransferAgents ? (
