@@ -180,6 +180,8 @@ export async function tagWorkingAuditsForTransfer(
       historyOwnerId: params.fromSupervisorId,
       historyTransferId: params.transferId,
       ownerSupervisorId: params.fromSupervisorId,
+      // Rows only match when unambiguously this agent's, so pin the id.
+      agentUserId: params.agentUserId,
     },
   });
 

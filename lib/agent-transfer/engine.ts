@@ -119,15 +119,24 @@ export async function executeAgentTransfer(
 
   await lockAgentRow(tx, agentUserId);
 
-  const [fromSupervisor, toSupervisor, agent, assignment] = await Promise.all([
-    tx.user.findUnique({ where: { id: fromSupervisorId }, select: { teamName: true } }),
-    tx.user.findUnique({ where: { id: toSupervisorId }, select: { teamName: true } }),
-    tx.user.findUnique({ where: { id: agentUserId }, select: { teamName: true } }),
-    tx.agentAssignment.findUnique({
-      where: { agentId: agentUserId },
-      select: { assignedToId: true, assignedById: true },
-    }),
-  ]);
+  // Sequential on purpose: queries on one interactive-transaction connection
+  // must not be issued concurrently (pg deprecates it).
+  const fromSupervisor = await tx.user.findUnique({
+    where: { id: fromSupervisorId },
+    select: { teamName: true },
+  });
+  const toSupervisor = await tx.user.findUnique({
+    where: { id: toSupervisorId },
+    select: { teamName: true },
+  });
+  const agent = await tx.user.findUnique({
+    where: { id: agentUserId },
+    select: { teamName: true },
+  });
+  const assignment = await tx.agentAssignment.findUnique({
+    where: { agentId: agentUserId },
+    select: { assignedToId: true, assignedById: true },
+  });
   const fromTeamName = trimOrNull(fromSupervisor?.teamName);
   const toTeamName = trimOrNull(toSupervisor?.teamName);
   const fromQaUserId = assignment?.assignedToId ?? null;
@@ -228,28 +237,27 @@ type RevertContext = {
 async function loadRevertContext(db: Db, transferId: string): Promise<RevertContext | null> {
   const transfer = await db.agentTransfer.findUnique({ where: { id: transferId } });
   if (!transfer) return null;
-  const [agent, fromSupervisor, toSupervisor] = await Promise.all([
-    db.user.findUnique({
-      where: { id: transfer.agentUserId },
-      select: { id: true, name: true, email: true, createdById: true, teamName: true },
-    }),
-    db.user.findUnique({
-      where: { id: transfer.fromSupervisorId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        isActive: true,
-        approvalStatus: true,
-        teamName: true,
-        createdById: true,
-      },
-    }),
-    db.user.findUnique({
-      where: { id: transfer.toSupervisorId },
-      select: { id: true, name: true, email: true, teamName: true },
-    }),
-  ]);
+  // Sequential: may run on an interactive-transaction connection.
+  const agent = await db.user.findUnique({
+    where: { id: transfer.agentUserId },
+    select: { id: true, name: true, email: true, createdById: true, teamName: true },
+  });
+  const fromSupervisor = await db.user.findUnique({
+    where: { id: transfer.fromSupervisorId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      isActive: true,
+      approvalStatus: true,
+      teamName: true,
+      createdById: true,
+    },
+  });
+  const toSupervisor = await db.user.findUnique({
+    where: { id: transfer.toSupervisorId },
+    select: { id: true, name: true, email: true, teamName: true },
+  });
   if (!agent || !fromSupervisor || !toSupervisor) return null;
   return { transfer, agent, fromSupervisor, toSupervisor };
 }
@@ -301,21 +309,19 @@ async function evaluateRevert(
     );
   }
 
-  const [later, pending] = await Promise.all([
-    db.agentTransfer.findFirst({
-      where: {
-        agentUserId: transfer.agentUserId,
-        id: { not: transfer.id },
-        status: { in: ["APPROVED", "REVERTED"] },
-        transferredAt: { gt: transfer.transferredAt },
-      },
-      select: { id: true },
-    }),
-    db.agentTransfer.findFirst({
-      where: { agentUserId: transfer.agentUserId, status: "PENDING" },
-      select: { id: true },
-    }),
-  ]);
+  const later = await db.agentTransfer.findFirst({
+    where: {
+      agentUserId: transfer.agentUserId,
+      id: { not: transfer.id },
+      status: { in: ["APPROVED", "REVERTED"] },
+      transferredAt: { gt: transfer.transferredAt },
+    },
+    select: { id: true },
+  });
+  const pending = await db.agentTransfer.findFirst({
+    where: { agentUserId: transfer.agentUserId, status: "PENDING" },
+    select: { id: true },
+  });
   if (later) {
     return fail("NOT_LATEST", "Only the agent's most recent transfer can be reverted.");
   }
@@ -595,6 +601,8 @@ export async function revertAgentTransferInTx(
       historyOwnerId: transfer.toSupervisorId,
       historyTransferId: revertRow.id,
       ownerSupervisorId: transfer.toSupervisorId,
+      // Matched unambiguously to this agent, so pin ownership by id.
+      agentUserId: transfer.agentUserId,
     },
   });
 
@@ -606,6 +614,9 @@ export async function revertAgentTransferInTx(
       historyOwnerId: null,
       historyTransferId: null,
       ownerSupervisorId: transfer.fromSupervisorId,
+      // Tagged for this agent at transfer time; legacy name-only rows gain
+      // a stable agent id so the membership link below covers them too.
+      agentUserId: transfer.agentUserId,
     },
   });
 
