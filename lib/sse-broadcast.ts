@@ -7,8 +7,25 @@ import type { SSEEvent } from "@/lib/sse-events";
  */
 type Controller = ReadableStreamDefaultController<Uint8Array>;
 
-const subscribersByUser = new Map<string, Set<Controller>>();
-const subscribersByTag = new Map<string, Set<Controller>>();
+type SubscriberRegistry = {
+  byUser: Map<string, Set<Controller>>;
+  byTag: Map<string, Set<Controller>>;
+};
+
+/**
+ * Next bundles this module into several server chunks (route handlers vs. server
+ * actions / RSC), each with its own module scope. Pin the registry on globalThis
+ * so `/api/events` subscribers and action-side broadcasts share one instance.
+ */
+const globalForSSE = globalThis as typeof globalThis & {
+  __qaSseRegistry?: SubscriberRegistry;
+};
+const registry: SubscriberRegistry =
+  globalForSSE.__qaSseRegistry ??
+  (globalForSSE.__qaSseRegistry = { byUser: new Map(), byTag: new Map() });
+
+const subscribersByUser = registry.byUser;
+const subscribersByTag = registry.byTag;
 
 function encodeEvent(event: SSEEvent): Uint8Array {
   return new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`);

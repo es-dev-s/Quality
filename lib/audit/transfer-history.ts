@@ -67,6 +67,71 @@ export async function collectAgentTransferMatchNames(
   return [...names];
 }
 
+/**
+ * True when another agent user shares one of the match names (name/email).
+ * Legacy audits (no agentUserId) for an ambiguous name are never guessed.
+ */
+export async function isAgentNameAmbiguous(
+  db: Pick<Prisma.TransactionClient, "user">,
+  agentUserId: string,
+  names: string[]
+): Promise<boolean> {
+  const filter = caseInsensitiveIn(names);
+  if (!filter) return false;
+  const other = await db.user.findFirst({
+    where: {
+      id: { not: agentUserId },
+      role: { slug: SYSTEM_ROLE_SLUGS.AGENT },
+      OR: [{ name: filter }, { email: filter }],
+    },
+    select: { id: true },
+  });
+  return Boolean(other);
+}
+
+/**
+ * Working (non-history) audits that belong to an agent while owned by a
+ * supervisor. Uses stable ownership (agentUserId / ownerSupervisorId) and only
+ * falls back to name matching for legacy rows when the name is unambiguous.
+ */
+export async function buildAgentOwnedAuditWhere(
+  db: AuditNameDb,
+  params: {
+    agentUserId: string;
+    extraNames: string[];
+    ownerSupervisorId?: string | null;
+  }
+): Promise<Prisma.AuditSubmissionWhereInput> {
+  const names = await collectAgentTransferMatchNames(
+    db,
+    params.agentUserId,
+    params.extraNames
+  );
+  const agentFilter = caseInsensitiveIn(names);
+  const ambiguous = agentFilter
+    ? await isAgentNameAmbiguous(db, params.agentUserId, names)
+    : true;
+
+  const agentMatch: Prisma.AuditSubmissionWhereInput[] = [
+    { agentUserId: params.agentUserId },
+  ];
+  if (agentFilter && !ambiguous) {
+    agentMatch.push({ agentUserId: null, agent: agentFilter });
+  }
+
+  const and: Prisma.AuditSubmissionWhereInput[] = [{ OR: agentMatch }];
+  if (params.ownerSupervisorId) {
+    and.push({
+      OR: [
+        { ownerSupervisorId: params.ownerSupervisorId },
+        { ownerSupervisorId: null },
+      ],
+    });
+  }
+
+  return { isHistory: false, AND: and };
+}
+
 export async function tagWorkingAuditsForTransfer(
   db: AuditNameDb,
   params: {
@@ -79,21 +144,18 @@ export async function tagWorkingAuditsForTransfer(
     excludeSubmittedById?: string | null;
   }
 ): Promise<number> {
-  const names = await collectAgentTransferMatchNames(
-    db,
-    params.agentUserId,
-    params.extraNames
-  );
-  const agentFilter = caseInsensitiveIn(names);
-  if (!agentFilter) return 0;
+  const ownedWhere = await buildAgentOwnedAuditWhere(db, {
+    agentUserId: params.agentUserId,
+    extraNames: params.extraNames,
+    ownerSupervisorId: params.fromSupervisorId,
+  });
 
   const cutoff = params.cutoff ?? null;
   const excludeSubmittedById = params.excludeSubmittedById?.trim() || null;
   // Cut off by createdAt only. auditDate is the interaction date and is often
   // backdated on the new team — using it would steal their working audits.
   const workingWhere: Prisma.AuditSubmissionWhereInput = {
-    isHistory: false,
-    agent: agentFilter,
+    ...ownedWhere,
     ...(cutoff ? { createdAt: { lte: cutoff } } : {}),
     ...(excludeSubmittedById
       ? { NOT: { submittedById: excludeSubmittedById } }
@@ -117,6 +179,9 @@ export async function tagWorkingAuditsForTransfer(
       isHistory: true,
       historyOwnerId: params.fromSupervisorId,
       historyTransferId: params.transferId,
+      ownerSupervisorId: params.fromSupervisorId,
+      // Rows only match when unambiguously this agent's, so pin the id.
+      agentUserId: params.agentUserId,
     },
   });
 
@@ -141,6 +206,9 @@ export async function reconcileOutgoingTransferHistory(
     where: {
       fromSupervisorId: { in: supervisorIds },
       status: "APPROVED",
+      // REVERT rows tag their own audits at revert time; reconciling them on
+      // read would re-steal the restored team's audits.
+      kind: "TRANSFER",
     },
     select: {
       id: true,

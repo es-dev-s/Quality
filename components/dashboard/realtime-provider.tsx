@@ -9,7 +9,11 @@ import {
   type ReactNode,
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { isAuditSSEEvent, type SSEEvent } from "@/lib/sse-events";
+import {
+  isAgentTransferSSEEvent,
+  isAuditSSEEvent,
+  type SSEEvent,
+} from "@/lib/sse-events";
 
 type RealtimeListener = (event: SSEEvent) => void;
 type Unsubscribe = () => void;
@@ -31,6 +35,10 @@ function isDataPage(pathname: string): boolean {
 
 function isRosterPage(pathname: string): boolean {
   return pathname.startsWith("/settings") || pathname.startsWith("/forms");
+}
+
+function isTransferPage(pathname: string): boolean {
+  return pathname.startsWith("/audit-transfer-history");
 }
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {
@@ -100,6 +108,14 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             (event.type === "user:activated" ||
               event.type === "user:deactivated") &&
             isRosterPage(pathnameRef.current)
+          ) {
+            scheduleDataRefresh();
+          }
+
+          if (
+            isAgentTransferSSEEvent(event) &&
+            (isRosterPage(pathnameRef.current) ||
+              isTransferPage(pathnameRef.current))
           ) {
             scheduleDataRefresh();
           }

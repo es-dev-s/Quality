@@ -16,6 +16,10 @@ import { loadImportEntityCatalog } from "@/lib/import/resolve-import-entities";
 import { validateImportEntities } from "@/lib/import/import-entity-catalog";
 import { importRowIntegrityError } from "@/lib/import/import-row-guards";
 import { prisma } from "@/lib/prisma";
+import {
+  createAuditOwnershipResolver,
+  type AuditOwnership,
+} from "@/lib/agent-transfer/ownership";
 
 const importOptionsSchema = z.object({
   skipExisting: z.boolean().optional(),
@@ -197,6 +201,15 @@ export async function importAuditSubmissions(
     errors: [],
   };
 
+  // Load the agent roster once for the whole import (best-effort).
+  let resolveOwnership: (name: string | null | undefined) => AuditOwnership =
+    () => ({ agentUserId: null, ownerSupervisorId: null, teamMembershipId: null });
+  try {
+    resolveOwnership = await createAuditOwnershipResolver(prisma);
+  } catch (error) {
+    console.error("Import ownership resolver failed:", error);
+  }
+
   for (const row of structurallyValid) {
     const resolved = entityValidation.resolved.get(row.rowNumber);
     if (!resolved) {
@@ -282,6 +295,7 @@ export async function importAuditSubmissions(
           catScores: normalizedRow.catScores,
           rows: normalizedRow.auditRows,
           record: record as unknown as object,
+          ...resolveOwnership(normalizedRow.formData.agent),
           ...(createdAt && !Number.isNaN(createdAt.getTime())
             ? { createdAt }
             : {}),

@@ -175,6 +175,15 @@ function notificationTag(type: string): { label: string; className: string } | n
       className: "notification-bell__tag notification-bell__tag--dispute",
     };
   }
+  if (
+    type === NOTIFICATION_TYPES.AGENT_TRANSFERRED ||
+    type === NOTIFICATION_TYPES.AGENT_TEAM_CHANGED
+  ) {
+    return { label: "TRANSFER", className: "notification-bell__tag notification-bell__tag--transfer" };
+  }
+  if (type === NOTIFICATION_TYPES.AGENT_TRANSFER_REVERTED) {
+    return { label: "TRANSFER REVERTED", className: "notification-bell__tag notification-bell__tag--transfer" };
+  }
   return null;
 }
 

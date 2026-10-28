@@ -355,6 +355,11 @@
   background: var(--color-error);
 }
 
+.notification-bell__tag--transfer {
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-text-primary) 10%, var(--color-bg-elevated));
+}
+
 .notification-bell__item-body {
   font-size: 0.75rem;
   line-height: 1.45;

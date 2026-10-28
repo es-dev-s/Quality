@@ -10,9 +10,9 @@ import { isSupervisorTierRole } from "@/lib/audit/supervisor-tier";
 
 async function TransferHistoryContent() {
   const session = await requirePageAccess("/audit-transfer-history");
-  const canTransferAgents =
-    canManageManagedUsers(session.user.role) &&
-    !isSupervisorTierRole(session.user.role.slug);
+  // Supervisors can request transfers (QM approval required); QM / superadmin
+  // transfer directly.
+  const canTransferAgents = canManageManagedUsers(session.user.role);
   const [{ transfers, historyAudits }, agentsData] = await Promise.all([
     getAgentTransferHistory(),
     canTransferAgents
