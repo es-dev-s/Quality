@@ -23,25 +23,30 @@ import { isSupervisorTierRole, SUPERVISOR_TIER_ROLE_SLUG_FILTER } from "@/lib/au
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { withActiveUserFilter, ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
 import {
-  collectAgentTransferMatchNames,
+  buildAgentOwnedAuditWhere,
   reconcileTransferHistoryForViewer,
-  tagWorkingAuditsForTransfer,
 } from "@/lib/audit/transfer-history";
 import {
   fetchApprovedTransferIdsForQa,
   fetchCreatedSupervisorIds,
 } from "@/lib/audit/transfer-history-scope";
 import { fetchQmApprovedAgentDisplayNames } from "@/lib/audit/agent-roster";
-
-class TransferExecutionError extends Error {
-  constructor(
-    readonly code: "ALREADY_REVIEWED" | "SUPERVISOR_CHANGED" | "PENDING_EXISTS",
-    message: string
-  ) {
-    super(message);
-    this.name = "TransferExecutionError";
-  }
-}
+import {
+  AgentTransferError as TransferExecutionError,
+  executeAgentTransfer,
+  getRevertEligibilityForTransfers,
+  previewAgentTransferRevert,
+  revertAgentTransferInTx,
+  type RevertPreview,
+} from "@/lib/agent-transfer/engine";
+import {
+  getAgentTransferRevertWindowDays,
+  isAgentTransferRevertEnabled,
+} from "@/lib/agent-transfer/config";
+import {
+  emitAgentTransferRevertedEvents,
+  emitAgentTransferredEvents,
+} from "@/lib/agent-transfer/events";
 
 const transferSchema = z.object({
   agentUserId: z.string().min(1),
@@ -54,6 +59,17 @@ const reviewSchema = z.object({
   reviewNote: z.string().trim().max(2000).optional(),
 });
 
+const revertSchema = z.object({
+  transferId: z.string().min(1),
+  reason: z
+    .string()
+    .trim()
+    .min(5, "Please give a reason (at least 5 characters).")
+    .max(2000),
+  idempotencyKey: z.string().trim().min(8).max(100),
+  expectedVersion: z.number().int().min(0).optional(),
+});
+
 export type TransferTargetSupervisor = {
   id: string;
   name: string;
@@ -63,6 +79,17 @@ export type TransferTargetSupervisor = {
 
 export type AgentTransferRow = {
   id: string;
+  kind: "TRANSFER" | "REVERT";
+  version: number;
+  revertOfTransferId: string | null;
+  revertedAt: string | null;
+  revertedByName: string | null;
+  revertReason: string | null;
+  /** True when the viewer may revert this transfer right now. */
+  canRevert: boolean;
+  /** Why revert is unavailable (only for viewers who could otherwise revert). */
+  revertBlockedReason: string | null;
+  revertWindowEndsAt: string | null;
   agentName: string;
   agentEmail: string;
   fromSupervisorName: string;
@@ -158,96 +185,64 @@ async function countWorkingAuditsForAgent(
   agentUserId: string,
   fallbackName: string
 ): Promise<number> {
-  const names = await collectAgentTransferMatchNames(prisma, agentUserId, [
-    fallbackName,
-  ]);
-  const agentFilter = caseInsensitiveIn(names);
-  if (!agentFilter) return 0;
-  return prisma.auditSubmission.count({
-    where: {
-      isHistory: false,
-      agent: agentFilter,
-    },
+  const agent = await prisma.user.findUnique({
+    where: { id: agentUserId },
+    select: { createdById: true },
   });
-}
-
-async function executeAgentTransfer(
-  tx: Prisma.TransactionClient,
-  params: {
-    transferId: string;
-    agentUserId: string;
-    agentDisplayName: string;
-    fromSupervisorId: string;
-    toSupervisorId: string;
-  }
-) {
-  const { transferId, agentUserId, agentDisplayName, fromSupervisorId, toSupervisorId } =
-    params;
-
-  const fromSupervisor = await tx.user.findUnique({
-    where: { id: fromSupervisorId },
-    select: { teamName: true },
-  });
-  const previousTeamName = fromSupervisor?.teamName?.trim() || null;
-
-  const assignment = await tx.agentAssignment.findUnique({
-    where: { agentId: agentUserId },
-    select: { assignedToId: true },
-  });
-  const fromQaUserId = assignment?.assignedToId ?? null;
-
-  const taggedCount = await tagWorkingAuditsForTransfer(tx, {
-    transferId,
+  const where = await buildAgentOwnedAuditWhere(prisma, {
     agentUserId,
-    extraNames: [agentDisplayName],
-    fromSupervisorId,
-    previousTeamName,
-    excludeSubmittedById: toSupervisorId,
+    extraNames: [fallbackName],
+    ownerSupervisorId: agent?.createdById ?? null,
   });
-
-  await tx.agentTransfer.update({
-    where: { id: transferId },
-    data: {
-      auditCountAtTransfer: taggedCount,
-      status: "APPROVED",
-      transferredAt: new Date(),
-    },
-  });
-
-  await tx.agentAssignment.deleteMany({
-    where: { agentId: agentUserId },
-  });
-
-  const ownershipUpdate = await tx.user.updateMany({
-    where: {
-      id: agentUserId,
-      createdById: fromSupervisorId,
-    },
-    data: { createdById: toSupervisorId },
-  });
-
-  if (ownershipUpdate.count === 0) {
-    throw new TransferExecutionError(
-      "SUPERVISOR_CHANGED",
-      "Agent supervisor changed before transfer could complete."
-    );
-  }
-
-  return { taggedCount, fromQaUserId };
+  return prisma.auditSubmission.count({ where });
 }
 
-async function snapshotTransferQa(
-  transferId: string,
-  fromQaUserId: string | null | undefined
-) {
-  if (!fromQaUserId) return;
+function supervisorLabel(user: {
+  name: string | null;
+  email: string;
+  teamName?: string | null;
+}): string {
+  const name = resolveRoleUserName(user);
+  const team = user.teamName?.trim();
+  return team ? `${team} (${name})` : name;
+}
+
+async function notifyTransferCompleted(params: {
+  transferId: string;
+  agentUserId: string;
+  agentName: string;
+  fromSupervisorId: string;
+  toSupervisorId: string;
+  fromQaUserId: string | null;
+  actorUserId: string;
+}) {
   try {
-    await prisma.agentTransfer.update({
-      where: { id: transferId },
-      data: { fromQaUserId },
+    const [from, to, fromQmId, toQmId] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: params.fromSupervisorId },
+        select: { name: true, email: true, teamName: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: params.toSupervisorId },
+        select: { name: true, email: true, teamName: true },
+      }),
+      resolveRespectiveQmId(params.fromSupervisorId),
+      resolveRespectiveQmId(params.toSupervisorId),
+    ]);
+    await emitAgentTransferredEvents({
+      transferId: params.transferId,
+      agentUserId: params.agentUserId,
+      agentName: params.agentName,
+      fromSupervisorId: params.fromSupervisorId,
+      toSupervisorId: params.toSupervisorId,
+      qaUserIds: [params.fromQaUserId],
+      qmUserIds: [fromQmId, toQmId],
+      actorUserId: params.actorUserId,
+      fromLabel: from ? supervisorLabel(from) : "the previous team",
+      toLabel: to ? supervisorLabel(to) : "the new team",
     });
   } catch (error) {
-    console.error("Could not snapshot transferring QA on agent transfer:", error);
+    console.error("Agent transfer notifications failed:", error);
   }
 }
 
@@ -272,7 +267,8 @@ function canReviewTransfer(
 }
 
 export async function listTransferTargetSupervisors(
-  excludeSupervisorId?: string
+  excludeSupervisorId?: string,
+  options?: { agentUserId?: string }
 ): Promise<{ supervisors: TransferTargetSupervisor[] } | { error: string }> {
   await requirePermission(PERMISSIONS.USERS_MANAGE_MANAGED);
   const session = await requireAuth();
@@ -287,6 +283,14 @@ export async function listTransferTargetSupervisors(
   }
   if (isSupervisorTierRole(session.user.role.slug)) {
     excludeIds.add(session.user.id);
+  }
+  if (options?.agentUserId) {
+    // Never offer the agent's current supervisor as a target.
+    const agent = await prisma.user.findUnique({
+      where: { id: options.agentUserId },
+      select: { createdById: true },
+    });
+    if (agent?.createdById) excludeIds.add(agent.createdById);
   }
 
   const supervisors = await prisma.user.findMany({
@@ -459,6 +463,7 @@ export async function transferAgentToSupervisor(input: {
           agentDisplayName,
           fromSupervisorId,
           toSupervisorId: targetSupervisor.id,
+          actorUserId: session.user.id,
         });
 
         return {
@@ -468,7 +473,6 @@ export async function transferAgentToSupervisor(input: {
         };
       });
 
-      await snapshotTransferQa(result.transferId, result.fromQaUserId);
       invalidateAgentAssignmentCaches(
         session.user.id,
         targetSupervisor.id,
@@ -480,7 +484,17 @@ export async function transferAgentToSupervisor(input: {
         fromSupervisorId,
         targetSupervisor.id,
         result.fromQaUserId,
+        agentUser.id,
       ]);
+      await notifyTransferCompleted({
+        transferId: result.transferId,
+        agentUserId: agentUser.id,
+        agentName: agentDisplayName,
+        fromSupervisorId,
+        toSupervisorId: targetSupervisor.id,
+        fromQaUserId: result.fromQaUserId,
+        actorUserId: session.user.id,
+      });
 
       return {
         success: true as const,
@@ -617,17 +631,36 @@ export async function approveAgentTransferRequest(input: {
     return { error: "You are not assigned to review this transfer request." };
   }
 
+  const autoRejectNote =
+    parsed.data.reviewNote?.trim() ||
+    "Rejected automatically: agent supervisor changed since request was submitted.";
+  const supervisorChangedMessage =
+    "This agent's supervisor changed since the request was submitted, so the request was rejected. Submit a new transfer if still needed.";
+
   if (transfer.agentUser.createdById !== transfer.fromSupervisorId) {
-    return {
-      error:
-        "This agent's supervisor changed since the request was submitted. Reject and submit a new transfer.",
-    };
+    // Close the stale request so it does not stay PENDING forever.
+    await prisma.agentTransfer.updateMany({
+      where: { id: transfer.id, status: "PENDING" },
+      data: {
+        status: "REJECTED",
+        reviewedById: session.user.id,
+        reviewedAt: new Date(),
+        reviewNote: autoRejectNote,
+      },
+    });
+    revalidateTransferPaths([
+      session.user.id,
+      transfer.fromSupervisorId,
+      transfer.toSupervisorId,
+      transfer.transferredById,
+    ]);
+    return { error: supervisorChangedMessage };
   }
 
   const agentDisplayName = resolveRoleUserName(transfer.agentUser);
 
   try {
-    const execution = await prisma.$transaction(async (tx) => {
+    const outcome = await prisma.$transaction(async (tx) => {
       const claimed = await tx.agentTransfer.updateMany({
         where: { id: transfer.id, status: "PENDING" },
         data: {
@@ -643,36 +676,42 @@ export async function approveAgentTransferRequest(input: {
         );
       }
 
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${transfer.agentUserId} FOR UPDATE`;
       const currentAgent = await tx.user.findUnique({
         where: { id: transfer.agentUserId },
         select: { createdById: true },
       });
       if (currentAgent?.createdById !== transfer.fromSupervisorId) {
+        // Return (not throw) so the auto-reject commits instead of rolling back.
         await tx.agentTransfer.update({
           where: { id: transfer.id },
-          data: {
-            status: "REJECTED",
-            reviewNote:
-              parsed.data.reviewNote?.trim() ||
-              "Rejected automatically: agent supervisor changed since request was submitted.",
-          },
+          data: { status: "REJECTED", reviewNote: autoRejectNote },
         });
-        throw new TransferExecutionError(
-          "SUPERVISOR_CHANGED",
-          "This agent's supervisor changed since the request was submitted. Reject and submit a new transfer."
-        );
+        return { kind: "auto_rejected" as const };
       }
 
-      return executeAgentTransfer(tx, {
+      const execution = await executeAgentTransfer(tx, {
         transferId: transfer.id,
         agentUserId: transfer.agentUserId,
         agentDisplayName,
         fromSupervisorId: transfer.fromSupervisorId,
         toSupervisorId: transfer.toSupervisorId,
+        actorUserId: session.user.id,
       });
+      return { kind: "approved" as const, execution };
     });
 
-    await snapshotTransferQa(transfer.id, execution.fromQaUserId);
+    if (outcome.kind === "auto_rejected") {
+      revalidateTransferPaths([
+        session.user.id,
+        transfer.fromSupervisorId,
+        transfer.toSupervisorId,
+        transfer.transferredById,
+      ]);
+      return { error: supervisorChangedMessage };
+    }
+
+    const { execution } = outcome;
     invalidateAgentAssignmentCaches(
       transfer.fromSupervisorId,
       transfer.toSupervisorId,
@@ -685,7 +724,17 @@ export async function approveAgentTransferRequest(input: {
       transfer.toSupervisorId,
       transfer.transferredById,
       execution.fromQaUserId,
+      transfer.agentUserId,
     ]);
+    await notifyTransferCompleted({
+      transferId: transfer.id,
+      agentUserId: transfer.agentUserId,
+      agentName: agentDisplayName,
+      fromSupervisorId: transfer.fromSupervisorId,
+      toSupervisorId: transfer.toSupervisorId,
+      fromQaUserId: execution.fromQaUserId,
+      actorUserId: session.user.id,
+    });
 
     return {
       success: true as const,
@@ -848,11 +897,30 @@ const transferInclude = {
   toSupervisor: { select: { name: true, email: true } },
   transferredBy: { select: { name: true, email: true } },
   reviewedBy: { select: { name: true, email: true } },
+  revertedBy: { select: { name: true, email: true } },
 } as const;
+
+type RevertView = {
+  canRevert: boolean;
+  revertBlockedReason: string | null;
+  revertWindowEndsAt: string | null;
+};
+
+const NO_REVERT: RevertView = {
+  canRevert: false,
+  revertBlockedReason: null,
+  revertWindowEndsAt: null,
+};
 
 function mapTransferRow(
   row: {
     id: string;
+    kind: "TRANSFER" | "REVERT";
+    version: number;
+    revertOfTransferId: string | null;
+    revertedAt: Date | null;
+    revertReason: string | null;
+    revertedBy: { name: string | null; email: string } | null;
     agentNameSnapshot: string;
     agentEmailSnapshot: string;
     note: string | null;
@@ -866,10 +934,18 @@ function mapTransferRow(
     toSupervisor: { name: string | null; email: string };
     transferredBy: { name: string | null; email: string };
     reviewedBy: { name: string | null; email: string } | null;
-  }
+  },
+  revert: RevertView = NO_REVERT
 ): AgentTransferRow {
   return {
     id: row.id,
+    kind: row.kind,
+    version: row.version,
+    revertOfTransferId: row.revertOfTransferId,
+    revertedAt: row.revertedAt?.toISOString() ?? null,
+    revertedByName: row.revertedBy ? resolveRoleUserName(row.revertedBy) : null,
+    revertReason: row.revertReason,
+    ...revert,
     agentName: row.agentNameSnapshot,
     agentEmail: row.agentEmailSnapshot,
     fromSupervisorName: resolveRoleUserName(row.fromSupervisor),
@@ -940,6 +1016,7 @@ export async function getAgentTransferHistory(): Promise<{
     ];
     if (supervisorIds.length > 0) {
       or.push({ fromSupervisorId: { in: supervisorIds } });
+      or.push({ toSupervisorId: { in: supervisorIds } });
     }
     if (agentNameFilter) {
       or.push({ agentNameSnapshot: agentNameFilter });
@@ -985,8 +1062,39 @@ export async function getAgentTransferHistory(): Promise<{
           take: 500,
         });
 
+  const revertViews = new Map<string, RevertView>();
+  const viewerMayRevert =
+    isAgentTransferRevertEnabled() &&
+    (isSuperAdmin(session.user.role) ||
+      session.user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER);
+  if (viewerMayRevert) {
+    const candidateIds = transfers
+      .filter((row) => row.kind === "TRANSFER" && row.status === "APPROVED")
+      .map((row) => row.id);
+    if (candidateIds.length > 0) {
+      const eligibility = await getRevertEligibilityForTransfers(prisma, {
+        transferIds: candidateIds,
+        actor: { id: session.user.id, roleSlug: session.user.role.slug },
+        windowDays: getAgentTransferRevertWindowDays(),
+      });
+      for (const [id, result] of eligibility) {
+        // Hide the button entirely for transfers this viewer may never revert.
+        if (!result.ok && (result.code === "FORBIDDEN" || result.code === "NOT_REVERTIBLE")) {
+          continue;
+        }
+        revertViews.set(id, {
+          canRevert: result.ok,
+          revertBlockedReason: result.ok ? null : result.message,
+          revertWindowEndsAt: result.windowEndsAt?.toISOString() ?? null,
+        });
+      }
+    }
+  }
+
   return {
-    transfers: transfers.map(mapTransferRow),
+    transfers: transfers.map((row) =>
+      mapTransferRow(row, revertViews.get(row.id) ?? NO_REVERT)
+    ),
     historyAudits: historyAudits.map((row) => ({
       id: row.id,
       auditCode: row.auditCode,
@@ -1061,4 +1169,154 @@ export async function getPendingTransferAgentIdsForSession(): Promise<string[]> 
   });
 
   return [...new Set(rows.map((row) => row.agentUserId))];
+}
+
+export async function getAgentTransferRevertPreview(
+  transferId: string
+): Promise<{ preview: RevertPreview } | { error: string }> {
+  await requirePermission(PERMISSIONS.USERS_APPROVE_AGENT);
+  const session = await requireAuth();
+  if (!isAgentTransferRevertEnabled()) {
+    return { error: "Transfer revert is disabled." };
+  }
+  if (
+    session.user.role.slug !== SYSTEM_ROLE_SLUGS.QUALITY_MANAGER &&
+    !isSuperAdmin(session.user.role)
+  ) {
+    return permissionError();
+  }
+  const id = z.string().min(1).safeParse(transferId);
+  if (!id.success) return { error: "Invalid transfer." };
+
+  const preview = await previewAgentTransferRevert(prisma, {
+    transferId: id.data,
+    actor: { id: session.user.id, roleSlug: session.user.role.slug },
+    windowDays: getAgentTransferRevertWindowDays(),
+  });
+  if (!preview || preview.blockedCode === "FORBIDDEN") {
+    return { error: "Transfer not found." };
+  }
+  return { preview };
+}
+
+export async function revertAgentTransfer(input: {
+  transferId: string;
+  reason: string;
+  idempotencyKey: string;
+  expectedVersion?: number;
+}) {
+  await requirePermission(PERMISSIONS.USERS_APPROVE_AGENT);
+  const session = await requireAuth();
+
+  if (!isAgentTransferRevertEnabled()) {
+    return { error: "Transfer revert is disabled." };
+  }
+  if (
+    session.user.role.slug !== SYSTEM_ROLE_SLUGS.QUALITY_MANAGER &&
+    !isSuperAdmin(session.user.role)
+  ) {
+    return permissionError();
+  }
+
+  const rateLimited = assertWriteRateLimit(
+    session.user.id,
+    "agent:transfer-revert",
+    { limit: 10, windowMs: 60_000 }
+  );
+  if (rateLimited) return rateLimited;
+
+  const parsed = revertSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid revert request." };
+  }
+
+  const actor = { id: session.user.id, roleSlug: session.user.role.slug };
+  let result;
+  try {
+    result = await prisma.$transaction(
+      (tx) =>
+        revertAgentTransferInTx(tx, {
+          transferId: parsed.data.transferId,
+          actor,
+          reason: parsed.data.reason,
+          idempotencyKey: parsed.data.idempotencyKey,
+          expectedVersion: parsed.data.expectedVersion ?? null,
+          windowDays: getAgentTransferRevertWindowDays(),
+        }),
+      { timeout: 30_000 }
+    );
+  } catch (error) {
+    if (error instanceof TransferExecutionError) {
+      return { error: error.message };
+    }
+    if (isPrismaUniqueViolation(error)) {
+      // Concurrent double-submit with the same idempotency key or a second
+      // revert racing for the same transfer: the other request won.
+      return { error: "This transfer was already reverted." };
+    }
+    throw error;
+  }
+
+  if (!result.alreadyApplied) {
+    invalidateAgentAssignmentCaches(
+      result.fromSupervisorId,
+      result.toSupervisorId,
+      undefined,
+      [result.receivingQaUserId, result.restoredQaUserId].filter(
+        (id): id is string => Boolean(id)
+      )
+    );
+    revalidateTransferPaths([
+      session.user.id,
+      result.fromSupervisorId,
+      result.toSupervisorId,
+      result.receivingQaUserId,
+      result.restoredQaUserId,
+      result.fromSupervisorQmId,
+      result.agentUserId,
+    ]);
+
+    try {
+      const [from, to, toQmId] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: result.fromSupervisorId },
+          select: { name: true, email: true, teamName: true },
+        }),
+        prisma.user.findUnique({
+          where: { id: result.toSupervisorId },
+          select: { name: true, email: true, teamName: true },
+        }),
+        resolveRespectiveQmId(result.toSupervisorId),
+      ]);
+      await emitAgentTransferRevertedEvents({
+        transferId: result.transferId,
+        revertTransferId: result.revertTransferId,
+        agentUserId: result.agentUserId,
+        agentName: result.agentName,
+        fromSupervisorId: result.fromSupervisorId,
+        toSupervisorId: result.toSupervisorId,
+        qaUserIds: [result.receivingQaUserId, result.restoredQaUserId],
+        qmUserIds: [result.fromSupervisorQmId, toQmId],
+        actorUserId: session.user.id,
+        fromLabel: from ? supervisorLabel(from) : "the previous team",
+        toLabel: to ? supervisorLabel(to) : "the other team",
+        reason: parsed.data.reason,
+      });
+    } catch (error) {
+      console.error("Agent transfer revert notifications failed:", error);
+    }
+  }
+
+  const qaNote = result.qaRestoreSkipped
+    ? " The previous QA is no longer active, so no QA was reassigned."
+    : "";
+  return {
+    success: true as const,
+    revertTransferId: result.revertTransferId,
+    restoredAuditCount: result.restoredAuditCount,
+    heldAuditCount: result.heldAuditCount,
+    message: result.alreadyApplied
+      ? "This transfer was already reverted."
+      : `Transfer reverted. ${result.restoredAuditCount} audit(s) restored to the previous team; ${result.heldAuditCount} audit(s) kept as history for the other team.${qaNote}`,
+  };
 }
