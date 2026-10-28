@@ -23,6 +23,7 @@ const REQUIRED_DELEGATES = [
   "systemMeta",
   "agentAssignment",
   "securityAuditLog",
+  "agentTeamMembership",
 ] as const;
 
 function poolMaxConnections(): number {
