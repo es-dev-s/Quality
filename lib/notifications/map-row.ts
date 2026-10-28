@@ -1,4 +1,5 @@
 import type { NotificationItem } from "@/lib/notifications/types";
+import { notificationHrefForType } from "@/lib/notifications/constants";
 
 export function mapNotificationRow(row: {
   id: string;
@@ -19,10 +20,10 @@ export function mapNotificationRow(row: {
     auditCode: row.auditCode,
     readAt: row.readAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
-    href: row.auditCode
+    href: notificationHrefForType(row.type) ?? (row.auditCode
       ? `/audit-logs?search=${encodeURIComponent(row.auditCode)}`
       : row.auditId
         ? `/audit-logs?search=${encodeURIComponent(row.auditId)}`
-        : "/audit-logs",
+        : "/audit-logs"),
   };
 }
