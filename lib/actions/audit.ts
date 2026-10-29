@@ -38,6 +38,7 @@ import {
   sanitizeScoresForTemplate,
   templateForStoredAudit,
 } from "@/lib/audit/stored-audit-template";
+import { storedRowsFromRecord } from "@/lib/audit/legacy-fatal-params";
 import {
   isNextDataCacheOverflowError,
   isPrismaSchemaMismatchError,
@@ -825,7 +826,13 @@ export async function getAuditForEdit(id: string): Promise<AuditEditPayload | nu
     // (e.g. Call "Hold") stay scored from their stored value, and params added
     // later (e.g. "Urgency Creation") are left out, so editing never silently
     // changes the quality %.
-    template: templateForStoredAudit(template, scores),
+    // Former FATAL params (Call Disposition tagging) keep the legacy FATAL
+    // option for an audit that was saved with FATAL on them.
+    template: templateForStoredAudit(
+      template,
+      scores,
+      storedRowsFromRecord(submission.record)
+    ),
   };
 }
 
@@ -910,6 +917,7 @@ export async function updateAuditSubmission(
       agentFeedback: true,
       submittedById: true,
       scores: true,
+      record: true,
     },
   });
   if (!existing) {
@@ -924,7 +932,8 @@ export async function updateAuditSubmission(
   // (e.g. "Urgency Creation") is not added to an audit saved without it.
   const template = templateForStoredAudit(
     baseTemplate,
-    parseScoresMap(existing.scores)
+    parseScoresMap(existing.scores),
+    storedRowsFromRecord(existing.record)
   );
   const validScores = sanitizeScoresForTemplate(submittedScores, template);
 

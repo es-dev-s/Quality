@@ -211,8 +211,6 @@ assert(grammarOpts[1].label === "ME — 3", "chat grammar ME label");
 for (const [template, paramId] of [
   [CALL_AUDIT_TEMPLATE, "call-correct"],
   [CALL_AUDIT_TEMPLATE, "call-complete"],
-  [CALL_AUDIT_TEMPLATE, "call-alltagged"],
-  [CALL_AUDIT_TEMPLATE, "call-correcttag"],
   [CHAT_AUDIT_TEMPLATE, "chat-correct"],
   [CHAT_AUDIT_TEMPLATE, "chat-complete"],
   [CHAT_AUDIT_TEMPLATE, "chat-alltagged"],
@@ -237,6 +235,50 @@ for (const [template, paramId] of [
     `${paramId} no longer shows N — 0`
   );
 }
+
+// Call Disposition tagging: standard Y / N / N/A (Yes 5 / No 0), no FATAL.
+for (const paramId of ["call-alltagged", "call-correcttag"]) {
+  const param = CALL_AUDIT_TEMPLATE.sections
+    .find((section) => section.id === "call-disposition")
+    ?.params.find((item) => item.id === paramId);
+  assert(!!param, `${paramId} exists in Call Disposition`);
+  if (!param) continue;
+  assert(param.scoring === "Y/N/NA", `${paramId} uses Y/N/NA`);
+  assert(!param.fatalOptionLabel && !param.fatalOn, `${paramId} has no fatal`);
+  const opts = getScoringOptions(param.scoring, param.max, {
+    points: param.points,
+    fatalOptionLabel: param.fatalOptionLabel,
+  });
+  assert(
+    opts.map((opt) => `${opt.label}=${opt.value}`).join("|") ===
+      "Y — 5=5|N — 0=0|N/A=NA",
+    `${paramId} options are Y — 5 / N — 0 / N/A`
+  );
+}
+const callDisposition = CALL_AUDIT_TEMPLATE.sections.find(
+  (section) => section.id === "call-disposition"
+);
+assert(
+  callDisposition?.params.reduce((sum, p) => sum + p.max, 0) === 10,
+  "Call Disposition max stays 10"
+);
+const taggingNo = calculateResults(
+  form,
+  {
+    ...buildDefaultScores(CALL_AUDIT_TEMPLATE),
+    "call-alltagged": "0",
+    "call-correcttag": "5",
+  },
+  CALL_AUDIT_TEMPLATE
+);
+assert(
+  taggingNo.ok &&
+    !taggingNo.record.hasFatal &&
+    taggingNo.record.catScores["Call Disposition"]?.scored === 5 &&
+    taggingNo.record.catScores["Call Disposition"]?.max === 10 &&
+    taggingNo.record.finalPct === taggingNo.record.qualityPct,
+  "Call tagging No = 0 is not fatal and counts in Call Disposition"
+);
 
 const fatalResolution = calculateResults(
   form,

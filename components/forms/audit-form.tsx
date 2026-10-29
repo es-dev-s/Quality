@@ -20,6 +20,7 @@ import { type SessionRole } from "@/lib/rbac";
 import { saveAuditSubmission, updateAuditSubmission } from "@/lib/actions/audit";
 import { calculateResults } from "@/lib/audit/calculate-results";
 import { isRetiredParamId } from "@/lib/audit/retired-params";
+import { isLegacyFatalParamDefinition } from "@/lib/audit/legacy-fatal-params";
 import { getScoringOptions } from "@/lib/audit/scoring-options";
 import {
   buildDefaultScores,
@@ -1197,7 +1198,7 @@ export function AuditForm({
                     const current = normalizeProbingPreferredModeScoreValue(
                       param.id,
                       normalizeFatalYnScoreValue(
-                        param.id,
+                        param,
                         getEffectiveScore(
                           scores,
                           param.id,
@@ -1241,6 +1242,12 @@ export function AuditForm({
                               <span className="audit-score-row__max-inline">
                                 {" "}
                                 · retired, kept for this older audit
+                              </span>
+                            )}
+                            {isLegacyFatalParamDefinition(param) && (
+                              <span className="audit-score-row__max-inline">
+                                {" "}
+                                · FATAL option kept for this older audit
                               </span>
                             )}
                           </span>

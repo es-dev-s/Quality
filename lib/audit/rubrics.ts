@@ -136,8 +136,8 @@ const CALL_SECTIONS: AuditSection[] = [
     name: "Call Disposition",
     isFatal: false,
     params: [
-      ynFatal("call-alltagged", "All Queries Tagged", 5, "Call Disposition"),
-      ynFatal("call-correcttag", "Correct Tagging", 5, "Call Disposition"),
+      yn("call-alltagged", "All Queries Tagged", 5, "Call Disposition"),
+      yn("call-correcttag", "Correct Tagging", 5, "Call Disposition"),
     ],
   },
   cmmSection("call"),

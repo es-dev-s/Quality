@@ -81,7 +81,7 @@ export function calculateResults(
 
       if (val === "NA") continue;
 
-      if (val === "Fatal" || isScoringFatal(param, val)) {
+      if (isScoringFatal(param, val)) {
         hasFatal = true;
         fatalList.push(param.name);
         totalMax += param.max;

@@ -1,11 +1,15 @@
 import type { AuditParameter } from "@/lib/audit/types";
-import { isFatalYnParam, normalizeFatalYnScoreValue } from "@/lib/audit/fatal-yn-params";
+import {
+  isFatalYnParam,
+  isNonFatalFormerFatalYnParam,
+  normalizeFatalYnScoreValue,
+} from "@/lib/audit/fatal-yn-params";
 import { normalizeProbingPreferredModeScoreValue } from "@/lib/audit/probing-preferred-mode-swap";
 
 function resolveStoredScoreValue(param: AuditParameter, val: string): string {
   return normalizeProbingPreferredModeScoreValue(
     param.id,
-    normalizeFatalYnScoreValue(param.id, val),
+    normalizeFatalYnScoreValue(param, val),
     param.max
   );
 }
@@ -36,8 +40,11 @@ export function resolveParamScore(param: AuditParameter, val: string): number {
 }
 
 export function isScoringFatal(param: AuditParameter, val: string): boolean {
+  // Call Disposition tagging is Y / N / N/A now: never fatal (older audits
+  // saved with FATAL are edited on their legacy Y/Fatal/NA definition).
+  if (isNonFatalFormerFatalYnParam(param)) return false;
   if (val === "Fatal") return true;
-  if (isFatalYnParam(param.id) && val === "0") return true;
+  if (isFatalYnParam(param) && val === "0") return true;
   if (!param.fatalOn?.length) return false;
   if (param.fatalOn.includes(val as (typeof param.fatalOn)[number])) return true;
   if (val === "0" && param.fatalOn.includes("N")) return true;

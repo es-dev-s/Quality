@@ -2,7 +2,10 @@ import { cache } from "react";
 import type { FormTemplate } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { BUILTIN_AUDIT_TEMPLATES } from "@/lib/audit/rubrics";
-import { patchTemplateFatalYnParams } from "@/lib/audit/fatal-yn-params";
+import {
+  patchTemplateFatalYnParams,
+  templateSectionsHaveFormerFatalYnParams,
+} from "@/lib/audit/fatal-yn-params";
 import { patchTemplateProbingPreferredModeSwap } from "@/lib/audit/probing-preferred-mode-swap";
 import {
   patchTemplateCategorySpelling,
@@ -87,7 +90,8 @@ export const ensureDefaultTemplate = cache(async (): Promise<void> => {
 
     if (
       templateHasLegacyCategorySpelling(existing) ||
-      templateSectionsHaveRetiredParams(existing.sections)
+      templateSectionsHaveRetiredParams(existing.sections) ||
+      templateSectionsHaveFormerFatalYnParams(existing.sections)
     ) {
       try {
         const patched = rowToAuditTemplate(existing);
@@ -96,7 +100,7 @@ export const ensureDefaultTemplate = cache(async (): Promise<void> => {
           data: { sections: patched.sections },
         });
       } catch {
-        // Concurrent spelling / retired-param repairs
+        // Concurrent spelling / retired-param / former-fatal repairs
       }
     }
   }
