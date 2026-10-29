@@ -32,7 +32,11 @@ function bestScoreValue(param: AuditParameter, isFatal: boolean): string {
   return String(param.max);
 }
 
-function verifyTemplate(template: AuditTemplate, expectedScoringParams: number) {
+function verifyTemplate(
+  template: AuditTemplate,
+  expectedScoringParams: number,
+  expectedMax: number
+) {
   const scoringParams = template.sections
     .filter((s) => !s.isFatal)
     .flatMap((s) => s.params)
@@ -43,8 +47,8 @@ function verifyTemplate(template: AuditTemplate, expectedScoringParams: number) 
     `${template.id}: ${expectedScoringParams} scoring parameters (got ${scoringParams.length})`
   );
   assert(
-    scoringMaxForTemplate(template) === 100,
-    `${template.id}: max score 100 (got ${scoringMaxForTemplate(template)})`
+    scoringMaxForTemplate(template) === expectedMax,
+    `${template.id}: max score ${expectedMax} (got ${scoringMaxForTemplate(template)})`
   );
 
   const cmm = template.sections.find((s) => s.name === "CMM Compliance");
@@ -75,8 +79,13 @@ assert(
     CHAT_AUDIT_TEMPLATE.sections.some((s) => s.name === "Chat Disposition"),
   "chat categories use Chat prefix"
 );
-verifyTemplate(CALL_AUDIT_TEMPLATE, 23);
-verifyTemplate(CHAT_AUDIT_TEMPLATE, 21);
+// Call "Hold (<=1min 3x)" (3 pts) was retired: 22 params, 97 pts.
+verifyTemplate(CALL_AUDIT_TEMPLATE, 22, 97);
+verifyTemplate(CHAT_AUDIT_TEMPLATE, 21, 100);
+assert(
+  !CALL_AUDIT_TEMPLATE.sections.some((s) => s.params.some((p) => p.id === "call-hold")),
+  "call template has no Hold parameter"
+);
 
 assert(
   DEFAULT_INTERACTION_CONFIG.agents.length === 0,

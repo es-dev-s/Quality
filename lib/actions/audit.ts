@@ -35,6 +35,10 @@ import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { getTemplateById } from "@/lib/actions/templates";
 import { fetchAuditTemplateForEdit } from "@/lib/audit/template-db";
 import {
+  restoreRetiredParamsForEdit,
+  stripRetiredScores,
+} from "@/lib/audit/retired-params";
+import {
   isNextDataCacheOverflowError,
   isPrismaSchemaMismatchError,
   isRetryableDbError,
@@ -246,7 +250,7 @@ export async function saveAuditSubmission(
 
   const {
     formData: validFormData,
-    scores: validScores,
+    scores: submittedScores,
     templateId: validTemplateId,
     submissionKey,
   } = parsed.data;
@@ -266,6 +270,8 @@ export async function saveAuditSubmission(
   if (!template) {
     return { error: "Audit template not found." };
   }
+  // Retired parameters (e.g. Call "Hold") are never scored or stored for new audits.
+  const validScores = stripRetiredScores(submittedScores, template);
 
   const [interactionConfig, users] = await Promise.all([
     getInteractionConfig(),
@@ -807,12 +813,17 @@ export async function getAuditForEdit(id: string): Promise<AuditEditPayload | nu
   const formData = submissionToFormData(submission);
   if (!formData) return null;
 
+  const scores = parseScoresMap(submission.scores);
+
   return {
     id: submission.id,
     auditCode: submission.auditCode,
     templateId,
     formData,
-    scores: parseScoresMap(submission.scores),
+    scores,
+    // Older audits keep retired params (e.g. Call "Hold") scored from their
+    // stored value so editing never silently changes the quality %.
+    template: restoreRetiredParamsForEdit(template, scores),
   };
 }
 
@@ -847,7 +858,7 @@ export async function updateAuditSubmission(
   const {
     id: validId,
     formData: validFormData,
-    scores: validScores,
+    scores: submittedScores,
     templateId: validTemplateId,
   } = parsed.data;
 
@@ -856,11 +867,11 @@ export async function updateAuditSubmission(
     return validationError(historyError);
   }
 
-  const template = await fetchAuditTemplateForEdit(
+  const baseTemplate = await fetchAuditTemplateForEdit(
     validTemplateId,
     validFormData.type
   );
-  if (!template) {
+  if (!baseTemplate) {
     return { error: "Audit template not found." };
   }
 
@@ -896,6 +907,7 @@ export async function updateAuditSubmission(
       feedbackStatusAt: true,
       agentFeedback: true,
       submittedById: true,
+      scores: true,
     },
   });
   if (!existing) {
@@ -904,6 +916,14 @@ export async function updateAuditSubmission(
   if (existing.isHistory) {
     return { error: "History audits cannot be edited." };
   }
+
+  // Audits saved before a parameter was retired (e.g. Call "Hold") keep it
+  // scored from their stored value; audits without it never gain it.
+  const template = restoreRetiredParamsForEdit(
+    baseTemplate,
+    parseScoresMap(existing.scores)
+  );
+  const validScores = stripRetiredScores(submittedScores, template);
 
   const previousFeedbackStatus = parseFeedbackStatus(existing.feedbackStatus);
   const feedbackResult = await normalizeFormFeedbackForSave(session, validFormData, {
@@ -966,9 +986,9 @@ export async function updateAuditSubmission(
         reason: record.reason || null,
         mobile: record.mobile?.trim() || null,
         callDurationSec: callDurationSecondsForType(
-      validFormData.type,
-      validFormData.callDuration
-    ),
+          validFormData.type,
+          validFormData.callDuration
+        ),
         referenceUrl: normalizeReferenceValue(record.referenceUrl) || null,
         response: record.response || null,
         qualityPct: record.qualityPct,

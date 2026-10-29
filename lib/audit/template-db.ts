@@ -8,12 +8,18 @@ import {
   patchTemplateCategorySpelling,
   templateHasLegacyCategorySpelling,
 } from "@/lib/audit/analytics-metric-keys";
+import {
+  removeRetiredTemplateParams,
+  templateSectionsHaveRetiredParams,
+} from "@/lib/audit/retired-params";
 import type { AuditSection, AuditTemplate } from "@/lib/audit/types";
 
 function applyTemplateParamPatches(template: AuditTemplate): AuditTemplate {
-  return patchTemplateCategorySpelling(
-    patchTemplateProbingPreferredModeSwap(
-      patchTemplateFatalYnParams(template)
+  return removeRetiredTemplateParams(
+    patchTemplateCategorySpelling(
+      patchTemplateProbingPreferredModeSwap(
+        patchTemplateFatalYnParams(template)
+      )
     )
   );
 }
@@ -79,7 +85,10 @@ export const ensureDefaultTemplate = cache(async (): Promise<void> => {
       continue;
     }
 
-    if (templateHasLegacyCategorySpelling(existing)) {
+    if (
+      templateHasLegacyCategorySpelling(existing) ||
+      templateSectionsHaveRetiredParams(existing.sections)
+    ) {
       try {
         const patched = rowToAuditTemplate(existing);
         await prisma.formTemplate.update({
@@ -87,7 +96,7 @@ export const ensureDefaultTemplate = cache(async (): Promise<void> => {
           data: { sections: patched.sections },
         });
       } catch {
-        // Concurrent spelling repairs
+        // Concurrent spelling / retired-param repairs
       }
     }
   }

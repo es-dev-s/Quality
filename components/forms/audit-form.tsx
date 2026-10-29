@@ -19,6 +19,7 @@ import { feedbackStatusClass } from "@/components/audit-logs/feedback-status-sel
 import { type SessionRole } from "@/lib/rbac";
 import { saveAuditSubmission, updateAuditSubmission } from "@/lib/actions/audit";
 import { calculateResults } from "@/lib/audit/calculate-results";
+import { isRetiredParamId } from "@/lib/audit/retired-params";
 import { getScoringOptions } from "@/lib/audit/scoring-options";
 import {
   buildDefaultScores,
@@ -1234,6 +1235,12 @@ export function AuditForm({
                               <span className="audit-score-row__max-inline">
                                 {" "}
                                 (max {param.max})
+                              </span>
+                            )}
+                            {isRetiredParamId(param.id) && (
+                              <span className="audit-score-row__max-inline">
+                                {" "}
+                                · retired, kept for this older audit
                               </span>
                             )}
                           </span>

@@ -90,7 +90,6 @@ const CALL_SECTIONS: AuditSection[] = [
       yn("call-greeting", "Greeting", 2, "Call Compliance"),
       yn("call-permission", "Permission", 2, "Call Compliance"),
       yn("call-closing", "Closing", 2, "Call Compliance"),
-      yn("call-hold", "Hold (<=1min 3x)", 3, "Call Compliance"),
       yn("call-followup", "Follow Up", 5, "Call Compliance"),
     ],
   },
@@ -208,7 +207,7 @@ export const CALL_AUDIT_TEMPLATE: AuditTemplate = {
   name: "Call Quality Audit",
   type: "Call",
   lob: "Sales / Support",
-  description: "100-point call interaction rubric.",
+  description: "97-point call interaction rubric.",
   isDefault: true,
   sections: CALL_SECTIONS,
 };

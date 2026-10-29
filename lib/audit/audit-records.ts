@@ -3,6 +3,7 @@ import type { AuditSourceKind } from "@/lib/audit/audit-source";
 import type {
   AuditFormData,
   AuditRow,
+  AuditTemplate,
   CategoryScore,
   ScoresMap,
 } from "@/lib/audit/types";
@@ -96,6 +97,8 @@ export type AuditEditPayload = {
   templateId: string;
   formData: AuditFormData;
   scores: ScoresMap;
+  /** Rubric for this audit (retired params restored when the audit has stored values for them). */
+  template: AuditTemplate;
 };
 
 export type DashboardAuditRecord = {
