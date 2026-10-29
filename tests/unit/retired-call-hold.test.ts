@@ -64,7 +64,7 @@ function compliance(template: AuditTemplate) {
 }
 
 describe("Call Hold parameter retired", () => {
-  it("is not in the built-in Call template; Call Compliance = 11, total = 97", () => {
+  it("is not in the built-in Call template; Call Compliance = 11 (total 100 incl. Urgency Creation)", () => {
     const section = compliance(CALL_AUDIT_TEMPLATE);
     expect(section.params.map((p) => p.id)).toEqual([
       "call-greeting",
@@ -73,21 +73,21 @@ describe("Call Hold parameter retired", () => {
       "call-followup",
     ]);
     expect(section.params.reduce((sum, p) => sum + p.max, 0)).toBe(11);
-    expect(scoringMaxForTemplate(CALL_AUDIT_TEMPLATE)).toBe(97);
+    expect(scoringMaxForTemplate(CALL_AUDIT_TEMPLATE)).toBe(100);
     expect(templateSectionsHaveRetiredParams(CALL_AUDIT_TEMPLATE.sections)).toBe(false);
   });
 
   it("leaves the Chat template (Response Time) untouched", () => {
-    expect(scoringMaxForTemplate(CHAT_AUDIT_TEMPLATE)).toBe(100);
+    expect(scoringMaxForTemplate(CHAT_AUDIT_TEMPLATE)).toBe(103);
     expect(removeRetiredTemplateParams(CHAT_AUDIT_TEMPLATE)).toBe(CHAT_AUDIT_TEMPLATE);
   });
 
   it("strips Hold from a stored (legacy) template at read time", () => {
     const legacy = legacyCallTemplate();
-    expect(scoringMaxForTemplate(legacy)).toBe(100);
+    expect(scoringMaxForTemplate(legacy)).toBe(103);
     const patched = removeRetiredTemplateParams(legacy);
     expect(compliance(patched).params.some((p) => p.id === "call-hold")).toBe(false);
-    expect(scoringMaxForTemplate(patched)).toBe(97);
+    expect(scoringMaxForTemplate(patched)).toBe(100);
   });
 
   it("new audit: a payload that still contains Hold is ignored", () => {

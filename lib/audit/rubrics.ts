@@ -128,6 +128,7 @@ const CALL_SECTIONS: AuditSection[] = [
       yn("call-upsell", "Upsell / Promotions", 3, "Sales & Compliance"),
       yn("call-sales-effort", "Sales Effort/Value Creation", 10, "Sales & Compliance"),
       yn("call-nurturing", "Client Nurturing", 5, "Sales & Compliance"),
+      yn("call-urgency", "Urgency Creation", 3, "Sales & Compliance"),
     ],
   },
   {
@@ -188,6 +189,7 @@ const CHAT_SECTIONS: AuditSection[] = [
       yn("chat-upsell", "Upsell / Promotions", 3, "Sales & Compliance"),
       yn("chat-sales-effort", "Sales Effort/Value Creation", 10, "Sales & Compliance"),
       yn("chat-nurturing", "Client Nurturing", 5, "Sales & Compliance"),
+      yn("chat-urgency", "Urgency Creation", 3, "Sales & Compliance"),
     ],
   },
   {
@@ -207,7 +209,7 @@ export const CALL_AUDIT_TEMPLATE: AuditTemplate = {
   name: "Call Quality Audit",
   type: "Call",
   lob: "Sales / Support",
-  description: "97-point call interaction rubric.",
+  description: "100-point call interaction rubric.",
   isDefault: true,
   sections: CALL_SECTIONS,
 };
@@ -217,7 +219,7 @@ export const CHAT_AUDIT_TEMPLATE: AuditTemplate = {
   name: "Chat Quality Audit",
   type: "Chat",
   lob: "Sales / Support",
-  description: "100-point chat interaction rubric.",
+  description: "103-point chat interaction rubric.",
   isDefault: true,
   sections: CHAT_SECTIONS,
 };

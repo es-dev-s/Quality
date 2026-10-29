@@ -35,9 +35,9 @@ import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { getTemplateById } from "@/lib/actions/templates";
 import { fetchAuditTemplateForEdit } from "@/lib/audit/template-db";
 import {
-  restoreRetiredParamsForEdit,
-  stripRetiredScores,
-} from "@/lib/audit/retired-params";
+  sanitizeScoresForTemplate,
+  templateForStoredAudit,
+} from "@/lib/audit/stored-audit-template";
 import {
   isNextDataCacheOverflowError,
   isPrismaSchemaMismatchError,
@@ -271,7 +271,7 @@ export async function saveAuditSubmission(
     return { error: "Audit template not found." };
   }
   // Retired parameters (e.g. Call "Hold") are never scored or stored for new audits.
-  const validScores = stripRetiredScores(submittedScores, template);
+  const validScores = sanitizeScoresForTemplate(submittedScores, template);
 
   const [interactionConfig, users] = await Promise.all([
     getInteractionConfig(),
@@ -821,9 +821,11 @@ export async function getAuditForEdit(id: string): Promise<AuditEditPayload | nu
     templateId,
     formData,
     scores,
-    // Older audits keep retired params (e.g. Call "Hold") scored from their
-    // stored value so editing never silently changes the quality %.
-    template: restoreRetiredParamsForEdit(template, scores),
+    // Older audits keep the rubric they were scored on: retired params
+    // (e.g. Call "Hold") stay scored from their stored value, and params added
+    // later (e.g. "Urgency Creation") are left out, so editing never silently
+    // changes the quality %.
+    template: templateForStoredAudit(template, scores),
   };
 }
 
@@ -917,13 +919,14 @@ export async function updateAuditSubmission(
     return { error: "History audits cannot be edited." };
   }
 
-  // Audits saved before a parameter was retired (e.g. Call "Hold") keep it
-  // scored from their stored value; audits without it never gain it.
-  const template = restoreRetiredParamsForEdit(
+  // Audits keep the rubric they were scored on: a retired param (e.g. Call
+  // "Hold") stays scored from its stored value, and a param introduced later
+  // (e.g. "Urgency Creation") is not added to an audit saved without it.
+  const template = templateForStoredAudit(
     baseTemplate,
     parseScoresMap(existing.scores)
   );
-  const validScores = stripRetiredScores(submittedScores, template);
+  const validScores = sanitizeScoresForTemplate(submittedScores, template);
 
   const previousFeedbackStatus = parseFeedbackStatus(existing.feedbackStatus);
   const feedbackResult = await normalizeFormFeedbackForSave(session, validFormData, {

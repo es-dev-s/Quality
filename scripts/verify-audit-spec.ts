@@ -79,9 +79,34 @@ assert(
     CHAT_AUDIT_TEMPLATE.sections.some((s) => s.name === "Chat Disposition"),
   "chat categories use Chat prefix"
 );
-// Call "Hold (<=1min 3x)" (3 pts) was retired: 22 params, 97 pts.
-verifyTemplate(CALL_AUDIT_TEMPLATE, 22, 97);
-verifyTemplate(CHAT_AUDIT_TEMPLATE, 21, 100);
+// Call "Hold (<=1min 3x)" (3 pts) was retired; "Urgency Creation" (3 pts)
+// was added to Sales & Compliance on Call and Chat: Call 23 / 100, Chat 22 / 103.
+verifyTemplate(CALL_AUDIT_TEMPLATE, 23, 100);
+verifyTemplate(CHAT_AUDIT_TEMPLATE, 22, 103);
+for (const [template, urgencyId] of [
+  [CALL_AUDIT_TEMPLATE, "call-urgency"],
+  [CHAT_AUDIT_TEMPLATE, "chat-urgency"],
+] as const) {
+  const sales = template.sections.find((s) => s.name === "Sales & Compliance");
+  const ids = sales?.params.map((p) => p.id) ?? [];
+  const urgency = sales?.params.find((p) => p.id === urgencyId);
+  assert(
+    ids.indexOf(urgencyId) === ids.indexOf(`${template.id}-nurturing`) + 1,
+    `${template.id}: Urgency Creation follows Client Nurturing`
+  );
+  assert(
+    urgency?.name === "Urgency Creation" &&
+      urgency.max === 3 &&
+      urgency.scoring === "Y/N/NA" &&
+      urgency.points?.Y === 3 &&
+      urgency.points?.N === 0,
+    `${template.id}: Urgency Creation Y=3 / N=0`
+  );
+  assert(
+    (sales?.params ?? []).reduce((sum, p) => sum + p.max, 0) === 21,
+    `${template.id}: Sales & Compliance max 21`
+  );
+}
 assert(
   !CALL_AUDIT_TEMPLATE.sections.some((s) => s.params.some((p) => p.id === "call-hold")),
   "call template has no Hold parameter"

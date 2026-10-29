@@ -52,6 +52,9 @@ export const AUDIT_SHEET_PREVIEW_COLUMNS = [
   "Feedback Status",
   "Feedback Date",
   "Call Length",
+  // Optional — added after the original contract, so it is appended last to
+  // keep positional (header-less) mapping of older sheets unchanged.
+  "Urgency Creation",
 ] as const;
 
 export type AuditSheetPreviewColumn =
@@ -153,6 +156,7 @@ const COLUMN_ALIASES: Record<AuditSheetPreviewColumn, string[]> = {
   "Feedback Status": ["feedback status"],
   "Feedback Date": ["feedback date"],
   "Call Length": ["call length", "calllength", "call duration", "callduration"],
+  "Urgency Creation": ["urgency creation", "urgencycreation"],
 };
 
 export function normalizeSheetHeader(value: string): string {

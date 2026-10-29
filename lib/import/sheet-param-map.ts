@@ -64,6 +64,7 @@ const SHEET_PARAM_ALIASES: Record<string, string[]> = {
   responsetime: ["Response Time"],
   upsellpromotions: ["Upsell / Promotions"],
   "upsell/promotions": ["Upsell / Promotions"],
+  urgencycreation: ["Urgency Creation"],
   voiceclaritytone: ["Voice Clarity/Tone", "Message Clarity"],
   "voiceclarity/tone": ["Voice Clarity/Tone", "Message Clarity"],
   grammarsentence: ["Grammar & Sentence"],
