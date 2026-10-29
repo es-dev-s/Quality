@@ -369,6 +369,8 @@ model AuditSubmission {
   sublob         String?
   reason         String?
   mobile         String?
+  /// Interaction duration in whole seconds (required on new form submissions; null for legacy/imported rows).
+  callDurationSec Int?    @map("call_duration_sec")
   referenceUrl   String?  @map("reference_url")
   response       String?
   qualityPct     Int

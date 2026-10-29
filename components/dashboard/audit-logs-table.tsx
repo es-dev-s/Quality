@@ -1,5 +1,6 @@
 "use client";
 
+import { formatCallDurationForType } from "@/lib/audit/call-duration";
 import Link from "next/link";
 import { useMemo, useState, useEffect, useOptimistic, useCallback, useRef, startTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -194,6 +195,7 @@ function matchesSearch(row: AuditLogEntry, query: string) {
     row.feedbackDate ?? "",
     row.agentFeedback,
     row.mobile,
+    formatCallDurationForType(row.type, row.callDurationSec),
     row.submittedBy,
     row.auditSource,
     referenceAttachmentSearchText(row.referenceUrl),
@@ -1174,6 +1176,7 @@ export function AuditLogsTable({
                     <th className="col-agent">Agent</th>
                     <th className="col-type-lob">Type / LOB</th>
                     <th className="col-contact">Number / client name</th>
+                    <th className="col-duration">Call duration</th>
                     <th>
                       <button
                         type="button"
@@ -1277,6 +1280,15 @@ export function AuditLogsTable({
                     {row.mobile ? (
                       <span className="audit-logs__contact" title={row.mobile}>
                         {row.mobile}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="col-duration">
+                    {formatCallDurationForType(row.type, row.callDurationSec) ? (
+                      <span className="audit-logs__duration">
+                        {formatCallDurationForType(row.type, row.callDurationSec)}
                       </span>
                     ) : (
                       "—"

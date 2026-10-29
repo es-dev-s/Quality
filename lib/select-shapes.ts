@@ -26,6 +26,7 @@ export const AUDIT_LOG_LIST_SELECT = {
   supervisorRemarks: true,
   referenceUrl: true,
   mobile: true,
+  callDurationSec: true,
   isHistory: true,
   historyOwnerId: true,
   createdAt: true,

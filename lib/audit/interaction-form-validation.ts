@@ -1,3 +1,7 @@
+import {
+  appliesCallDuration,
+  isValidCallDuration,
+} from "@/lib/audit/call-duration";
 import type { AuditFormData } from "@/lib/audit/types";
 
 export type InteractionFieldSpec = {
@@ -57,6 +61,14 @@ const INTERACTION_FIELD_SPECS: InteractionFieldSpec[] = [
     id: "mobile",
     label: "Number / name",
     isMissing: (formData) => !formData.mobile.trim(),
+  },
+  {
+    id: "callDuration",
+    label: "Call duration",
+    // Call audits only. Missing or malformed (mm:ss / hh:mm:ss) blocks submit.
+    isMissing: (formData) =>
+      appliesCallDuration(formData.type) &&
+      !isValidCallDuration(formData.callDuration ?? ""),
   },
   {
     id: "referenceUrl",

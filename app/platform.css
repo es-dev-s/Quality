@@ -3155,6 +3155,18 @@
   white-space: nowrap;
 }
 
+.audit-logs__table th.col-duration,
+.audit-logs__table td.col-duration {
+  min-width: 5.5rem;
+  white-space: nowrap;
+}
+
+.audit-logs__duration,
+.platform-report-table__duration {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .audit-logs__agent-feedback {
   display: -webkit-box;
   -webkit-box-orient: vertical;

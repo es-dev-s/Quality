@@ -152,7 +152,7 @@ const COLUMN_ALIASES: Record<AuditSheetPreviewColumn, string[]> = {
   Severity: ["severity", "feedback security"],
   "Feedback Status": ["feedback status"],
   "Feedback Date": ["feedback date"],
-  "Call Length": ["call length", "calllength"],
+  "Call Length": ["call length", "calllength", "call duration", "callduration"],
 };
 
 export function normalizeSheetHeader(value: string): string {

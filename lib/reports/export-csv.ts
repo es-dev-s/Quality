@@ -1,4 +1,5 @@
 import { FEEDBACK_SEVERITY_LABEL } from "@/lib/audit/feedback";
+import { formatCallDurationForType } from "@/lib/audit/call-duration";
 import {
   collectParameterColumnKeys,
   formatCategoryScores,
@@ -46,6 +47,8 @@ const FIXED_HEADERS = [
   "Call date",
   "Audit date",
   "Contact (number / name)",
+  "Call duration",
+  "Call duration (seconds)",
   "Reference",
   "Response",
   "Quality %",
@@ -85,6 +88,8 @@ function buildFixedRowValues(row: AuditExportRow): unknown[] {
     row.callDate,
     row.auditDate,
     row.mobile ?? "",
+    formatCallDurationForType(row.type, row.callDurationSec),
+    row.type === "Call" ? (row.callDurationSec ?? "") : "",
     row.referenceUrl ?? "",
     row.response ?? "",
     row.qualityPct,

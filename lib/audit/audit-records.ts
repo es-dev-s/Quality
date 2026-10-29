@@ -33,6 +33,8 @@ export type AuditLogEntry = {
   agentFeedback: string;
   supervisorRemarks: string;
   mobile: string | null;
+  /** Interaction duration in seconds (null for legacy / imported audits). */
+  callDurationSec: number | null;
   referenceUrl: string | null;
   submittedBy: string;
   /** Role slug of the user who submitted the form (for source tagging). */
@@ -61,6 +63,8 @@ export type AuditDetail = {
   reason: string | null;
   subReason: string | null;
   mobile: string | null;
+  /** Interaction duration in seconds (null for legacy / imported audits). */
+  callDurationSec: number | null;
   referenceUrl: string | null;
   response: string | null;
   qualityPct: number;

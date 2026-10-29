@@ -112,6 +112,7 @@ const form = {
   lob: "CORE LOB",
   sublob: "Account Management",
   mobile: "9800000000",
+  callDuration: "04:35",
   referenceUrl: "https://crm.example.com/ticket/12345",
   reason: "C-Login Issues",
   subReason: "",

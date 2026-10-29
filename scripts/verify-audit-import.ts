@@ -137,6 +137,7 @@ async function main() {
       lob: "Sales",
       sublob: "Inbound",
       mobile: "",
+      callDuration: "",
       referenceUrl: "",
       reason: "",
       subReason: "",

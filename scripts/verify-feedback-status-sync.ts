@@ -59,6 +59,7 @@ const row = (feedbackStatus: AuditLogEntry["feedbackStatus"]): AuditLogEntry =>
     agentFeedback: "Note",
     supervisorRemarks: "",
     mobile: null,
+    callDurationSec: null,
     referenceUrl: null,
     submittedBy: "QA",
     createdAt: "2026-01-02T10:00:00.000Z",

@@ -333,6 +333,14 @@ function buildFormData(row: Record<string, string>): AuditFormData {
       "mobile",
       "phone",
     ]),
+    // Optional on import (legacy sheets); parsed leniently when stored.
+    callDuration: pickField(row, [
+      "call duration",
+      "callduration",
+      "call length",
+      "calllength",
+      "duration",
+    ]),
     referenceUrl: pickField(row, ["reference", "reference url", "referenceurl"]),
     reason: pickField(row, [
       "reason for call",

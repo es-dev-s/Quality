@@ -82,6 +82,10 @@ import { resolveFormFeedbackForSave } from "@/lib/audit/form-feedback-save";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
 import { normalizeReferenceValue } from "@/lib/upload/reference-url-paths";
 import {
+  callDurationSecondsForType,
+  formatCallDurationForType,
+} from "@/lib/audit/call-duration";
+import {
   defaultAuditFeedback,
   normalizeFeedbackForSave,
   parseFeedbackSecurity,
@@ -322,6 +326,10 @@ export async function saveAuditSubmission(
     sublob: record.sublob || null,
     reason: record.reason || null,
     mobile: record.mobile?.trim() || null,
+    callDurationSec: callDurationSecondsForType(
+      validFormData.type,
+      validFormData.callDuration
+    ),
     referenceUrl: normalizeReferenceValue(record.referenceUrl) || null,
     response: record.response || null,
     qualityPct: record.qualityPct,
@@ -480,6 +488,7 @@ type AuditLogRow = {
   supervisorRemarks: string;
   referenceUrl: string | null;
   mobile: string | null;
+  callDurationSec: number | null;
   submittedBy: {
     name: string | null;
     email: string;
@@ -522,6 +531,7 @@ function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
     agentFeedback: s.agentFeedback ?? "",
     supervisorRemarks: s.supervisorRemarks ?? "",
     mobile: legacy.mobile || null,
+    callDurationSec: s.callDurationSec ?? null,
     referenceUrl: legacy.referenceUrl || null,
     submittedBy: s.submittedBy.name ?? s.submittedBy.email,
     submittedByRoleSlug,
@@ -678,6 +688,7 @@ export async function getAuditDetail(id: string) {
         ? (submission.record as { subReason: string }).subReason
         : null,
     mobile: legacy.mobile || null,
+    callDurationSec: submission.callDurationSec ?? null,
     referenceUrl: legacy.referenceUrl || null,
     response: submission.response,
     qualityPct: submission.qualityPct,
@@ -744,6 +755,10 @@ function submissionToFormData(
     lob: submission.lob,
     sublob: submission.sublob ?? "",
     mobile: legacy.mobile,
+    callDuration: formatCallDurationForType(
+      submission.type,
+      submission.callDurationSec
+    ),
     referenceUrl: legacy.referenceUrl,
     reason: submission.reason ?? "",
     subReason: "",
@@ -950,6 +965,10 @@ export async function updateAuditSubmission(
         sublob: record.sublob || null,
         reason: record.reason || null,
         mobile: record.mobile?.trim() || null,
+        callDurationSec: callDurationSecondsForType(
+      validFormData.type,
+      validFormData.callDuration
+    ),
         referenceUrl: normalizeReferenceValue(record.referenceUrl) || null,
         response: record.response || null,
         qualityPct: record.qualityPct,

@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  CALL_DURATION_LABEL,
+  appliesCallDuration,
+  formatCallDuration,
+} from "@/lib/audit/call-duration";
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
@@ -284,6 +289,11 @@ export function AuditDetailModal({
                   {detail.mobile ? (
                     <Field label={interactionContactFieldLabel(detail.type)}>
                       {detail.mobile}
+                    </Field>
+                  ) : null}
+                  {appliesCallDuration(detail.type) ? (
+                    <Field label={CALL_DURATION_LABEL}>
+                      {formatCallDuration(detail.callDurationSec) || "—"}
                     </Field>
                   ) : null}
                   <Field label="Submitted by">

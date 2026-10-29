@@ -1,5 +1,6 @@
 "use client";
 
+import { formatCallDurationForType } from "@/lib/audit/call-duration";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Calendar, Download, Maximize2, Minimize2, Printer } from "lucide-react";
 import { FilterChipBar } from "@/components/filters/filter-chip-bar";
@@ -786,6 +787,7 @@ export function ExecutiveReport({
                       <th>LOB</th>
                       <th>Reason</th>
                       <th>Number / client name</th>
+                      <th>Call duration</th>
                       <th className="rpt-col--center">Quality</th>
                       <th className="rpt-col--center">Final</th>
                       <th className="rpt-col--center">Grade</th>
@@ -815,6 +817,9 @@ export function ExecutiveReport({
                           {row.reason ?? "—"}
                         </td>
                         <td>{row.mobile ?? "—"}</td>
+                        <td className="platform-report-table__duration">
+                          {formatCallDurationForType(row.type, row.callDurationSec) || "—"}
+                        </td>
                         <td className="platform-cell-accent rpt-col--center">
                           {row.qualityPct}%
                         </td>

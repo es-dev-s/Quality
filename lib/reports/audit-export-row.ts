@@ -23,6 +23,7 @@ export type AuditExportRow = {
   reason: string | null;
   subReason: string | null;
   mobile: string | null;
+  callDurationSec: number | null;
   referenceUrl: string | null;
   response: string | null;
   qualityPct: number;
@@ -64,6 +65,7 @@ const AUDIT_EXPORT_SCALAR_SELECT = {
   sublob: true,
   reason: true,
   mobile: true,
+  callDurationSec: true,
   referenceUrl: true,
   response: true,
   qualityPct: true,
@@ -177,6 +179,7 @@ function mapSubmissionScalars(
     reason: submission.reason,
     subReason: extras.subReason,
     mobile: legacy.mobile || null,
+    callDurationSec: submission.callDurationSec ?? null,
     referenceUrl: legacy.referenceUrl || null,
     response: submission.response,
     qualityPct: submission.qualityPct,

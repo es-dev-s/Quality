@@ -32,6 +32,7 @@ const IGNORED_FLAT_HEADERS = new Set(
     "feedbackstatus",
     "feedbackdate",
     "calllength",
+    "callduration",
     "callcompliance",
     "calletiquette",
     "queryresolution",
