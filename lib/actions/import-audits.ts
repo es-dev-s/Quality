@@ -5,6 +5,10 @@ import { z } from "zod";
 import { requireSuperAdmin } from "@/lib/auth";
 import { IMPORT_ENABLED } from "@/lib/constants";
 import { rowToAuditTemplate } from "@/lib/audit/template-db";
+import {
+  callDurationSecondsForType,
+  parseImportedCallDuration,
+} from "@/lib/audit/call-duration";
 import type { AuditRecord } from "@/lib/audit/types";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { invalidateAuditCaches } from "@/lib/invalidate-cache";
@@ -41,6 +45,7 @@ const importRowSchema = z.object({
     lob: z.string(),
     sublob: z.string(),
     mobile: z.string(),
+    callDuration: z.string().optional().default(""),
     referenceUrl: z.string(),
     reason: z.string(),
     subReason: z.string(),
@@ -275,6 +280,11 @@ export async function importAuditSubmissions(
           sublob: normalizedRow.formData.sublob || null,
           reason: normalizedRow.formData.reason || null,
           mobile: normalizedRow.formData.mobile || null,
+          callDurationSec: callDurationSecondsForType(
+            normalizedRow.formData.type,
+            normalizedRow.formData.callDuration,
+            parseImportedCallDuration
+          ),
           referenceUrl: normalizedRow.formData.referenceUrl || null,
           response: normalizedRow.formData.response || null,
           qualityPct: normalizedRow.qualityPct,

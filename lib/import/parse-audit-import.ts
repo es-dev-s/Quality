@@ -5,6 +5,7 @@ import {
   parseFeedbackStatus,
 } from "@/lib/audit/feedback";
 import { calculateResults } from "@/lib/audit/calculate-results";
+import { templateForStoredAudit } from "@/lib/audit/stored-audit-template";
 import { parseAuditType } from "@/lib/audit/audit-type";
 import type {
   AuditFormData,
@@ -333,6 +334,14 @@ function buildFormData(row: Record<string, string>): AuditFormData {
       "mobile",
       "phone",
     ]),
+    // Optional on import (legacy sheets); parsed leniently when stored.
+    callDuration: pickField(row, [
+      "call duration",
+      "callduration",
+      "call length",
+      "calllength",
+      "duration",
+    ]),
     referenceUrl: pickField(row, ["reference", "reference url", "referenceurl"]),
     reason: pickField(row, [
       "reason for call",
@@ -525,9 +534,15 @@ export function parseAuditImportSpreadsheet(
     let calculatedFromTemplate = false;
 
     if (templateBody && Object.keys(scores).length > 0) {
-      const calculated = calculateResults(formData, scores, templateBody, {
-        id: auditCode,
-      });
+      // An explicit FATAL on a former fatal param (Call Disposition tagging)
+      // in a historical sheet row keeps its legacy FATAL definition for that
+      // row, so the imported audit matches the sheet (0% / Failed).
+      const calculated = calculateResults(
+        formData,
+        scores,
+        templateForStoredAudit(templateBody, scores, auditRows),
+        { id: auditCode }
+      );
       if (calculated.ok) {
         calculatedFromTemplate = true;
         qualityPct = calculated.record.qualityPct;

@@ -503,6 +503,23 @@
   align-items: stretch;
 }
 
+/* Mobile + Call duration + Reference — duration is compact, reference widest. */
+.audit-details__row--contact-trio {
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(140px, 0.62fr)
+    minmax(0, 1.38fr);
+}
+
+.audit-duration-field__input {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.audit-duration-field__hint--error {
+  color: var(--color-danger, #dc2626);
+}
+
 .audit-contact-field {
   display: flex;
   flex-direction: column;

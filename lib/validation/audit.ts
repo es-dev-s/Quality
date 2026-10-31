@@ -4,6 +4,12 @@ import {
   FEEDBACK_STATUS_OPTIONS,
 } from "@/lib/audit/feedback";
 import { AUDIT_TYPE_OPTIONS } from "@/lib/audit/audit-type";
+import {
+  CALL_DURATION_INVALID_MESSAGE,
+  CALL_DURATION_REQUIRED_MESSAGE,
+  appliesCallDuration,
+  parseCallDuration,
+} from "@/lib/audit/call-duration";
 import { cuidSchema, submissionKeySchema } from "@/lib/validation/common";
 import {
   MAX_REFERENCE_ITEM_LENGTH,
@@ -28,6 +34,8 @@ export const auditFormDataSchema = z
     lob: z.string(),
     sublob: z.string(),
     mobile: z.string(),
+    // Required (mm:ss / hh:mm:ss) for Call audits only — see superRefine.
+    callDuration: z.string().trim().optional().default(""),
     referenceUrl: z
       .string()
       .refine(
@@ -57,6 +65,22 @@ export const auditFormDataSchema = z
       .string()
       .trim()
       .min(1, "Feedback for the agent is required."),
+  })
+  .superRefine((data, ctx) => {
+    if (!appliesCallDuration(data.type)) return;
+    if (!data.callDuration) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["callDuration"],
+        message: CALL_DURATION_REQUIRED_MESSAGE,
+      });
+    } else if (parseCallDuration(data.callDuration) === null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["callDuration"],
+        message: CALL_DURATION_INVALID_MESSAGE,
+      });
+    }
   });
 
 export const saveAuditSubmissionSchema = z.object({

@@ -19,6 +19,8 @@ import { feedbackStatusClass } from "@/components/audit-logs/feedback-status-sel
 import { type SessionRole } from "@/lib/rbac";
 import { saveAuditSubmission, updateAuditSubmission } from "@/lib/actions/audit";
 import { calculateResults } from "@/lib/audit/calculate-results";
+import { isRetiredParamId } from "@/lib/audit/retired-params";
+import { isLegacyFatalParamDefinition } from "@/lib/audit/legacy-fatal-params";
 import { getScoringOptions } from "@/lib/audit/scoring-options";
 import {
   buildDefaultScores,
@@ -63,6 +65,13 @@ import {
 } from "@/lib/audit/interaction-form-validation";
 import { validateFeedbackSection } from "@/lib/audit/feedback-form-validation";
 import {
+  CALL_DURATION_FORMAT_HINT,
+  CALL_DURATION_LABEL,
+  isValidCallDuration,
+  normalizeCallDurationInput,
+  sanitizeCallDurationInput,
+} from "@/lib/audit/call-duration";
+import {
   AUDIT_FORM_NOTICE,
   AUDIT_FORM_TOAST,
 } from "@/lib/audit/form-validation-messages";
@@ -79,6 +88,7 @@ const INTERACTION_FIELD_IDS: Partial<Record<keyof AuditFormData, string>> = {
   sublob: "sublob",
   reason: "reason",
   mobile: "mobile",
+  callDuration: "callDuration",
   referenceUrl: "referenceUrl",
   response: "response",
   feedbackSecurity: "feedbackSecurity",
@@ -142,6 +152,7 @@ function createInitialFormData(): AuditFormData {
     lob: "",
     sublob: "",
     mobile: "",
+    callDuration: "",
     referenceUrl: "",
     reason: "",
     subReason: "",
@@ -212,7 +223,7 @@ export function AuditForm({
   const [selectedTemplateId, setSelectedTemplateId] = useState(initialTemplateId);
   const [formData, setFormData] = useState<AuditFormData>(() => {
     if (initialFormData) {
-      return initialFormData;
+      return { ...initialFormData, callDuration: initialFormData.callDuration ?? "" };
     }
     const auditor = currentAuditorName
       ? resolveAuditorNameForSession(currentAuditorName, auditors)
@@ -297,9 +308,14 @@ export function AuditForm({
 
   const isCallInteraction = formData.type === "Call";
   const isChatInteraction = formData.type === "Chat";
+  const callDurationInvalid =
+    isCallInteraction &&
+    formData.callDuration.trim() !== "" &&
+    !isValidCallDuration(formData.callDuration);
 
   function isInteractionFieldRequired(fieldId: string): boolean {
     if (fieldId === "referenceUrl") return isCallInteraction;
+    if (fieldId === "callDuration") return isCallInteraction;
     return isCallInteraction || isChatInteraction;
   }
 
@@ -445,7 +461,8 @@ export function AuditForm({
       templates.find((template) => template.id === nextTemplateId) ??
       templates[0];
     setScores(nextTemplate ? buildDefaultScores(nextTemplate) : {});
-    updateForm({ type });
+    // Call Duration is Call-only; drop any value when switching to Chat.
+    updateForm(type === "Call" ? { type } : { type, callDuration: "" });
     setSelectedTemplateId(templateIdForType(type, templates));
     setHighlightedFieldIds([]);
     setHighlightedScoreParamIds([]);
@@ -973,7 +990,14 @@ export function AuditForm({
                   </Field>
                 </div>
 
-                <div className="audit-details__row audit-details__row--pair audit-details__row--contact">
+                <div
+                  className={cn(
+                    "audit-details__row audit-details__row--contact",
+                    isCallInteraction
+                      ? "audit-details__row--contact-trio"
+                      : "audit-details__row--pair"
+                  )}
+                >
                   <Field
                     className={fieldAttentionClass(
                       "mobile",
@@ -1010,6 +1034,67 @@ export function AuditForm({
                           : "Identifier for this interaction"}
                     </p>
                   </Field>
+
+                  {isCallInteraction ? (
+                    <Field
+                      className={fieldAttentionClass(
+                        "callDuration",
+                        "audit-field audit-contact-field audit-duration-field"
+                      )}
+                    >
+                      <div className="audit-contact-field__label-row">
+                        <Label htmlFor="callDuration">
+                          {CALL_DURATION_LABEL}
+                          {isInteractionFieldRequired("callDuration") ? (
+                            <span className="audit-required"> *</span>
+                          ) : null}
+                        </Label>
+                      </div>
+                      <Input
+                        id="callDuration"
+                        name="callDuration"
+                        className="audit-control audit-duration-field__input"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        spellCheck={false}
+                        maxLength={9}
+                        placeholder="mm:ss"
+                        required
+                        aria-required="true"
+                        aria-invalid={
+                          callDurationInvalid ||
+                          highlightedFieldIds.includes("callDuration")
+                        }
+                        aria-describedby="callDuration-hint"
+                        value={formData.callDuration}
+                        onChange={(e) =>
+                          updateForm({
+                            callDuration: sanitizeCallDurationInput(e.target.value),
+                          })
+                        }
+                        onBlur={(e) => {
+                          const normalized = normalizeCallDurationInput(
+                            e.target.value
+                          );
+                          if (normalized !== formData.callDuration) {
+                            updateForm({ callDuration: normalized });
+                          }
+                        }}
+                      />
+                      <p
+                        id="callDuration-hint"
+                        className={cn(
+                          "audit-field__hint ui-hint",
+                          callDurationInvalid && "audit-duration-field__hint--error"
+                        )}
+                      >
+                        {callDurationInvalid
+                          ? `Use ${CALL_DURATION_FORMAT_HINT} (e.g. 04:35)`
+                          : `Required — ${CALL_DURATION_FORMAT_HINT}`}
+                      </p>
+                    </Field>
+                  ) : null}
 
                   <ReferenceUrlField
                     value={formData.referenceUrl}
@@ -1113,7 +1198,7 @@ export function AuditForm({
                     const current = normalizeProbingPreferredModeScoreValue(
                       param.id,
                       normalizeFatalYnScoreValue(
-                        param.id,
+                        param,
                         getEffectiveScore(
                           scores,
                           param.id,
@@ -1151,6 +1236,18 @@ export function AuditForm({
                               <span className="audit-score-row__max-inline">
                                 {" "}
                                 (max {param.max})
+                              </span>
+                            )}
+                            {isRetiredParamId(param.id) && (
+                              <span className="audit-score-row__max-inline">
+                                {" "}
+                                · retired, kept for this older audit
+                              </span>
+                            )}
+                            {isLegacyFatalParamDefinition(param) && (
+                              <span className="audit-score-row__max-inline">
+                                {" "}
+                                · FATAL option kept for this older audit
                               </span>
                             )}
                           </span>

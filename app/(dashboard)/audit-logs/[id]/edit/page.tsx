@@ -34,6 +34,14 @@ async function EditAuditContent({ id }: { id: string }) {
       getAuditReferenceOptions(),
     ]);
 
+  // Score this audit on its own rubric snapshot (keeps retired params such as
+  // Call "Hold" for audits saved before they were removed).
+  const templates = workbench.templates.map((template) =>
+    template.id === editData.templateId
+      ? { ...template, sections: editData.template.sections }
+      : template
+  );
+
   const supervisorAgentMap = await buildSupervisorAgentMap(
     session,
     interactionConfig.supervisors,
@@ -47,7 +55,7 @@ async function EditAuditContent({ id }: { id: string }) {
         session.user.name?.trim() || session.user.email || ""
       }
       interactionConfig={interactionConfig}
-      templates={workbench.templates}
+      templates={templates}
       auditReferenceOptions={auditReferenceOptions}
       initialTemplateId={editData.templateId}
       initialType={editData.formData.type}

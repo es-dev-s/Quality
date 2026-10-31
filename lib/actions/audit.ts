@@ -35,6 +35,11 @@ import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { getTemplateById } from "@/lib/actions/templates";
 import { fetchAuditTemplateForEdit } from "@/lib/audit/template-db";
 import {
+  sanitizeScoresForTemplate,
+  templateForStoredAudit,
+} from "@/lib/audit/stored-audit-template";
+import { storedRowsFromRecord } from "@/lib/audit/legacy-fatal-params";
+import {
   isNextDataCacheOverflowError,
   isPrismaSchemaMismatchError,
   isRetryableDbError,
@@ -81,6 +86,10 @@ import { reconcileTransferHistoryForViewer } from "@/lib/audit/transfer-history"
 import { resolveFormFeedbackForSave } from "@/lib/audit/form-feedback-save";
 import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
 import { normalizeReferenceValue } from "@/lib/upload/reference-url-paths";
+import {
+  callDurationSecondsForType,
+  formatCallDurationForType,
+} from "@/lib/audit/call-duration";
 import {
   defaultAuditFeedback,
   normalizeFeedbackForSave,
@@ -242,7 +251,7 @@ export async function saveAuditSubmission(
 
   const {
     formData: validFormData,
-    scores: validScores,
+    scores: submittedScores,
     templateId: validTemplateId,
     submissionKey,
   } = parsed.data;
@@ -262,6 +271,8 @@ export async function saveAuditSubmission(
   if (!template) {
     return { error: "Audit template not found." };
   }
+  // Retired parameters (e.g. Call "Hold") are never scored or stored for new audits.
+  const validScores = sanitizeScoresForTemplate(submittedScores, template);
 
   const [interactionConfig, users] = await Promise.all([
     getInteractionConfig(),
@@ -322,6 +333,10 @@ export async function saveAuditSubmission(
     sublob: record.sublob || null,
     reason: record.reason || null,
     mobile: record.mobile?.trim() || null,
+    callDurationSec: callDurationSecondsForType(
+      validFormData.type,
+      validFormData.callDuration
+    ),
     referenceUrl: normalizeReferenceValue(record.referenceUrl) || null,
     response: record.response || null,
     qualityPct: record.qualityPct,
@@ -480,6 +495,7 @@ type AuditLogRow = {
   supervisorRemarks: string;
   referenceUrl: string | null;
   mobile: string | null;
+  callDurationSec: number | null;
   submittedBy: {
     name: string | null;
     email: string;
@@ -522,6 +538,7 @@ function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
     agentFeedback: s.agentFeedback ?? "",
     supervisorRemarks: s.supervisorRemarks ?? "",
     mobile: legacy.mobile || null,
+    callDurationSec: s.callDurationSec ?? null,
     referenceUrl: legacy.referenceUrl || null,
     submittedBy: s.submittedBy.name ?? s.submittedBy.email,
     submittedByRoleSlug,
@@ -678,6 +695,7 @@ export async function getAuditDetail(id: string) {
         ? (submission.record as { subReason: string }).subReason
         : null,
     mobile: legacy.mobile || null,
+    callDurationSec: submission.callDurationSec ?? null,
     referenceUrl: legacy.referenceUrl || null,
     response: submission.response,
     qualityPct: submission.qualityPct,
@@ -744,6 +762,10 @@ function submissionToFormData(
     lob: submission.lob,
     sublob: submission.sublob ?? "",
     mobile: legacy.mobile,
+    callDuration: formatCallDurationForType(
+      submission.type,
+      submission.callDurationSec
+    ),
     referenceUrl: legacy.referenceUrl,
     reason: submission.reason ?? "",
     subReason: "",
@@ -792,12 +814,25 @@ export async function getAuditForEdit(id: string): Promise<AuditEditPayload | nu
   const formData = submissionToFormData(submission);
   if (!formData) return null;
 
+  const scores = parseScoresMap(submission.scores);
+
   return {
     id: submission.id,
     auditCode: submission.auditCode,
     templateId,
     formData,
-    scores: parseScoresMap(submission.scores),
+    scores,
+    // Older audits keep the rubric they were scored on: retired params
+    // (e.g. Call "Hold") stay scored from their stored value, and params added
+    // later (e.g. "Urgency Creation") are left out, so editing never silently
+    // changes the quality %.
+    // Former FATAL params (Call Disposition tagging) keep the legacy FATAL
+    // option for an audit that was saved with FATAL on them.
+    template: templateForStoredAudit(
+      template,
+      scores,
+      storedRowsFromRecord(submission.record)
+    ),
   };
 }
 
@@ -832,7 +867,7 @@ export async function updateAuditSubmission(
   const {
     id: validId,
     formData: validFormData,
-    scores: validScores,
+    scores: submittedScores,
     templateId: validTemplateId,
   } = parsed.data;
 
@@ -841,11 +876,11 @@ export async function updateAuditSubmission(
     return validationError(historyError);
   }
 
-  const template = await fetchAuditTemplateForEdit(
+  const baseTemplate = await fetchAuditTemplateForEdit(
     validTemplateId,
     validFormData.type
   );
-  if (!template) {
+  if (!baseTemplate) {
     return { error: "Audit template not found." };
   }
 
@@ -881,6 +916,8 @@ export async function updateAuditSubmission(
       feedbackStatusAt: true,
       agentFeedback: true,
       submittedById: true,
+      scores: true,
+      record: true,
     },
   });
   if (!existing) {
@@ -889,6 +926,16 @@ export async function updateAuditSubmission(
   if (existing.isHistory) {
     return { error: "History audits cannot be edited." };
   }
+
+  // Audits keep the rubric they were scored on: a retired param (e.g. Call
+  // "Hold") stays scored from its stored value, and a param introduced later
+  // (e.g. "Urgency Creation") is not added to an audit saved without it.
+  const template = templateForStoredAudit(
+    baseTemplate,
+    parseScoresMap(existing.scores),
+    storedRowsFromRecord(existing.record)
+  );
+  const validScores = sanitizeScoresForTemplate(submittedScores, template);
 
   const previousFeedbackStatus = parseFeedbackStatus(existing.feedbackStatus);
   const feedbackResult = await normalizeFormFeedbackForSave(session, validFormData, {
@@ -950,6 +997,10 @@ export async function updateAuditSubmission(
         sublob: record.sublob || null,
         reason: record.reason || null,
         mobile: record.mobile?.trim() || null,
+        callDurationSec: callDurationSecondsForType(
+          validFormData.type,
+          validFormData.callDuration
+        ),
         referenceUrl: normalizeReferenceValue(record.referenceUrl) || null,
         response: record.response || null,
         qualityPct: record.qualityPct,

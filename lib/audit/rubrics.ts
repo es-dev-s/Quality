@@ -90,7 +90,6 @@ const CALL_SECTIONS: AuditSection[] = [
       yn("call-greeting", "Greeting", 2, "Call Compliance"),
       yn("call-permission", "Permission", 2, "Call Compliance"),
       yn("call-closing", "Closing", 2, "Call Compliance"),
-      yn("call-hold", "Hold (<=1min 3x)", 3, "Call Compliance"),
       yn("call-followup", "Follow Up", 5, "Call Compliance"),
     ],
   },
@@ -129,6 +128,7 @@ const CALL_SECTIONS: AuditSection[] = [
       yn("call-upsell", "Upsell / Promotions", 3, "Sales & Compliance"),
       yn("call-sales-effort", "Sales Effort/Value Creation", 10, "Sales & Compliance"),
       yn("call-nurturing", "Client Nurturing", 5, "Sales & Compliance"),
+      yn("call-urgency", "Urgency Creation", 3, "Sales & Compliance"),
     ],
   },
   {
@@ -136,8 +136,8 @@ const CALL_SECTIONS: AuditSection[] = [
     name: "Call Disposition",
     isFatal: false,
     params: [
-      ynFatal("call-alltagged", "All Queries Tagged", 5, "Call Disposition"),
-      ynFatal("call-correcttag", "Correct Tagging", 5, "Call Disposition"),
+      yn("call-alltagged", "All Queries Tagged", 5, "Call Disposition"),
+      yn("call-correcttag", "Correct Tagging", 5, "Call Disposition"),
     ],
   },
   cmmSection("call"),
@@ -189,6 +189,7 @@ const CHAT_SECTIONS: AuditSection[] = [
       yn("chat-upsell", "Upsell / Promotions", 3, "Sales & Compliance"),
       yn("chat-sales-effort", "Sales Effort/Value Creation", 10, "Sales & Compliance"),
       yn("chat-nurturing", "Client Nurturing", 5, "Sales & Compliance"),
+      yn("chat-urgency", "Urgency Creation", 3, "Sales & Compliance"),
     ],
   },
   {
@@ -218,7 +219,7 @@ export const CHAT_AUDIT_TEMPLATE: AuditTemplate = {
   name: "Chat Quality Audit",
   type: "Chat",
   lob: "Sales / Support",
-  description: "100-point chat interaction rubric.",
+  description: "103-point chat interaction rubric.",
   isDefault: true,
   sections: CHAT_SECTIONS,
 };

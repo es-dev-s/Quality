@@ -85,6 +85,8 @@ export type AuditFormData = {
   lob: string;
   sublob: string;
   mobile: string;
+  /** Interaction duration as typed/displayed (`mm:ss` or `hh:mm:ss`); stored as seconds. */
+  callDuration: string;
   /** CRM / ticket URL, uploaded audio (/api/files/audit-media/), or image (/api/files/audit-images/) */
   referenceUrl: string;
   reason: string;

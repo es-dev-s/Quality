@@ -3,6 +3,7 @@ import type { AuditSourceKind } from "@/lib/audit/audit-source";
 import type {
   AuditFormData,
   AuditRow,
+  AuditTemplate,
   CategoryScore,
   ScoresMap,
 } from "@/lib/audit/types";
@@ -33,6 +34,8 @@ export type AuditLogEntry = {
   agentFeedback: string;
   supervisorRemarks: string;
   mobile: string | null;
+  /** Interaction duration in seconds (null for legacy / imported audits). */
+  callDurationSec: number | null;
   referenceUrl: string | null;
   submittedBy: string;
   /** Role slug of the user who submitted the form (for source tagging). */
@@ -61,6 +64,8 @@ export type AuditDetail = {
   reason: string | null;
   subReason: string | null;
   mobile: string | null;
+  /** Interaction duration in seconds (null for legacy / imported audits). */
+  callDurationSec: number | null;
   referenceUrl: string | null;
   response: string | null;
   qualityPct: number;
@@ -92,6 +97,8 @@ export type AuditEditPayload = {
   templateId: string;
   formData: AuditFormData;
   scores: ScoresMap;
+  /** Rubric for this audit (retired params restored when the audit has stored values for them). */
+  template: AuditTemplate;
 };
 
 export type DashboardAuditRecord = {
