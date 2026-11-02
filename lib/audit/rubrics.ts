@@ -189,7 +189,6 @@ const CHAT_SECTIONS: AuditSection[] = [
       yn("chat-upsell", "Upsell / Promotions", 3, "Sales & Compliance"),
       yn("chat-sales-effort", "Sales Effort/Value Creation", 10, "Sales & Compliance"),
       yn("chat-nurturing", "Client Nurturing", 5, "Sales & Compliance"),
-      yn("chat-urgency", "Urgency Creation", 3, "Sales & Compliance"),
     ],
   },
   {
@@ -198,7 +197,7 @@ const CHAT_SECTIONS: AuditSection[] = [
     isFatal: false,
     params: [
       ynFatal("chat-alltagged", "All Queries Tagged", 5, "Chat Disposition"),
-      ynFatal("chat-correcttag", "Correct Tagging", 5, "Chat Disposition"),
+      yn("chat-correcttag", "Correct Tagging", 5, "Chat Disposition"),
     ],
   },
   cmmSection("chat"),
@@ -219,7 +218,7 @@ export const CHAT_AUDIT_TEMPLATE: AuditTemplate = {
   name: "Chat Quality Audit",
   type: "Chat",
   lob: "Sales / Support",
-  description: "103-point chat interaction rubric.",
+  description: "100-point chat interaction rubric.",
   isDefault: true,
   sections: CHAT_SECTIONS,
 };

@@ -1,33 +1,35 @@
 "use client";
+import { usersTableQuerySchema } from "@/lib/admin/table-query";
+import { remotePagination,usePageState,useServerResource } from "@/lib/hooks/use-server-resource";
+import { pageInfo,type PageInfo } from "@/lib/server/page-query";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { KeyRound, Pencil, Plus, Power, Trash2 } from "lucide-react";
 import { BulkActionBar } from "@/components/admin/bulk-action-bar";
-import { Button } from "@/components/primitives/button";
+import { UserFormDialog } from "@/components/admin/user-form-dialog";
+import { FilterSelect } from "@/components/filters/filter-select";
+import {
+	FilterSidebar,
+	FilterSidebarSection,
+} from "@/components/filters/filter-sidebar";
 import { Badge } from "@/components/primitives/badge";
+import { Button } from "@/components/primitives/button";
 import { ConfirmModal } from "@/components/primitives/confirm-modal";
 import {
-  TableRowAction,
-  TableRowActionsCell,
-} from "@/components/primitives/table-row-actions";
-import { useToast } from "@/components/primitives/toast";
-import { UserFormDialog } from "@/components/admin/user-form-dialog";
-import {
-  DataTablePanel,
-  usePaginatedRows,
+	DataTablePanel
 } from "@/components/primitives/data-table-panel";
 import {
-  FilterSidebar,
-  FilterSidebarSection,
-} from "@/components/filters/filter-sidebar";
-import { FilterSelect } from "@/components/filters/filter-select";
+	TableRowAction,
+	TableRowActionsCell,
+} from "@/components/primitives/table-row-actions";
+import { useToast } from "@/components/primitives/toast";
+import { bulkDeleteUsers,revealUserPassword,setUserActive } from "@/lib/actions/admin";
 import { toastUserDeleteResult } from "@/lib/admin/user-delete-result";
-import { bulkDeleteUsers, revealUserPassword, setUserActive } from "@/lib/actions/admin";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import { useBulkSelection } from "@/lib/hooks/use-bulk-selection";
 import { useBusyAction } from "@/lib/hooks/use-busy-action";
 import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
+import { KeyRound,Pencil,Plus,Power,Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useMemo,useState } from "react";
 
 type Role = {
   id: string;
@@ -51,6 +53,8 @@ type User = {
 
 type UsersTableProps = {
   users: User[];
+  initialPagination?: PageInfo;
+  initialTotal?: number;
   roles: Role[];
   embedded?: boolean;
   /** Reveal passwords only — hide create, edit, activate, and delete. */
@@ -58,7 +62,9 @@ type UsersTableProps = {
 };
 
 export function UsersTable({
-  users,
+  users: initialUsers,
+  initialPagination,
+  initialTotal,
   roles,
   embedded = false,
   passwordAccessOnly = false,
@@ -120,24 +126,12 @@ export function UsersTable({
     setStatusFilter("");
   };
 
-  const filteredUsers = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return users.filter((user) => {
-      if (roleFilter && user.roleId !== roleFilter) return false;
-      if (statusFilter === "active" && user.isActive === false) return false;
-      if (statusFilter === "inactive" && user.isActive !== false) return false;
-      if (!q) return true;
-      return (
-        user.email.toLowerCase().includes(q) ||
-        (user.name ?? "").toLowerCase().includes(q) ||
-        (user.teamName ?? "").toLowerCase().includes(q) ||
-        user.role.name.toLowerCase().includes(q)
-      );
-    });
-  }, [users, search, roleFilter, statusFilter]);
-
-  const pagination = usePaginatedRows(filteredUsers);
-
+  const pageState = usePageState(JSON.stringify([search, roleFilter, statusFilter]));
+  const initialData = useMemo(() => ({ users: initialUsers, pagination: initialPagination ?? pageInfo(initialUsers.length, { page: 1, pageSize: 20 }), totalCount: initialTotal ?? initialUsers.length }), [initialUsers, initialPagination, initialTotal]);
+  const resource = useServerResource("users", { page: pageState.page, pageSize: pageState.pageSize, search, roleFilter, statusFilter }, initialData, usersTableQuerySchema.parse({}));
+  const users = resource.data.users;
+  const filteredUsers = users;
+  const pagination = remotePagination(users, resource.data.pagination, pageState);
   const selectionPool = useMemo(
     () => filteredUsers.map((user) => ({ id: user.id })),
     [filteredUsers]
@@ -231,10 +225,12 @@ export function UsersTable({
         )}
 
         <div className={embedded ? "loading-zone--fill" : undefined}>
-          <DataTablePanel
+          {resource.error ? <p role="alert">{resource.error}</p> : null}
+      <DataTablePanel
             pagination={pagination}
+            paginationPending={resource.loading}
             fillViewport={embedded}
-            summaryLabel={`${filteredUsers.length} of ${users.length} user${
+            summaryLabel={`${resource.data.pagination.total} of ${resource.data.totalCount} user${
               users.length === 1 ? "" : "s"
             }`}
             search={{

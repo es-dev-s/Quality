@@ -1,41 +1,42 @@
 "use server";
+import { usersTableQuerySchema } from "@/lib/admin/table-query";
+import { pageInfo } from "@/lib/server/page-query";
 
-import { revalidatePath, revalidateTag } from "next/cache";
-import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { CACHE_TAGS } from "@/lib/cache";
-import { requireAuth } from "@/lib/auth";
-import { ForbiddenError, permissionError, requirePermission } from "@/lib/auth-guards";
-import { PERMISSIONS, isLegacySystemRole } from "@/lib/permissions";
-import { isValidPermissionSlug } from "@/lib/permission-catalog";
 import { resolveRoleUserName } from "@/lib/audit/role-users";
-import { fetchUserAuditMatchNames } from "@/lib/audit/user-audit-match";
-import { canManageRoles, canManageUsers, canRevealUserPasswords, hasScope, isSuperAdmin } from "@/lib/rbac";
-import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { isSupervisorRoleSlug } from "@/lib/audit/supervisor-tier";
+import { fetchUserAuditMatchNames } from "@/lib/audit/user-audit-match";
+import { requireAuth } from "@/lib/auth";
+import { ForbiddenError,requirePermission } from "@/lib/auth-guards";
+import { CACHE_TAGS } from "@/lib/cache";
 import { SUPERADMIN_ROLE_SLUG } from "@/lib/constants";
+import {
+	decryptPassword,
+	generateTemporaryPassword,
+} from "@/lib/crypto/password-vault";
 import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
-import { isRetryableDbError, withDbRetry } from "@/lib/db/with-db-retry";
+import { isRetryableDbError,withDbRetry } from "@/lib/db/with-db-retry";
 import {
-  assertActorManagesUser,
-  buildManagedUsersWhere,
-} from "@/lib/user-roster-scope";
-import {
-  invalidateAuditCaches,
-  invalidateCacheTags,
-  invalidateRoleCaches,
-  invalidateUserCaches,
+	invalidateAuditCaches,
+	invalidateCacheTags,
+	invalidateRoleCaches,
+	invalidateUserCaches,
 } from "@/lib/invalidate-cache";
+import { buildPasswordCredentials } from "@/lib/password-credentials";
+import { isValidPermissionSlug } from "@/lib/permission-catalog";
+import { isLegacySystemRole,PERMISSIONS,SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+import { canManageUsers,canRevealUserPasswords,isSuperAdmin } from "@/lib/rbac";
+import {
+	logSecurityAudit,
+	SECURITY_AUDIT_ACTIONS,
+} from "@/lib/security-audit";
 import { broadcastToUser } from "@/lib/sse-broadcast";
 import {
-  SECURITY_AUDIT_ACTIONS,
-  logSecurityAudit,
-} from "@/lib/security-audit";
-import { buildPasswordCredentials } from "@/lib/password-credentials";
-import {
-  decryptPassword,
-  generateTemporaryPassword,
-} from "@/lib/crypto/password-vault";
+	assertActorManagesUser,
+	buildManagedUsersWhere,
+} from "@/lib/user-roster-scope";
+import { revalidatePath,revalidateTag } from "next/cache";
+import { z } from "zod";
 
 const isoDateSchema = z.union([
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date (YYYY-MM-DD)"),
@@ -1046,4 +1047,17 @@ export async function getUserPasswordHash(userId: string) {
     };
   }
   return { error: "Could not reveal password." };
+}
+
+export async function getUsersPage(input: unknown = {}) {
+  const session = await requireAuth();
+  const query = usersTableQuerySchema.parse(input);
+  if (!canManageUsers(session.user.role) && !canRevealUserPasswords(session.user.role)) throw new ForbiddenError();
+  const scope = canManageUsers(session.user.role) ? {} : await buildManagedUsersWhere(session.user.id, session.user.role);
+  const contains = { contains: query.search, mode: "insensitive" as const };
+  const where = { AND: [scope, ...(query.roleFilter ? [{ roleId: query.roleFilter }] : []), ...(query.statusFilter ? [{ isActive: query.statusFilter === "active" }] : []), ...(query.search ? [{ OR: [{ name: contains }, { email: contains }, { teamName: contains }, { role: { name: contains } }] }] : [])] };
+  const [totalCount, total] = await Promise.all([prisma.user.count({ where: scope }), prisma.user.count({ where })]);
+  const pagination = pageInfo(total, query);
+  const users = await prisma.user.findMany({ where, select: { id: true, name: true, email: true, roleId: true, isActive: true, dateOfJoining: true, teamName: true, createdAt: true, role: { select: { id: true, name: true, slug: true, isSystem: true } } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (pagination.page - 1) * pagination.pageSize, take: pagination.pageSize });
+  return { users, pagination, totalCount };
 }

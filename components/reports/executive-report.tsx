@@ -1,56 +1,53 @@
 "use client";
 
-import { formatCallDurationForType } from "@/lib/audit/call-duration";
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { Calendar, Download, Maximize2, Minimize2, Printer } from "lucide-react";
 import { FilterChipBar } from "@/components/filters/filter-chip-bar";
 import { FilterClearButton } from "@/components/filters/filter-clear-button";
 import { FilterSelect } from "@/components/filters/filter-select";
+import {
+	FilterSidebar,
+	FilterSidebarGrid,
+	FilterSidebarSection,
+} from "@/components/filters/filter-sidebar";
 import { FilterTriggerButton } from "@/components/filters/filter-trigger-button";
 import {
-  FilterSidebar,
-  FilterSidebarGrid,
-  FilterSidebarSection,
-} from "@/components/filters/filter-sidebar";
-import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
-import {
-  DataTablePanel,
-  usePaginatedRows,
+	DataTablePanel
 } from "@/components/primitives/data-table-panel";
 import { LoadingZone } from "@/components/primitives/loading-zone";
-import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
-import { useStaleRequestGuard } from "@/lib/hooks/use-stale-request-guard";
 import {
-  getReportData,
-  getReportExportData,
-  type ReportFilterOptions,
-  type ReportPageData,
+	type ReportFilterOptions,
+	type ReportPageData
 } from "@/lib/actions/reports";
-import { exportReportCsv } from "@/lib/reports/export-csv";
 import {
-  relatedNames,
-  reportPeopleSelectOptions,
+	AUDIT_SOURCE_FILTER_OPTIONS,
+	auditSourceChipLabel,
+	type AuditSourceKind,
+} from "@/lib/audit/audit-source";
+import { formatCallDurationForType } from "@/lib/audit/call-duration";
+import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
+import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
+import { remotePagination,usePageState,useServerResource } from "@/lib/hooks/use-server-resource";
+import {
+	relatedNames,
+	reportPeopleSelectOptions,
 } from "@/lib/reports/report-filter-options";
 import {
-  defaultReportFilters,
-  isDefaultReportDateRange,
-  periodMatchesRange,
-  rangeForReportPeriod,
-  REPORT_PERIOD_OPTIONS,
-  REPORT_TYPE_OPTIONS,
-  toIsoDate,
-  type ReportPeriod,
+	defaultReportFilters,
+	isDefaultReportDateRange,
+	periodMatchesRange,
+	rangeForReportPeriod,
+	REPORT_PERIOD_OPTIONS,
+	REPORT_TYPE_OPTIONS,
+	toIsoDate,
+	type ReportPeriod,
 } from "@/lib/reports/report-period";
-import {
-  reportFiltersSchema,
-  type ReportFilters,
-} from "@/lib/validation/reports";
-import {
-  AUDIT_SOURCE_FILTER_OPTIONS,
-  auditSourceChipLabel,
-  type AuditSourceKind,
-} from "@/lib/audit/audit-source";
+import { pageInfo } from "@/lib/server/page-query";
 import { cn } from "@/lib/utils";
+import {
+	reportFiltersSchema,
+	type ReportFilters,
+} from "@/lib/validation/reports";
+import { Calendar,Download,Maximize2,Minimize2,Printer } from "lucide-react";
+import { useMemo,useState,useTransition } from "react";
 
 type ReportTableDensity = "compact" | "standard" | "expanded";
 
@@ -153,14 +150,15 @@ export function ExecutiveReport({
   const [applied, setApplied] = useState<ReportFilters>(defaultReportFilters);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [data, setData] = useState<ReportPageData | null>(null);
   const [tableDensity, setTableDensity] = useState<ReportTableDensity>("expanded");
-  const [isPending, startTransition] = useTransition();
   const [isExporting, startExport] = useTransition();
   const filterSidebar = useFilterSidebar();
-  const { beginRequest } = useStaleRequestGuard();
 
-  const pagination = usePaginatedRows(data?.rows ?? [], 20, queryKey(applied));
+  const pageState = usePageState(queryKey(applied));
+  const resource = useServerResource<ReportPageData | null>("reports", { filters: applied, page: pageState.page, pageSize: pageState.pageSize }, null, {});
+  const data = resource.data;
+  const isPending = resource.loading;
+  const pagination = remotePagination(data?.rows ?? [], data?.pagination ?? pageInfo(0, { page: 1, pageSize: 20 }), pageState);
   const todayIso = toIsoDate(new Date());
 
   function commitFilters(next: ReportFilters) {
@@ -170,23 +168,6 @@ export function ExecutiveReport({
     setDraftError(null);
     setExportError(null);
   }
-
-  function load(filters: ReportFilters) {
-    const request = beginRequest();
-    startTransition(async () => {
-      const result = await getReportData(filters);
-      if (request.isStale()) return;
-      setData(result);
-    });
-  }
-
-  const appliedQueryKey = queryKey(applied);
-
-  useEffect(() => {
-    load(applied);
-    // appliedQueryKey encodes start/end/agent/supervisor/type.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appliedQueryKey]);
 
   const draftPeopleOptions = useMemo(
     () => reportPeopleSelectOptions(filterOptions, draft.agent, draft.supervisor),
@@ -329,16 +310,15 @@ export function ExecutiveReport({
     if (!data?.rows.length) return;
     setExportError(null);
     startExport(async () => {
-      const result = await getReportExportData(applied);
-      if (result.error) {
-        setExportError(result.error);
-        return;
-      }
-      if (!result.rows.length) {
-        setExportError("No rows match the current filters.");
-        return;
-      }
-      exportReportCsv(result.rows);
+      try {
+        const params = new URLSearchParams({ view: "report-export", query: JSON.stringify({ filters: applied }) });
+        const response = await fetch(`/api/workspace-data?${params}`, { cache: "no-store" });
+        if (!response.ok) throw new Error((await response.json()).error ?? "Could not export report.");
+        const url = URL.createObjectURL(await response.blob());
+        const link = document.createElement("a");
+        link.href = url; link.download = `quality-report-${Date.now()}.csv`; link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (error) { setExportError(error instanceof Error ? error.message : "Could not export report."); }
     });
   }
 
@@ -420,7 +400,7 @@ export function ExecutiveReport({
                 disabled={!data?.rows.length || isExporting}
               >
                 <Download size={15} aria-hidden />
-                Export CSV ({data?.rows.length ?? 0})
+                Export CSV ({data?.stats.total ?? 0})
               </button>
             ) : null}
           </div>
@@ -703,6 +683,7 @@ export function ExecutiveReport({
         </p>
       ) : null}
 
+      {resource.error ? <p role="alert">{resource.error}</p> : null}
       <LoadingZone
         loading={isPending}
         label={data ? "Refreshing report…" : "Loading report…"}
@@ -745,6 +726,7 @@ export function ExecutiveReport({
 
             <DataTablePanel
               pagination={pagination}
+              paginationPending={isPending}
               scrollClassName={cn(
                 tableDensity === "expanded" &&
                   "platform-report-table__scroll--expanded",

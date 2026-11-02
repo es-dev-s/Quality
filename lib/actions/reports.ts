@@ -1,40 +1,38 @@
 "use server";
+import { fetchReportPage } from "@/lib/reports/report-page";
+import { pageInfo,serverPageSchema } from "@/lib/server/page-query";
 
-import type { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
-import { requirePermission } from "@/lib/auth-guards";
-import { PERMISSIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
-import { scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
-import { dataScopeFromSession } from "@/lib/audit/data-scope";
-import { reconcileTransferHistoryForViewer } from "@/lib/audit/transfer-history";
-import {
-  fetchAgentRosterNames,
-  fetchProvisionedAgentNamesBySupervisorUserIds,
-} from "@/lib/audit/agent-roster";
 import { canFilterByAgent } from "@/lib/audit/agent-filter-access";
+import {
+	fetchAgentRosterNames,
+	fetchProvisionedAgentNamesBySupervisorUserIds,
+} from "@/lib/audit/agent-roster";
+import { auditSourceWhere } from "@/lib/audit/audit-source";
+import { dataScopeFromSession } from "@/lib/audit/data-scope";
 import { caseInsensitiveEquals } from "@/lib/audit/prisma-string-filters";
-import { PASS_RATE_QUALITY_THRESHOLD, qualityPctForAverage } from "@/lib/audit/metrics-config";
 import {
-  fetchActiveAgentUserNames,
-  fetchSupervisorRoleUsers,
+	fetchActiveAgentUserNames,
+	fetchSupervisorRoleUsers,
 } from "@/lib/audit/role-users";
-import {
-  addRelatedName,
-  toSortedNameRecord,
-} from "@/lib/reports/report-filter-options";
-import {
-  reportFiltersSchema,
-  type ReportFilters,
-} from "@/lib/validation/reports";
+import { scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
+import { requirePermission } from "@/lib/auth-guards";
+import { PERMISSIONS,SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
 import { canExportAuditData } from "@/lib/rbac";
 import {
-  AUDIT_EXPORT_SELECT,
-  REPORT_PAGE_SELECT,
-  mapSubmissionToExportRow,
-  mapSubmissionToPageRow,
-  type AuditExportRow,
+	AUDIT_EXPORT_SELECT,
+	mapSubmissionToExportRow,
+	type AuditExportRow
 } from "@/lib/reports/audit-export-row";
-import { auditSourceWhere } from "@/lib/audit/audit-source";
+import {
+	addRelatedName,
+	toSortedNameRecord,
+} from "@/lib/reports/report-filter-options";
+import {
+	reportFiltersSchema,
+	type ReportFilters,
+} from "@/lib/validation/reports";
+import type { Prisma } from "@prisma/client";
 
 /** @deprecated Use AuditExportRow from `@/lib/reports/audit-export-row`. */
 export type ReportRow = AuditExportRow;
@@ -70,6 +68,7 @@ function emptyReport(
     endDate: filters.endDate,
     rows: [] as AuditExportRow[],
     stats: EMPTY_STATS,
+    pagination: pageInfo(0, { page: 1, pageSize: 20 }),
     generatedAt: new Date().toISOString(),
     error,
   };
@@ -133,10 +132,6 @@ async function reportWhere(
 
 export async function getReportFilterOptions(): Promise<ReportFilterOptions> {
   const session = await requirePermission(PERMISSIONS.REPORTS_READ);
-  await reconcileTransferHistoryForViewer(
-    session.user.id,
-    session.user.role.slug
-  );
   const ctx = dataScopeFromSession(session);
   const scope = await scopedAuditWhere(session);
   const loadOrgRoster = canLoadOrgPeopleRoster(ctx.role.slug);
@@ -194,54 +189,19 @@ export async function getReportFilterOptions(): Promise<ReportFilterOptions> {
   };
 }
 
-export async function getReportData(input: ReportFilters) {
+export async function getReportData(input: ReportFilters, pageInput: unknown = {}) {
   const session = await requirePermission(PERMISSIONS.REPORTS_READ);
-  await reconcileTransferHistoryForViewer(
-    session.user.id,
-    session.user.role.slug
-  );
   const parsed = parseReportFilters(input);
   if (parsed.error) {
     return emptyReport(parsed.filters, parsed.error);
   }
 
-  const submissions = await prisma.auditSubmission.findMany({
-    where: await reportWhere(session, parsed.filters),
-    select: REPORT_PAGE_SELECT,
-    orderBy: { auditDate: "desc" },
-  });
-
-  const rows = submissions.map(mapSubmissionToPageRow);
-  const total = rows.length;
-  const avgQuality =
-    total > 0
-      ? Math.round(rows.reduce((sum, row) => sum + qualityPctForAverage(row), 0) / total)
-      : 0;
-  const passCount = rows.filter(
-    (row) => !row.hasFatal && row.qualityPct >= PASS_RATE_QUALITY_THRESHOLD
-  ).length;
-
-  return {
-    startDate: parsed.filters.startDate,
-    endDate: parsed.filters.endDate,
-    rows,
-    stats: {
-      total,
-      avgQuality,
-      passRate: total > 0 ? Math.round((passCount / total) * 100) : 0,
-      fatals: rows.filter((row) => row.hasFatal).length,
-    },
-    generatedAt: new Date().toISOString(),
-    error: null as string | null,
-  };
+  const result = await fetchReportPage(await reportWhere(session, parsed.filters), serverPageSchema.parse(pageInput));
+  return { ...result, startDate: parsed.filters.startDate, endDate: parsed.filters.endDate, generatedAt: new Date().toISOString(), error: null as string | null };
 }
 
 export async function getReportExportData(input: ReportFilters) {
   const session = await requirePermission(PERMISSIONS.REPORTS_READ);
-  await reconcileTransferHistoryForViewer(
-    session.user.id,
-    session.user.role.slug
-  );
   if (!canExportAuditData(session.user.role)) {
     return {
       startDate: input.startDate,

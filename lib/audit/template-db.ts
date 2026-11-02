@@ -21,7 +21,11 @@ function applyTemplateParamPatches(template: AuditTemplate): AuditTemplate {
   return removeRetiredTemplateParams(
     patchTemplateCategorySpelling(
       patchTemplateProbingPreferredModeSwap(
-        patchTemplateFatalYnParams(template)
+        patchTemplateFatalYnParams(
+          template.id === "chat" && template.description === "103-point chat interaction rubric."
+            ? { ...template, description: "100-point chat interaction rubric." }
+            : template
+        )
       )
     )
   );
@@ -90,6 +94,7 @@ export const ensureDefaultTemplate = cache(async (): Promise<void> => {
 
     if (
       templateHasLegacyCategorySpelling(existing) ||
+      (existing.id === "chat" && existing.description === "103-point chat interaction rubric.") ||
       templateSectionsHaveRetiredParams(existing.sections) ||
       templateSectionsHaveFormerFatalYnParams(existing.sections)
     ) {
@@ -97,7 +102,7 @@ export const ensureDefaultTemplate = cache(async (): Promise<void> => {
         const patched = rowToAuditTemplate(existing);
         await prisma.formTemplate.update({
           where: { id: existing.id },
-          data: { sections: patched.sections },
+          data: { sections: patched.sections, description: patched.description },
         });
       } catch {
         // Concurrent spelling / retired-param / former-fatal repairs

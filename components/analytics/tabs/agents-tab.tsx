@@ -1,37 +1,37 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
-import {
-  sortByNumber,
-  type AnalyticsSortOrder,
-} from "@/lib/audit/analytics-sort";
 import { EntityBreakdownTable } from "@/components/analytics/entity-breakdown-table";
+import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
 import { QmsChartTooltip } from "@/components/analytics/qms-chart-tooltip";
 import {
-  CHART_COLORS,
-  QMS_CHART_TOOLTIP,
-  QmsBadge,
-  QmsCard,
-  QmsEmpty,
-  QmsSectionTitle,
-  QmsViewToggle,
+	CHART_COLORS,
+	QMS_CHART_TOOLTIP,
+	QmsBadge,
+	QmsCard,
+	QmsEmpty,
+	QmsSectionTitle,
+	QmsViewToggle,
 } from "@/components/analytics/qms-primitives";
-import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
 import {
-  DataTablePanel,
-  usePaginatedRows,
+	DataTablePanel,
+	usePaginatedRows,
 } from "@/components/primitives/data-table-panel";
+import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
+import {
+	sortByNumber,
+	type AnalyticsSortOrder,
+} from "@/lib/audit/analytics-sort";
+import { useMemo,useState } from "react";
+import {
+	Bar,
+	BarChart,
+	CartesianGrid,
+	Cell,
+	ResponsiveContainer,
+	Tooltip,
+	XAxis,
+	YAxis,
+} from "recharts";
 
 type AgentsTabProps = {
   data: QmsAnalyticsData;
@@ -81,6 +81,7 @@ export function AgentsTab({ data, sortOrder }: AgentsTabProps) {
       <div className="qms-tab">
         {viewToggle}
         <EntityBreakdownTable
+          dataKey={view === "parameter" ? "agent_param_breakdown" : "agent_cat_breakdown"}
           rows={
             view === "parameter"
               ? data.agent_param_breakdown

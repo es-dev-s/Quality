@@ -1,73 +1,70 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
-import { FilterChipBar } from "@/components/filters/filter-chip-bar";
-import { FilterClearButton } from "@/components/filters/filter-clear-button";
-import { FilterTriggerButton } from "@/components/filters/filter-trigger-button";
-import { FilterSelect } from "@/components/filters/filter-select";
-import {
-  FilterSidebar,
-  FilterSidebarGrid,
-  FilterSidebarSection,
-} from "@/components/filters/filter-sidebar";
-import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
-import { useBusyAction } from "@/lib/hooks/use-busy-action";
-import { getAnalyticsData, type AnalyticsPageData } from "@/lib/actions/analytics";
-import {
-  AUDIT_SOURCE_FILTER_OPTIONS,
-  auditSourceChipLabel,
-  type AuditSourceKind,
-} from "@/lib/audit/audit-source";
-import {
-  ANALYTICS_INTERACTION_PRESETS,
-  ANALYTICS_PERIOD_PRESETS,
-  applyAnalyticsFilters,
-  DEFAULT_ANALYTICS_INTERACTION_FILTER,
-  EMPTY_ANALYTICS_INCLUDE_FILTERS,
-  extractAnalyticsFilterOptions,
-  hasActiveAnalyticsIncludeFilters,
-  hasActiveAnalyticsInteractionFilter,
-  type AnalyticsIncludeFilters,
-  type AnalyticsInteractionFilter,
-} from "@/lib/audit/analytics-filters";
-import {
-  agentNamesForSelectedTeam,
-  buildAgentFilterSelectOptions,
-} from "@/lib/audit/agent-filter-access";
-import {
-  getAnalyticsFatalOccurrences,
-  summaryChipClass,
-} from "@/lib/audit/analytics-metrics";
-import type { DashboardPeriod } from "@/lib/audit/dashboard-metrics";
-import { LoadingZone } from "@/components/primitives/loading-zone";
-import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
-import { cn } from "@/lib/utils";
+import { QmsSortToggle } from "@/components/analytics/analytics-controls";
+import { FatalIncidentsByTeamCard } from "@/components/analytics/fatal-incidents-by-team";
+import { AnalyticsPaginationProvider } from "@/components/analytics/pagination-context";
 import { AgentsTab } from "@/components/analytics/tabs/agents-tab";
 import { AuditorsTab } from "@/components/analytics/tabs/auditors-tab";
 import { ComplianceTab } from "@/components/analytics/tabs/compliance-tab";
+import { LeaderboardsTab } from "@/components/analytics/tabs/leaderboards-tab";
 import { OverviewTab } from "@/components/analytics/tabs/overview-tab";
 import { ParametersTab } from "@/components/analytics/tabs/parameters-tab";
 import { TeamsTab } from "@/components/analytics/tabs/teams-tab";
-import { LeaderboardsTab } from "@/components/analytics/tabs/leaderboards-tab";
+import { HistoryFilterSection } from "@/components/audit/history-filter-section";
+import { FatalOccurrencesModal } from "@/components/dashboard/fatal-occurrences-modal";
+import { FilterChipBar } from "@/components/filters/filter-chip-bar";
+import { FilterClearButton } from "@/components/filters/filter-clear-button";
+import { FilterSelect } from "@/components/filters/filter-select";
 import {
-  ANALYTICS_TAB_LABELS,
-  analyticsFilterVisibility,
-  analyticsTabsForRole,
-  getAnalyticsScopeDescription,
-  type AnalyticsTabId,
+	FilterSidebar,
+	FilterSidebarGrid,
+	FilterSidebarSection,
+} from "@/components/filters/filter-sidebar";
+import { FilterTriggerButton } from "@/components/filters/filter-trigger-button";
+import { DateRangePicker,type DateRangeValue } from "@/components/primitives/date-range-picker";
+import { LoadingZone } from "@/components/primitives/loading-zone";
+import type { AnalyticsPageData } from "@/lib/actions/analytics";
+import {
+	agentNamesForSelectedTeam,
+	buildAgentFilterSelectOptions,
+} from "@/lib/audit/agent-filter-access";
+import {
+	ANALYTICS_INTERACTION_PRESETS,
+	ANALYTICS_PERIOD_PRESETS,
+	DEFAULT_ANALYTICS_INTERACTION_FILTER,
+	EMPTY_ANALYTICS_INCLUDE_FILTERS,
+	hasActiveAnalyticsIncludeFilters,
+	hasActiveAnalyticsInteractionFilter,
+	type AnalyticsIncludeFilters,
+	type AnalyticsInteractionFilter
+} from "@/lib/audit/analytics-filters";
+import {
+	summaryChipClass
+} from "@/lib/audit/analytics-metrics";
+import { analyticsQuerySchema } from "@/lib/audit/analytics-query";
+import {
+	ANALYTICS_TAB_LABELS,
+	analyticsFilterVisibility,
+	analyticsTabsForRole,
+	getAnalyticsScopeDescription,
+	type AnalyticsTabId,
 } from "@/lib/audit/analytics-role-config";
 import type { AnalyticsSortOrder } from "@/lib/audit/analytics-sort";
-import { QmsSortToggle } from "@/components/analytics/analytics-controls";
-import { FatalIncidentsByTeamCard } from "@/components/analytics/fatal-incidents-by-team";
-import { FatalOccurrencesModal } from "@/components/dashboard/fatal-occurrences-modal";
-import { HistoryFilterSection } from "@/components/audit/history-filter-section";
 import {
-  defaultAuditHistoryFilter,
-  filterByAuditHistory,
-  viewerCanAccessTransferHistory,
-  type AuditHistoryFilter,
+	AUDIT_SOURCE_FILTER_OPTIONS,
+	auditSourceChipLabel,
+	type AuditSourceKind,
+} from "@/lib/audit/audit-source";
+import type { DashboardPeriod } from "@/lib/audit/dashboard-metrics";
+import {
+	viewerCanAccessTransferHistory,
+	type AuditHistoryFilter
 } from "@/lib/audit/history-filter";
+import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
+import { useServerResource } from "@/lib/hooks/use-server-resource";
+import { cn } from "@/lib/utils";
+import { RefreshCw } from "lucide-react";
+import { useCallback,useMemo,useState } from "react";
 
 type QmsAnalyticsProps = {
   data: AnalyticsPageData;
@@ -78,7 +75,6 @@ type QmsAnalyticsProps = {
 export function QmsAnalytics({
   data: initialData,
   roleSlug,
-  viewerUserId,
 }: QmsAnalyticsProps) {
   const visibleTabs = useMemo(() => analyticsTabsForRole(roleSlug), [roleSlug]);
   const scopeDescription = useMemo(
@@ -89,9 +85,9 @@ export function QmsAnalytics({
     () => analyticsFilterVisibility(roleSlug),
     [roleSlug]
   );
-  const [tab, setTab] = useState<AnalyticsTabId>("overview");
+  const [requestedTab, setTab] = useState<AnalyticsTabId>("overview");
+  const tab = visibleTabs.includes(requestedTab) ? requestedTab : visibleTabs[0] ?? "overview";
   const [sortOrder, setSortOrder] = useState<AnalyticsSortOrder>("desc");
-  const [liveBase, setLiveBase] = useState<AnalyticsPageData | null>(null);
   const [period, setPeriod] = useState<DashboardPeriod>("overall");
   const [customRange, setCustomRange] = useState<DateRangeValue>({ from: "", to: "" });
   const [includeFilters, setIncludeFilters] = useState<AnalyticsIncludeFilters>(
@@ -100,89 +96,21 @@ export function QmsAnalytics({
   const [interactionFilter, setInteractionFilter] =
     useState<AnalyticsInteractionFilter>(DEFAULT_ANALYTICS_INTERACTION_FILTER);
   const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
-    defaultAuditHistoryFilter(initialData.records, viewerUserId, roleSlug, "metrics")
+    initialData.defaultHistoryFilter
   );
   const filterSidebar = useFilterSidebar();
-  const { busy: isLoading, run: runBusy } = useBusyAction();
-  const [error, setError] = useState<string | null>(null);
   const [fatalTeam, setFatalTeam] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!visibleTabs.includes(tab)) {
-      setTab(visibleTabs[0] ?? "overview");
-    }
-  }, [tab, visibleTabs]);
-
-  const baseData = liveBase ?? initialData;
-  const records = baseData.records;
-  const referenceNow = useMemo(
-    () => new Date(baseData.fetchedAt),
-    [baseData.fetchedAt]
-  );
-
-  const filterOptions = useMemo(
-    () =>
-      extractAnalyticsFilterOptions(records, baseData.rosterAgentNames ?? []),
-    [records, baseData.rosterAgentNames]
-  );
-
-  const historyScopedRecords = useMemo(
-    () =>
-      filterByAuditHistory(
-        records,
-        viewerCanAccessTransferHistory(roleSlug) ? historyFilter : "working"
-      ),
-    [records, historyFilter, roleSlug]
-  );
-
-  const analyticsView = useMemo(
-    () =>
-      applyAnalyticsFilters(historyScopedRecords, {
-        period,
-        customRange,
-        includeFilters,
-        interactionFilter,
-        referenceNow,
-      }),
-    [
-      historyScopedRecords,
-      period,
-      customRange,
-      includeFilters,
-      interactionFilter,
-      referenceNow,
-    ]
-  );
-
-  const analytics = useMemo(
-    () => ({
-      kpis: analyticsView.kpis,
-      params: analyticsView.params,
-      categories: analyticsView.categories,
-      teams: analyticsView.teams,
-      bottom_agents: analyticsView.bottom_agents,
-      top_agents: analyticsView.top_agents,
-      auditors: analyticsView.auditors,
-      fatal_by_team: analyticsView.fatal_by_team,
-      leaderboards: analyticsView.leaderboards,
-      team_param_breakdown: analyticsView.team_param_breakdown,
-      team_cat_breakdown: analyticsView.team_cat_breakdown,
-      agent_param_breakdown: analyticsView.agent_param_breakdown,
-      agent_cat_breakdown: analyticsView.agent_cat_breakdown,
-      auditor_param_breakdown: analyticsView.auditor_param_breakdown,
-      auditor_cat_breakdown: analyticsView.auditor_cat_breakdown,
-    }),
-    [analyticsView]
-  );
-
-  const fatalOccurrences = useMemo(() => {
-    if (fatalTeam === null) return [];
-    return getAnalyticsFatalOccurrences(
-      analyticsView.records,
-      fatalTeam || null
-    );
-  }, [analyticsView.records, fatalTeam]);
-
+  const [fatalPage, setFatalPage] = useState(1);
+  const request = useMemo(() => analyticsQuerySchema.parse({ period, customRange, includeFilters, interactionFilter, historyFilter, sortOrder, fatalTeam, fatalPage }), [period, customRange, includeFilters, interactionFilter, historyFilter, sortOrder, fatalTeam, fatalPage]);
+  const initialQuery = useMemo(() => analyticsQuerySchema.parse({ historyFilter: initialData.defaultHistoryFilter }), [initialData]);
+  const resource = useServerResource("analytics", request, initialData, initialQuery);
+  const baseData = resource.data;
+  const analytics = baseData.analytics;
+  const filterOptions = baseData.filterOptions;
+  const fatalOccurrences = baseData.fatalOccurrences;
+  const isLoading = resource.loading;
+  const error = resource.error;
   const hasCustomRange = !!(customRange.from || customRange.to);
   const hasActiveFilters =
     hasCustomRange ||
@@ -190,7 +118,7 @@ export function QmsAnalytics({
     hasActiveAnalyticsIncludeFilters(includeFilters) ||
     hasActiveAnalyticsInteractionFilter(interactionFilter);
 
-  function updateFilter<K extends keyof AnalyticsIncludeFilters>(
+  const updateFilter = useCallback(function updateFilter<K extends keyof AnalyticsIncludeFilters>(
     key: K,
     value: AnalyticsIncludeFilters[K]
   ) {
@@ -208,7 +136,7 @@ export function QmsAnalytics({
       }
       return next;
     });
-  }
+  }, [filterOptions]);
 
   function clearFilters() {
     setIncludeFilters(EMPTY_ANALYTICS_INCLUDE_FILTERS);
@@ -283,7 +211,7 @@ export function QmsAnalytics({
     }
 
     return chips;
-  }, [customRange, period, includeFilters, interactionFilter, hasCustomRange]);
+  }, [customRange, period, includeFilters, interactionFilter, hasCustomRange, updateFilter]);
 
   const sidebarFilterCount = filterChips.filter(
     (chip) => chip.key !== "business"
@@ -329,19 +257,10 @@ export function QmsAnalytics({
     [filterOptions.businessTypes]
   );
 
-  function handleRefresh() {
-    setError(null);
-    runBusy(async () => {
-      try {
-        const result = await getAnalyticsData();
-        setLiveBase(result);
-      } catch {
-        setError("Refresh failed.");
-      }
-    });
-  }
+  function handleRefresh() { resource.refresh(); }
 
   return (
+    <AnalyticsPaginationProvider query={request} data={baseData}>
     <div className="qms-analytics">
       <div className="pf-panel">
         <div className="pf-bar">
@@ -474,7 +393,7 @@ export function QmsAnalytics({
           onChange={setHistoryFilter}
           show={
             viewerCanAccessTransferHistory(roleSlug) &&
-            records.some((row) => row.isHistory)
+            baseData.hasHistory
           }
         />
 
@@ -636,23 +555,27 @@ export function QmsAnalytics({
         description={
           fatalTeam === null
             ? undefined
-            : `${fatalOccurrences.length} fatal audit${
-                fatalOccurrences.length === 1 ? "" : "s"
+            : `${baseData.fatalPagination.total} fatal audit${
+                baseData.fatalPagination.total === 1 ? "" : "s"
               } in the selected period`
         }
         occurrences={fatalOccurrences}
-        onClose={() => setFatalTeam(null)}
+        pagination={baseData.fatalPagination}
+        onPage={setFatalPage}
+        loading={resource.loading}
+        onClose={() => { setFatalTeam(null); setFatalPage(1); }}
       />
 
       <footer className="qms-analytics__footer">
         Quality analytics · {analytics.kpis.total_audits.toLocaleString()} audits in view
         {hasActiveFilters
-          ? ` · ${analyticsView.filteredCount} of ${records.length} scoped`
+          ? ` · ${baseData.filteredCount} of ${baseData.recordCount} scoped`
           : null}
         {" · "}
         {scopeDescription}
         {" · "}Internal use only
       </footer>
     </div>
+    </AnalyticsPaginationProvider>
   );
 }

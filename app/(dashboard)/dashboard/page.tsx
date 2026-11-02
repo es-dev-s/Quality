@@ -1,17 +1,17 @@
-import { Suspense } from "react";
+import { DashboardAnalytics } from "@/components/dashboard/dashboard-analytics";
 import { PageFrame } from "@/components/dashboard/page-frame";
 import { CardsPageSkeleton } from "@/components/dashboard/page-skeletons";
-import { DashboardAnalytics } from "@/components/dashboard/dashboard-analytics";
+import { getDashboardPageData } from "@/lib/actions/dashboard";
 import { requirePageAccess } from "@/lib/auth-guards";
-import { getDashboardAuditData } from "@/lib/actions/audit";
 import {
-  canEditAuditSubmissions,
-  canEditSupervisorRemarks,
+	canEditAuditSubmissions,
+	canEditSupervisorRemarks,
 } from "@/lib/rbac";
+import { Suspense } from "react";
 
 async function DashboardContent() {
   const session = await requirePageAccess("/dashboard");
-  const data = await getDashboardAuditData();
+  const data = await getDashboardPageData();
   return (
     <DashboardAnalytics
       data={data}

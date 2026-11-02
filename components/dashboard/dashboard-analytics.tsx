@@ -1,85 +1,65 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { AlertTriangle, Award, RefreshCw } from "lucide-react";
+import { HistoryFilterSection } from "@/components/audit/history-filter-section";
+import { FatalOccurrencesModal } from "@/components/dashboard/fatal-occurrences-modal";
+import { useDashboardShell } from "@/components/dashboard/shell";
+import { TargetCalendarFilter } from "@/components/dashboard/target-calendar-filter";
 import { FilterChipBar } from "@/components/filters/filter-chip-bar";
 import { FilterClearButton } from "@/components/filters/filter-clear-button";
-import { FilterTriggerButton } from "@/components/filters/filter-trigger-button";
-import {
-  FilterSidebar,
-  FilterSidebarGrid,
-  FilterSidebarSection,
-} from "@/components/filters/filter-sidebar";
-import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
-import { Badge } from "@/components/primitives/badge";
 import { FilterSelect } from "@/components/filters/filter-select";
+import {
+	FilterSidebar,
+	FilterSidebarGrid,
+	FilterSidebarSection,
+} from "@/components/filters/filter-sidebar";
+import { FilterTriggerButton } from "@/components/filters/filter-trigger-button";
+import { Badge } from "@/components/primitives/badge";
+import { DateRangePicker,type DateRangeValue } from "@/components/primitives/date-range-picker";
 import { LoadingZone } from "@/components/primitives/loading-zone";
-import { cn } from "@/lib/utils";
-import { FatalOccurrencesModal } from "@/components/dashboard/fatal-occurrences-modal";
-import { TargetCalendarFilter } from "@/components/dashboard/target-calendar-filter";
-import { useDashboardShell } from "@/components/dashboard/shell";
-import { HistoryFilterSection } from "@/components/audit/history-filter-section";
-import type { DashboardAuditData } from "@/lib/audit/audit-records";
+import { PageControls } from "@/components/primitives/page-controls";
+import { useToast } from "@/components/primitives/toast";
 import {
-  defaultAuditHistoryFilter,
-  filterByAuditHistory,
-  viewerCanAccessTransferHistory,
-  type AuditHistoryFilter,
-} from "@/lib/audit/history-filter";
-import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
+	setAuditTargetPerAgent,
+	setAuditTargetTotalMonthly,
+} from "@/lib/actions/audit-targets";
 import {
-  auditorInitials,
-  computeAgentTargets,
-  excludeDeactivatedAgentRecords,
-  computeAuditorTargets,
-  restrictAuditorTargetsToViewer,
-  computePeriodStats,
-  computeScoreDistribution,
-  computeTopAgents,
-  computeTopFatals,
-  getFatalOccurrences,
-  computeTrendData,
-  EMPTY_INCLUDE_FILTERS,
-  extractFilterOptions,
-  mergeRosterIntoFilterOptions,
-  filterByIncludeFilters,
-  filterByPeriod,
-  filterByCustomRange,
-  filterCurrentMonth,
-  filterRecordsByAuditSource,
-  hasActiveIncludeFilters,
-  resolveTrendRangeBounds,
-  type DashboardIncludeFilters,
-  type DashboardPeriod,
-  type TrendGranularity,
-} from "@/lib/audit/dashboard-metrics";
-import {
-  agentNamesForSelectedTeam,
-  buildAgentFilterSelectOptions,
-  canFilterByAgent,
+	agentNamesForSelectedTeam,
+	buildAgentFilterSelectOptions,
+	canFilterByAgent,
 } from "@/lib/audit/agent-filter-access";
-import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import {
-  canEditAuditTargets as roleCanEditAgentTargets,
-  canEditMonthlyAuditTargets,
-} from "@/lib/rbac";
-import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
-import {
-  AUDIT_SOURCE_FILTER_OPTIONS,
-  auditSourceChipLabel,
-  type AuditSourceKind,
+	AUDIT_SOURCE_FILTER_OPTIONS,
+	auditSourceChipLabel,
+	type AuditSourceKind,
 } from "@/lib/audit/audit-source";
 import {
-  setAuditTargetPerAgent,
-  setAuditTargetTotalMonthly,
-} from "@/lib/actions/audit-targets";
-import { useToast } from "@/components/primitives/toast";
+	auditorInitials,
+	EMPTY_INCLUDE_FILTERS,
+	type DashboardIncludeFilters,
+	type DashboardPeriod,
+	type TrendGranularity
+} from "@/lib/audit/dashboard-metrics";
+import { dashboardQuerySchema,type DashboardSummary } from "@/lib/audit/dashboard-summary";
+import {
+	viewerCanAccessTransferHistory,
+	type AuditHistoryFilter
+} from "@/lib/audit/history-filter";
+import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
+import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
+import { useServerResource, usePageState } from "@/lib/hooks/use-server-resource";
 import { KPI_DEFAULT_AGENT_TARGET } from "@/lib/kpi/records";
+import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import {
+	canEditMonthlyAuditTargets,
+	canEditAuditTargets as roleCanEditAgentTargets,
+} from "@/lib/rbac";
+import { cn } from "@/lib/utils";
+import { AlertTriangle,Award,RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { useCallback,useEffect,useMemo,useRef,useState,useTransition } from "react";
 
 type DashboardAnalyticsProps = {
-  data: DashboardAuditData;
+  data: DashboardSummary;
   roleSlug: string;
   canEditAudits?: boolean;
   canEditSupervisorRemarks?: boolean;
@@ -162,15 +142,12 @@ function bucketBarTone(key: string): string {
 }
 
 export function DashboardAnalytics({
-  data,
+  data: initialData,
   roleSlug,
   canEditAudits = false,
   canEditSupervisorRemarks = false,
-  viewerUserId,
 }: DashboardAnalyticsProps) {
   const { user } = useDashboardShell();
-  const historyViewerId = viewerUserId ?? user.id;
-  const router = useRouter();
   const { toast } = useToast();
   const [isRefreshing, startRefresh] = useTransition();
   const [period, setPeriod] = useState<DashboardPeriod>("overall");
@@ -180,19 +157,19 @@ export function DashboardAnalytics({
   const [includeFilters, setIncludeFilters] =
     useState<DashboardIncludeFilters>(EMPTY_INCLUDE_FILTERS);
   const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
-    defaultAuditHistoryFilter(data.records ?? [], historyViewerId, roleSlug, "metrics")
+    initialData.defaultHistoryFilter
   );
   const [agentTarget, setAgentTarget] = useState(
-    data.agentTarget ?? DEFAULT_AGENT_TARGET
+    initialData.agentTarget ?? DEFAULT_AGENT_TARGET
   );
   const [targetAuditSource, setTargetAuditSource] = useState<AuditSourceKind | "">("");
   const [totalMonthlyTarget, setTotalMonthlyTarget] = useState<number | null>(
-    data.totalMonthlyTarget ?? null
+    initialData.totalMonthlyTarget ?? null
   );
   const agentTargetSaveSeq = useRef(0);
   const totalTargetSaveSeq = useRef(0);
-  const lastSavedAgentTarget = useRef(data.agentTarget ?? DEFAULT_AGENT_TARGET);
-  const lastSavedMonthlyTarget = useRef(data.totalMonthlyTarget ?? null);
+  const lastSavedAgentTarget = useRef(initialData.agentTarget ?? DEFAULT_AGENT_TARGET);
+  const lastSavedMonthlyTarget = useRef(initialData.totalMonthlyTarget ?? null);
   const pendingAgentTarget = useRef<number | null>(null);
   const pendingMonthlyTarget = useRef<number | null>(null);
   const agentTargetTimer = useRef<number | null>(null);
@@ -206,205 +183,30 @@ export function DashboardAnalytics({
   const canEditAuditTargets = roleCanEditAgentTargets(user.role);
   const canEditMonthlyTargets = canEditMonthlyAuditTargets(user.role);
 
-  const records = data.records ?? [];
-  const referenceNow = useMemo(
-    () => new Date(data.fetchedAt),
-    [data.fetchedAt]
-  );
-
-  const filterOptions = useMemo(
-    () =>
-      mergeRosterIntoFilterOptions(
-        extractFilterOptions(records),
-        data.rosterAgentNames ?? []
-      ),
-    [records, data.rosterAgentNames]
-  );
-  const showAgentFilter =
-    canFilterByAgent(roleSlug) &&
-    (filterOptions.agents.length > 0 || (data.rosterAgentNames?.length ?? 0) > 0);
-
-  const historyScopedRecords = useMemo(
-    () =>
-      filterByAuditHistory(
-        records,
-        viewerCanAccessTransferHistory(roleSlug) ? historyFilter : "working"
-      ),
-    [records, historyFilter, roleSlug]
-  );
-
-  const scopedRecords = useMemo(
-    () => filterByIncludeFilters(historyScopedRecords, includeFilters),
-    [historyScopedRecords, includeFilters]
-  );
-
-  const filtered = useMemo(() => {
-    if (customRange.from || customRange.to) {
-      return filterByCustomRange(scopedRecords, customRange.from, customRange.to);
-    }
-    return filterByPeriod(scopedRecords, period, referenceNow);
-  }, [scopedRecords, period, customRange, referenceNow]);
-
-  const trendRangeBounds = useMemo(
-    () =>
-      resolveTrendRangeBounds(
-        {
-          period: customRange.from || customRange.to ? "custom" : period,
-          customFrom: customRange.from,
-          customTo: customRange.to,
-        },
-        referenceNow
-      ),
-    [period, customRange, referenceNow]
-  );
-
-  const trendGranularityLabel =
-    TREND_OPTIONS.find((option) => option.id === trendGranularity)?.label ??
-    "Week by week";
-
-  const monthRecords = useMemo(
-    () => filterCurrentMonth(scopedRecords, referenceNow),
-    [scopedRecords, referenceNow]
-  );
-
+  const { page: agentPage, setPage: setAgentPage } = usePageState(JSON.stringify([includeFilters, historyFilter, targetAuditSource]));
+  const { page: auditorPage, setPage: setAuditorPage } = usePageState(JSON.stringify([includeFilters, historyFilter, auditorTargetRange]));
+  const { page: fatalPage, setPage: setFatalPage } = usePageState(JSON.stringify([includeFilters, historyFilter, period, customRange, selectedFatal]));
+  const request = useMemo(() => ({ period, customRange, includeFilters, historyFilter, trendGranularity, targetAuditSource, agentTarget, totalMonthlyTarget, auditorTargetRange, selectedFatal, agentPage, auditorPage, fatalPage }), [period, customRange, includeFilters, historyFilter, trendGranularity, targetAuditSource, agentTarget, totalMonthlyTarget, auditorTargetRange, selectedFatal, agentPage, auditorPage, fatalPage]);
+  const initialQuery = useMemo(() => ({ ...dashboardQuerySchema.parse({}), historyFilter: initialData.defaultHistoryFilter, agentTarget: initialData.agentTarget, totalMonthlyTarget: initialData.totalMonthlyTarget }), [initialData]);
+  const resource = useServerResource("dashboard", request, initialData, initialQuery);
+  const data = resource.data;
+  const { filterOptions, stats, monthStats, distribution, trendData, agentTargets, auditorTargets, agentTargetSourceCounts, resolvedMonthlyTarget, topAgents, topFatals, recentSubmissions } = data;
+  const selectedFatalOccurrences = data.fatalOccurrences;
+  const showAgentFilter = canFilterByAgent(roleSlug) && filterOptions.agents.length > 0;
   const sidebarAuditSource = includeFilters.auditSource;
   const effectiveTargetSource = sidebarAuditSource || targetAuditSource;
-
-  const agentTargetBase = useMemo(() => {
-    const withoutDeactivated = <T extends { agent: string }>(rows: T[]) =>
-      excludeDeactivatedAgentRecords(rows, data.deactivatedAgentNames ?? []);
-    return {
-      all: withoutDeactivated(scopedRecords),
-      month: withoutDeactivated(monthRecords),
-    };
-  }, [scopedRecords, monthRecords, data.deactivatedAgentNames]);
-
-  const agentTargetSourceCounts = useMemo(() => {
-    const counts: Record<AuditSourceKind | "", number> = {
-      "": agentTargetBase.month.length,
-      supervisor: 0,
-      qa: 0,
-      other: 0,
-    };
-    for (const record of agentTargetBase.month) {
-      counts[record.auditSource ?? "other"] += 1;
-    }
-    return counts;
-  }, [agentTargetBase]);
-
-  // The roster (all) stays unfiltered so agents with no audits from the
-  // selected source still show 0 / target; only this month's count is filtered.
-  const agentTargetRecords = useMemo(
-    () => ({
-      all: agentTargetBase.all,
-      month: filterRecordsByAuditSource(agentTargetBase.month, effectiveTargetSource),
-    }),
-    [agentTargetBase, effectiveTargetSource]
-  );
-
-  const auditorTargetSource = useMemo(() => {
-    if (auditorTargetRange.from || auditorTargetRange.to) {
-      const ranged = filterByCustomRange(
-        scopedRecords,
-        auditorTargetRange.from,
-        auditorTargetRange.to
-      );
-      return { all: ranged, counts: ranged };
-    }
-    return { all: scopedRecords, counts: monthRecords };
-  }, [
-    scopedRecords,
-    monthRecords,
-    auditorTargetRange.from,
-    auditorTargetRange.to,
-  ]);
-
-  const stats = useMemo(() => computePeriodStats(filtered), [filtered]);
-  const monthStats = useMemo(
-    () => computePeriodStats(monthRecords),
-    [monthRecords]
-  );
-
-  const distribution = useMemo(
-    () => computeScoreDistribution(filtered),
-    [filtered]
-  );
-
-  const trendData = useMemo(
-    () =>
-      computeTrendData(
-        filtered,
-        trendGranularity,
-        referenceNow,
-        trendRangeBounds
-      ),
-    [filtered, trendGranularity, referenceNow, trendRangeBounds]
-  );
-
-  const agentTargets = useMemo(
-    () =>
-      computeAgentTargets(
-        agentTargetRecords.all,
-        agentTargetRecords.month,
-        agentTarget
-      ),
-    [agentTargetRecords, agentTarget]
-  );
-
-  const resolvedMonthlyTarget =
-    totalMonthlyTarget ?? agentTargets.cumulativeTarget;
-
-  const auditorTargets = useMemo(() => {
-    const computed = computeAuditorTargets(
-      auditorTargetSource.all,
-      auditorTargetSource.counts,
-      resolvedMonthlyTarget
-    );
-    if (roleSlug !== SYSTEM_ROLE_SLUGS.QUALITY_ANALYST) {
-      return computed;
-    }
-    return restrictAuditorTargetsToViewer(computed, {
-      name: user.name,
-      email: user.email,
-    });
-  }, [
-    auditorTargetSource,
-    resolvedMonthlyTarget,
-    roleSlug,
-    user.name,
-    user.email,
-  ]);
   const isQualityAnalyst = roleSlug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST;
   const agentTargetCopy = agentTargetSourceCopy(effectiveTargetSource);
-
-  const topAgents = useMemo(() => computeTopAgents(filtered), [filtered]);
-  const topFatals = useMemo(() => computeTopFatals(filtered), [filtered]);
-  const selectedFatalOccurrences = useMemo(
-    () =>
-      selectedFatal ? getFatalOccurrences(filtered, selectedFatal) : [],
-    [filtered, selectedFatal]
-  );
-
-  const distMax = Math.max(1, ...distribution.map((b) => b.count));
-  const filtersActive = hasActiveIncludeFilters(includeFilters);
-
+  const trendGranularityLabel = TREND_OPTIONS.find((option) => option.id === trendGranularity)?.label ?? "Week by week";
+  const distMax = Math.max(1, ...distribution.map((bucket) => bucket.count));
   function scoreValueClass(score: number): string {
-    if (score >= 90) return "score-value--success";
-    if (score >= 70) return "score-value--warning";
-    return "score-value--error";
+    return score >= 90 ? "score-value--success" : score >= 70 ? "score-value--warning" : "score-value--error";
   }
-
-  const recentSubmissions = useMemo(() => {
-    return [...filtered]
-      .sort((a, b) => b.auditDate.localeCompare(a.auditDate))
-      .slice(0, 5);
-  }, [filtered]);
-
   function handleRefresh() {
     flushAgentTargetSave();
     flushMonthlyTargetSave();
     startRefresh(() => {
-      router.refresh();
+      resource.refresh();
     });
   }
 
@@ -519,7 +321,7 @@ export function DashboardAnalytics({
     };
   }, []);
 
-  function updateFilter<K extends keyof DashboardIncludeFilters>(
+  const updateFilter = useCallback(function updateFilter<K extends keyof DashboardIncludeFilters>(
     key: K,
     value: DashboardIncludeFilters[K]
   ) {
@@ -537,7 +339,7 @@ export function DashboardAnalytics({
       }
       return next;
     });
-  }
+  }, [filterOptions]);
 
   function clearFilters() {
     setIncludeFilters(EMPTY_INCLUDE_FILTERS);
@@ -612,7 +414,7 @@ export function DashboardAnalytics({
       });
     }
     return chips;
-  }, [customRange, period, includeFilters, trendGranularity, trendGranularityLabel]);
+  }, [customRange, period, includeFilters, trendGranularity, trendGranularityLabel, updateFilter]);
 
   const sidebarFilterCount = dashboardFilterChips.filter(
     (chip) => chip.key !== "business"
@@ -771,7 +573,7 @@ export function DashboardAnalytics({
           onChange={setHistoryFilter}
           show={
             viewerCanAccessTransferHistory(roleSlug) &&
-            records.some((row) => row.isHistory)
+            data.hasHistory
           }
         />
 
@@ -856,8 +658,9 @@ export function DashboardAnalytics({
         </FilterSidebarSection>
       </FilterSidebar>
 
+      {resource.error ? <p role="alert" className="platform-empty platform-empty--error">{resource.error}</p> : null}
       <LoadingZone
-        loading={isRefreshing}
+        loading={isRefreshing || resource.loading}
         label="Refreshing dashboard…"
         className="dash-sections loading-zone--stack"
       >
@@ -1105,6 +908,7 @@ export function DashboardAnalytics({
               ))
             )}
           </div>
+          <PageControls pagination={data.agentPagination} onPage={setAgentPage} loading={resource.loading} />
         </section>
 
         <section className="dash-panel dash-panel--targets">
@@ -1215,6 +1019,7 @@ export function DashboardAnalytics({
               ))
             )}
           </div>
+          <PageControls pagination={data.auditorPagination} onPage={setAuditorPage} loading={resource.loading} />
         </section>
       </div>
 
@@ -1352,9 +1157,12 @@ export function DashboardAnalytics({
       <FatalOccurrencesModal
         fatalName={selectedFatal}
         occurrences={selectedFatalOccurrences}
+        pagination={data.fatalPagination}
+        onPage={setFatalPage}
+        loading={resource.loading}
         canEditAudits={canEditAudits}
         canEditSupervisorRemarks={canEditSupervisorRemarks}
-        onClose={() => setSelectedFatal(null)}
+        onClose={() => { setSelectedFatal(null); setFatalPage(1); }}
       />
     </div>
   );

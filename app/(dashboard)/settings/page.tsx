@@ -1,29 +1,29 @@
-import { Suspense } from "react";
+import { QmsEmpty } from "@/components/analytics/qms-primitives";
 import { PageFrame } from "@/components/dashboard/page-frame";
 import { SettingsPageSkeleton } from "@/components/dashboard/page-skeletons";
 import { SettingsManagement } from "@/components/settings/settings-management";
-import { QmsEmpty } from "@/components/analytics/qms-primitives";
-import { getAgentsForManagement } from "@/lib/actions/agents";
-import { getConnectedUsersOverview } from "@/lib/actions/user-connections";
-import { getRoles, getRolesForSelect, getUsers } from "@/lib/actions/admin";
-import { getTeamManagementData } from "@/lib/actions/user-provisioning";
+import { getRoles,getRolesForSelect,getUsersPage } from "@/lib/actions/admin";
+import { getAgentsPage } from "@/lib/actions/agents";
 import { getInteractionConfigManagerData } from "@/lib/actions/interaction-config";
+import { getConnectedUsersOverview } from "@/lib/actions/user-connections";
+import { getTeamManagementData } from "@/lib/actions/user-provisioning";
 import {
-  isInvalidSessionError,
-  invalidSessionRedirectReason,
-  requirePageAccess,
+	invalidSessionRedirectReason,
+	isInvalidSessionError,
+	requirePageAccess,
 } from "@/lib/auth-guards";
 import { redirectForInvalidSession } from "@/lib/auth-redirects";
 import { rethrowNextNavigation } from "@/lib/next-errors";
 import {
-  canAccessTeamManagement,
-  canManageManagedUsers,
-  canManageRoles,
-  canManageSettings,
-  canManageUsers,
-  canRevealUserPasswords,
-  canViewUserConnections,
+	canAccessTeamManagement,
+	canManageManagedUsers,
+	canManageRoles,
+	canManageSettings,
+	canManageUsers,
+	canRevealUserPasswords,
+	canViewUserConnections,
 } from "@/lib/rbac";
+import { Suspense } from "react";
 type SettingsTab =
   | "agents"
   | "interaction"
@@ -63,7 +63,7 @@ type SettingsPageProps = {
 };
 
 function serializeUsers(
-  users: Awaited<ReturnType<typeof getUsers>>
+  users: Awaited<ReturnType<typeof getUsersPage>>["users"]
 ) {
   return users.map((user) => ({
     id: user.id,
@@ -94,7 +94,7 @@ function serializeRoles(roles: Awaited<ReturnType<typeof getRoles>>) {
   }));
 }
 
-async function SettingsContent({
+async function loadSettingsContent({
   searchParams,
 }: {
   searchParams: Promise<{ tab?: string }>;
@@ -133,11 +133,11 @@ async function SettingsContent({
         ? getInteractionConfigManagerData()
         : Promise.resolve(null),
       initialTab === "agents"
-        ? getAgentsForManagement()
+        ? getAgentsPage()
         : Promise.resolve({ agents: [], canManage: false }),
       initialTab === "users" && showUsersTab
-        ? getUsers()
-        : Promise.resolve([]),
+        ? getUsersPage()
+        : Promise.resolve(null),
       initialTab === "roles" && manageRoles
         ? getRoles()
         : Promise.resolve([]),
@@ -164,27 +164,30 @@ async function SettingsContent({
             _count: { users: 0, scopes: role._count.scopes },
           }));
 
-    return (
-      <SettingsManagement
-        initialTab={initialTab}
-        canManageUsers={manageUsers}
-        canRevealPasswords={revealPasswords}
-        canManageRoles={manageRoles}
-        canAccessTeam={showTeam}
-        teamData={teamData}
-        users={serializeUsers(users)}
-        roles={serializedRoles}
-        agents={agentsData.agents}
-        canManageAgents={canManageSettings(session.user.role)}
-        canTransferAgents={canTransferAgents}
-        interactionConfig={interaction?.config ?? null}
-        interactionUpdatedAt={interaction?.updatedAt ?? ""}
-        interactionConfigVersion={interaction?.configVersion ?? 0}
-        canManageInteraction={canManageInteraction}
-        canViewConnections={showConnections}
-        connectedUsers={connectedUsers}
-      />
-    );
+    return { props: {
+      initialTab: initialTab,
+      canManageUsers: manageUsers,
+      canRevealPasswords: revealPasswords,
+      canManageRoles: manageRoles,
+      canAccessTeam: showTeam,
+      teamData: teamData,
+      users: serializeUsers(users?.users ?? []),
+      usersPagination: users?.pagination,
+      usersTotal: users?.totalCount,
+      roles: serializedRoles,
+      agents: agentsData.agents,
+      agentsPagination: "pagination" in agentsData ? agentsData.pagination : undefined,
+      agentsTotal: "totalCount" in agentsData ? agentsData.totalCount : undefined,
+      canManageAgents: canManageSettings(session.user.role),
+      canTransferAgents: canTransferAgents,
+      interactionConfig: interaction?.config ?? null,
+      interactionUpdatedAt: interaction?.updatedAt ?? "",
+      interactionConfigVersion: interaction?.configVersion ?? 0,
+      canManageInteraction: canManageInteraction,
+      canViewConnections: showConnections,
+      connectedUsers: connectedUsers,
+    } };
+
   } catch (error) {
     rethrowNextNavigation(error);
 
@@ -197,10 +200,14 @@ async function SettingsContent({
     }
 
     console.error("[settings] page failed:", error);
-    return (
-      <QmsEmpty message="Settings could not be loaded right now. Please refresh in a moment." />
-    );
+    return { error: "Settings could not be loaded right now. Please refresh in a moment." };
   }
+}
+
+async function SettingsContent({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+  const result = await loadSettingsContent({ searchParams });
+  if ("props" in result && result.props) return <SettingsManagement {...result.props} />;
+  return <QmsEmpty message={result.error ?? "Settings could not be loaded."} />;
 }
 
 export default function SettingsPage({ searchParams }: SettingsPageProps) {

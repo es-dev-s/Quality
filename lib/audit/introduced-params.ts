@@ -34,7 +34,7 @@ function urgencyCreation(prefix: "call" | "chat"): IntroducedParam {
   };
 }
 
-/** "Urgency Creation" (Yes 3 / No 0) — Sales & Compliance 18 → 21 pts. */
+/** Historical introductions; Chat Urgency is now retired but old audits keep it. */
 export const INTRODUCED_PARAMS: readonly IntroducedParam[] = [
   urgencyCreation("call"),
   urgencyCreation("chat"),

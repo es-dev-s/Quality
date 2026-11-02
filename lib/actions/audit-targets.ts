@@ -1,20 +1,21 @@
 "use server";
+import { invalidateReadResults } from "@/lib/server/read-cache";
 
-import { revalidatePath } from "next/cache";
-import { z } from "zod";
 import { requireAuth } from "@/lib/auth";
 import { permissionError } from "@/lib/auth-guards";
 import {
-  canEditAuditTargets,
-  canEditMonthlyAuditTargets,
-} from "@/lib/rbac";
-import {
-  readAuditTargetsForViewer,
-  writeAuditTargetPerAgent,
-  writeAuditTargetTotalMonthly,
-  type AuditTargets,
+	readAuditTargetsForViewer,
+	writeAuditTargetPerAgent,
+	writeAuditTargetTotalMonthly,
+	type AuditTargets,
 } from "@/lib/kpi/audit-targets";
+import {
+	canEditAuditTargets,
+	canEditMonthlyAuditTargets,
+} from "@/lib/rbac";
 import { assertWriteRateLimit } from "@/lib/server/rate-limit";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 const perAgentSchema = z.object({
   value: z.number().int().min(1).max(999),
@@ -25,6 +26,7 @@ const totalMonthlySchema = z.object({
 });
 
 function revalidateTargetPaths() {
+  invalidateReadResults();
   revalidatePath("/dashboard");
   revalidatePath("/kpi");
   revalidatePath("/analytics");

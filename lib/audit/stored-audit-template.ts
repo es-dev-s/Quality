@@ -15,8 +15,8 @@ import {
 /**
  * The rubric an existing audit is edited and re-scored with: the current
  * template, plus retired params the audit still has a stored value for
- * (e.g. Call "Hold"), minus params introduced after it was saved
- * (e.g. "Urgency Creation"), with former FATAL params (Call Disposition
+ * (e.g. Call "Hold" / Chat "Urgency Creation"), minus params introduced after it was saved
+ * (e.g. Call "Urgency Creation"), with former FATAL params (Disposition
  * tagging) kept on the definition the audit was scored with. Keeps the
  * quality % / final % unchanged unless the auditor actually changes a
  * selection.
@@ -38,7 +38,7 @@ export function templateForStoredAudit(
 
 /**
  * Drop retired / introduced param scores the given template does not score,
- * and never store FATAL on a param that has no FATAL option (Call tagging).
+ * and never store FATAL on a param that has no FATAL option (Disposition tagging).
  */
 export function sanitizeScoresForTemplate(
   scores: ScoresMap,

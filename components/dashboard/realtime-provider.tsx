@@ -1,19 +1,18 @@
 "use client";
 
 import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  type ReactNode,
-} from "react";
-import { usePathname, useRouter } from "next/navigation";
-import {
-  isAgentTransferSSEEvent,
-  isAuditSSEEvent,
-  type SSEEvent,
+	isAgentTransferSSEEvent,
+	type SSEEvent
 } from "@/lib/sse-events";
+import { usePathname,useRouter } from "next/navigation";
+import {
+	createContext,
+	useCallback,
+	useContext,
+	useEffect,
+	useRef,
+	type ReactNode,
+} from "react";
 
 type RealtimeListener = (event: SSEEvent) => void;
 type Unsubscribe = () => void;
@@ -22,16 +21,7 @@ const RealtimeContext = createContext<
   ((listener: RealtimeListener) => Unsubscribe) | null
 >(null);
 
-const AUDIT_LOGS_PATH = "/audit-logs";
 const DATA_REFRESH_DEBOUNCE_MS = 500;
-
-function isDataPage(pathname: string): boolean {
-  return (
-    pathname === "/dashboard" ||
-    pathname.startsWith("/analytics") ||
-    pathname.startsWith("/reports")
-  );
-}
 
 function isRosterPage(pathname: string): boolean {
   return pathname.startsWith("/settings") || pathname.startsWith("/forms");
@@ -94,15 +84,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             listener(event);
           }
 
-          if (isAuditSSEEvent(event)) {
-            const currentPath = pathnameRef.current;
-            if (
-              isDataPage(currentPath) ||
-              currentPath.startsWith(AUDIT_LOGS_PATH)
-            ) {
-              scheduleDataRefresh();
-            }
-          }
+          // Data pages subscribe directly and reload their bounded GET resources.
 
           if (
             (event.type === "user:activated" ||

@@ -1,18 +1,19 @@
 "use client";
+import type { PageInfo } from "@/lib/server/page-query";
 
-import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { AgentsTable } from "@/components/admin/agents-table";
-import { InteractionConfigManager } from "@/components/admin/interaction-config-manager";
 import { ConnectedUsersPanel } from "@/components/admin/connected-users-panel";
+import { InteractionConfigManager } from "@/components/admin/interaction-config-manager";
+import { RolesTable } from "@/components/admin/roles-table";
 import { TeamManagement } from "@/components/admin/team-management";
 import { UsersTable } from "@/components/admin/users-table";
-import { RolesTable } from "@/components/admin/roles-table";
 import { useToast } from "@/components/primitives/toast";
 import type { AgentListItem } from "@/lib/actions/agents";
 import type { ConnectedUserRow } from "@/lib/actions/user-connections";
 import type { getTeamManagementData } from "@/lib/actions/user-provisioning";
 import type { InteractionConfig } from "@/lib/audit/types";
+import { useRouter } from "next/navigation";
+import { useEffect,useState,useTransition } from "react";
 
 
 
@@ -97,10 +98,14 @@ type SettingsManagementProps = {
   teamData: TeamData | null;
 
   users: User[];
+  usersPagination?: PageInfo;
+  usersTotal?: number;
 
   roles: Role[];
 
   agents: AgentListItem[];
+  agentsPagination?: PageInfo;
+  agentsTotal?: number;
 
   canManageAgents: boolean;
 
@@ -137,10 +142,14 @@ export function SettingsManagement({
   teamData,
 
   users,
+  usersPagination,
+  usersTotal,
 
   roles,
 
   agents,
+  agentsPagination,
+  agentsTotal,
 
   canManageAgents,
 
@@ -164,6 +173,8 @@ export function SettingsManagement({
   const { dismissPasswordToasts } = useToast();
   const [tabPending, startTabTransition] = useTransition();
   const [tab, setTab] = useState<TabId>(initialTab);
+  const [lastInitialTab, setLastInitialTab] = useState(initialTab);
+  if (lastInitialTab !== initialTab) { setLastInitialTab(initialTab); setTab(initialTab); }
 
   const [interactionMounted, setInteractionMounted] = useState(
     initialTab === "interaction" && canManageInteraction
@@ -179,44 +190,9 @@ export function SettingsManagement({
     });
   }
 
-  useEffect(() => {
-    const allowed =
-      tab === "agents" ||
-      (tab === "interaction" && canManageInteraction) ||
-      (tab === "team" && canAccessTeam) ||
-      (tab === "connected" && canViewConnections) ||
-      (tab === "users" && (canManageUsers || canRevealPasswords)) ||
-      (tab === "roles" && canManageRoles);
-    if (!allowed) {
-      goToTab("agents");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync invalid tab only
-  }, [
-    tab,
-    canManageInteraction,
-    canAccessTeam,
-    canViewConnections,
-    canManageUsers,
-    canRevealPasswords,
-    canManageRoles,
-  ]);
-
-  useEffect(() => {
-    setTab(initialTab);
-    if (initialTab === "interaction" && canManageInteraction) {
-      setInteractionMounted(true);
-    }
-  }, [initialTab, canManageInteraction]);
-
-  useEffect(() => {
-    if (tab === "interaction" && canManageInteraction) {
-      setInteractionMounted(true);
-
-    }
-
-  }, [tab, canManageInteraction]);
-
-
+  const allowed = tab === "agents" || (tab === "interaction" && canManageInteraction) || (tab === "team" && canAccessTeam) || (tab === "connected" && canViewConnections) || (tab === "users" && (canManageUsers || canRevealPasswords)) || (tab === "roles" && canManageRoles);
+  if (!allowed) setTab("agents");
+  if (tab === "interaction" && canManageInteraction && !interactionMounted) setInteractionMounted(true);
 
   useEffect(() => {
     dismissPasswordToasts();
@@ -467,6 +443,8 @@ export function SettingsManagement({
           {tab === "agents" && (
 
             <AgentsTable
+              initialPagination={agentsPagination}
+              initialTotal={agentsTotal}
 
               agents={agents}
 
@@ -582,7 +560,7 @@ export function SettingsManagement({
 
             {tab === "users" && (
 
-              <UsersTable users={users} roles={roleOptions} embedded passwordAccessOnly={!canManageUsers} />
+              <UsersTable users={users} initialPagination={usersPagination} initialTotal={usersTotal} roles={roleOptions} embedded passwordAccessOnly={!canManageUsers} />
 
             )}
 

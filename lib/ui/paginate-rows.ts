@@ -3,7 +3,6 @@ export type TablePageSize = 20 | 50 | "all";
 export const TABLE_PAGE_SIZE_OPTIONS: { value: TablePageSize; label: string }[] = [
   { value: 20, label: "20" },
   { value: 50, label: "50" },
-  { value: "all", label: "All" },
 ];
 
 export function paginateRows<T>(

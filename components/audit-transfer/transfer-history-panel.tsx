@@ -1,26 +1,26 @@
 "use client";
+import type { getAgentTransferHistory } from "@/lib/actions/agent-transfer";
+import { transferHistoryQuerySchema } from "@/lib/audit/transfer-history-query";
+import { remotePagination,usePageState,useServerResource } from "@/lib/hooks/use-server-resource";
 
-import { useMemo, useState } from "react";
-import { ArrowRightLeft, Undo2 } from "lucide-react";
-import {
-  DataTablePanel,
-  usePaginatedRows,
-} from "@/components/primitives/data-table-panel";
-import { Button } from "@/components/primitives/button";
-import { HistoryBadge } from "@/components/audit/history-badge";
-import { AuditDetailModal } from "@/components/audit-logs/audit-detail-modal";
 import { AgentTransferModal } from "@/components/admin/agent-transfer-modal";
+import { AuditDetailModal } from "@/components/audit-logs/audit-detail-modal";
 import { RevertTransferModal } from "@/components/audit-transfer/revert-transfer-modal";
-import type { AgentListItem } from "@/lib/actions/agents";
+import { HistoryBadge } from "@/components/audit/history-badge";
+import { Button } from "@/components/primitives/button";
+import {
+	DataTablePanel
+} from "@/components/primitives/data-table-panel";
 import type {
-  AgentTransferRow,
-  TransferHistoryAuditRow,
+	AgentTransferRow
 } from "@/lib/actions/agent-transfer";
+import type { AgentListItem } from "@/lib/actions/agents";
 import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
+import { ArrowRightLeft,Undo2 } from "lucide-react";
+import { useMemo,useState } from "react";
 
 type TransferHistoryPanelProps = {
-  transfers: AgentTransferRow[];
-  historyAudits: TransferHistoryAuditRow[];
+  initialData: Awaited<ReturnType<typeof getAgentTransferHistory>>;
   agents?: AgentListItem[];
   canTransferAgents?: boolean;
   requiresTransferApproval?: boolean;
@@ -45,8 +45,7 @@ function transferStatusClass(status: AgentTransferRow["status"]) {
 }
 
 export function TransferHistoryPanel({
-  transfers,
-  historyAudits,
+  initialData,
   agents = [],
   canTransferAgents = false,
   requiresTransferApproval = true,
@@ -56,52 +55,24 @@ export function TransferHistoryPanel({
   const [viewAuditId, setViewAuditId] = useState<string | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
   const [revertTarget, setRevertTarget] = useState<AgentTransferRow | null>(null);
-  const showActions = transfers.some(
-    (row) => row.canRevert || row.revertBlockedReason !== null
-  );
-
-  const filteredTransfers = useMemo(() => {
-    const q = transferSearch.trim().toLowerCase();
-    if (!q) return transfers;
-    return transfers.filter((row) =>
-      [
-        row.agentName,
-        row.agentEmail,
-        row.fromSupervisorName,
-        row.toSupervisorName,
-        row.transferredByName,
-        row.status,
-        row.kind === "REVERT" ? "revert" : "",
-        row.note ?? "",
-        row.revertReason ?? "",
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
-  }, [transfers, transferSearch]);
-
-  const filteredAudits = useMemo(() => {
-    const q = auditSearch.trim().toLowerCase();
-    if (!q) return historyAudits;
-    return historyAudits.filter((row) =>
-      [row.auditCode, row.agent, row.supervisor ?? "", row.grade]
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
-  }, [historyAudits, auditSearch]);
-
-  const transferPagination = usePaginatedRows(filteredTransfers);
-  const auditPagination = usePaginatedRows(filteredAudits);
+  const transferState = usePageState(transferSearch);
+  const auditState = usePageState(auditSearch);
+  const query = useMemo(() => ({ transferSearch, auditSearch, transferPage: transferState.page, transferPageSize: transferState.pageSize, auditPage: auditState.page, auditPageSize: auditState.pageSize }), [transferSearch, auditSearch, transferState.page, transferState.pageSize, auditState.page, auditState.pageSize]);
+  const resource = useServerResource("transfers", query, initialData, transferHistoryQuerySchema.parse({}));
+  const { transfers, historyAudits } = resource.data;
+  const showActions = transfers.some((row) => row.canRevert || row.revertBlockedReason !== null);
+  const transferPagination = remotePagination(transfers, resource.data.transferPagination, transferState);
+  const auditPagination = remotePagination(historyAudits, resource.data.auditPagination, auditState);
 
   return (
     <div className="settings-tab-layout">
       <div className="settings-tab-layout__body">
+        {resource.error ? <p role="alert">{resource.error}</p> : null}
         <DataTablePanel
           pagination={transferPagination}
-          summaryLabel={`${filteredTransfers.length} transfer${
-            filteredTransfers.length === 1 ? "" : "s"
+          paginationPending={resource.loading}
+          summaryLabel={`${resource.data.transferPagination.total} transfer${
+            resource.data.transferPagination.total === 1 ? "" : "s"
           }`}
           search={{
             value: transferSearch,
@@ -219,8 +190,9 @@ export function TransferHistoryPanel({
 
         <DataTablePanel
           pagination={auditPagination}
-          summaryLabel={`${filteredAudits.length} history audit${
-            filteredAudits.length === 1 ? "" : "s"
+          paginationPending={resource.loading}
+          summaryLabel={`${resource.data.auditPagination.total} history audit${
+            resource.data.auditPagination.total === 1 ? "" : "s"
           }`}
           search={{
             value: auditSearch,

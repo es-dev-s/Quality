@@ -10,7 +10,7 @@ import {
 } from "@/lib/audit/fatal-yn-params";
 
 /**
- * Call Disposition "All Queries Tagged" / "Correct Tagging" used to be
+ * Call Disposition tagging and Chat Disposition "Correct Tagging" used to be
  * Y / FATAL / N/A and are now the standard Y / N / N/A (Yes = 5, No = 0,
  * N/A excluded, never fatal).
  *
