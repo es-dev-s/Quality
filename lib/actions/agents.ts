@@ -1,16 +1,21 @@
 "use server";
+import { agentsTableQuerySchema } from "@/lib/admin/table-query";
+import { fetchVisibleAgentUserIds } from "@/lib/audit/agent-assignment-scope";
+import { fetchAuditCountsByAgentName } from "@/lib/audit/agent-db";
+import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { pageInfo } from "@/lib/server/page-query";
 
-import { revalidatePath } from "next/cache";
-import { z } from "zod";
-import { requireAuth } from "@/lib/auth";
-import { canManageSettings } from "@/lib/rbac";
+import { getPendingTransferAgentIdsForSession } from "@/lib/actions/agent-transfer";
 import { normalizeAgentName } from "@/lib/audit/agent-name";
-import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
-import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/auth";
 import { cacheScopeFromSession } from "@/lib/cache";
 import { getCachedAgentsForManagement } from "@/lib/cached-queries/agents";
-import { getPendingTransferAgentIdsForSession } from "@/lib/actions/agent-transfer";
+import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
 import { invalidateAgentCaches } from "@/lib/invalidate-cache";
+import { prisma } from "@/lib/prisma";
+import { canManageSettings,canManageUsers,canReadManagedUsers } from "@/lib/rbac";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 const isoDateSchema = z
   .string()
@@ -384,4 +389,27 @@ export async function setAgentsActive(
     console.error("setAgentsActive failed:", error);
     return { ok: false, error: "Could not update agents. Please try again." };
   }
+}
+
+export async function getAgentsPage(input: unknown = {}) {
+  const session = await requireAuth();
+  const query = agentsTableQuerySchema.parse(input);
+  const global = canManageSettings(session.user.role) || canManageUsers(session.user.role);
+  const allowed = global || canReadManagedUsers(session.user.role);
+  const ids = global ? null : allowed ? await fetchVisibleAgentUserIds(session.user.id, session.user.role.slug) : [];
+  const scope = { role: { slug: SYSTEM_ROLE_SLUGS.AGENT }, ...(ids ? { id: { in: ids } } : {}) };
+  const contains = { contains: query.search, mode: "insensitive" as const };
+  const where = query.search ? { AND: [scope, { OR: [{ name: contains }, { email: contains }, { teamName: contains }] }] } : scope;
+  const [totalCount, total, counts, pendingIds] = await Promise.all([
+    prisma.user.count({ where: scope }), prisma.user.count({ where }), fetchAuditCountsByAgentName(), getPendingTransferAgentIdsForSession().catch(() => [] as string[]),
+  ]);
+  const pagination = pageInfo(total, query);
+  const rows = await prisma.user.findMany({ where, select: { id: true, name: true, email: true, teamName: true, dateOfJoining: true, createdAt: true }, orderBy: [{ name: "asc" }, { email: "asc" }, { id: "asc" }], skip: (pagination.page - 1) * pagination.pageSize, take: pagination.pageSize });
+  const pending = new Set(pendingIds);
+  const agents: AgentListItem[] = rows.map((row) => {
+    const profileName = row.name?.trim() || null;
+    const name = profileName || row.email;
+    return { ...row, name, profileName, hasProfileName: Boolean(profileName), createdAt: row.createdAt.toISOString(), auditCount: counts.get(name) ?? 0, pendingTransfer: pending.has(row.id) };
+  });
+  return { agents, pagination, totalCount, canManage: canManageSettings(session.user.role) };
 }

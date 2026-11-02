@@ -1,19 +1,21 @@
 "use server";
+import { buildKpiSummary,kpiQuerySchema } from "@/lib/kpi/summary";
+import { cachedReadResult } from "@/lib/server/read-cache";
 
-import { requireSuperAdmin } from "@/lib/auth";
 import { fetchAgentRosterNames } from "@/lib/audit/agent-roster";
-import {
-  fetchActiveQualityAnalystUserNames,
-  fetchUsersByRoleSlugs,
-} from "@/lib/audit/role-users";
 import { dataScopeFromSession } from "@/lib/audit/data-scope";
+import {
+	fetchActiveQualityAnalystUserNames,
+	fetchUsersByRoleSlugs,
+} from "@/lib/audit/role-users";
 import { scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
+import { requireSuperAdmin } from "@/lib/auth";
+import { readAuditTargets } from "@/lib/kpi/audit-targets";
 import type { KpiFilterOptions } from "@/lib/kpi/filters";
 import {
-  type KpiAuditRecord,
-  type KpiPageData,
+	type KpiAuditRecord,
+	type KpiPageData,
 } from "@/lib/kpi/records";
-import { readAuditTargets } from "@/lib/kpi/audit-targets";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 
@@ -102,4 +104,13 @@ export async function getKpiData(): Promise<KpiPageData> {
     targetPerAgent: targets.perAgent,
     fetchedAt: new Date().toISOString(),
   };
+}
+
+export async function getKpiPageData(input: unknown = {}, refresh = "") {
+  const session = await requireSuperAdmin();
+  const query = kpiQuerySchema.parse(input);
+  return cachedReadResult(JSON.stringify(["kpi", session.user.id, query, refresh]), async () => {
+    const [source, options] = await Promise.all([getKpiData(), getKpiFilterOptions()]);
+    return buildKpiSummary(source, options, query);
+  });
 }

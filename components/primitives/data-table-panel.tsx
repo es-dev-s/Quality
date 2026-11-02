@@ -1,13 +1,13 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
-import type { usePaginatedRows } from "@/lib/hooks/use-paginated-rows";
-import { TABLE_PAGE_SIZE_OPTIONS } from "@/lib/ui/paginate-rows";
-import { cn } from "@/lib/utils";
-import { FilterChipBar, type FilterChip } from "@/components/filters/filter-chip-bar";
+import { FilterChipBar,type FilterChip } from "@/components/filters/filter-chip-bar";
 import { FilterClearButton } from "@/components/filters/filter-clear-button";
 import { FilterTriggerButton } from "@/components/filters/filter-trigger-button";
 import { Input } from "@/components/primitives/field";
+import type { usePaginatedRows } from "@/lib/hooks/use-paginated-rows";
+import { TABLE_PAGE_SIZE_OPTIONS,type TablePageSize } from "@/lib/ui/paginate-rows";
+import { cn } from "@/lib/utils";
+import { ChevronLeft,ChevronRight,Search } from "lucide-react";
 
 type PaginationState<T> = ReturnType<typeof usePaginatedRows<T>>;
 
@@ -26,6 +26,8 @@ type TableFilterControl = {
 
 type DataTablePanelProps<T> = {
   pagination: PaginationState<T>;
+  pageSizeOptions?: { value: TablePageSize; label: string }[];
+  paginationPending?: boolean;
   renderTable: (slice: T[]) => React.ReactNode;
   className?: string;
   scrollClassName?: string;
@@ -46,6 +48,8 @@ type DataTablePanelProps<T> = {
 
 export function DataTablePanel<T>({
   pagination: pg,
+  pageSizeOptions = TABLE_PAGE_SIZE_OPTIONS,
+  paginationPending = false,
   renderTable,
   className,
   scrollClassName,
@@ -154,7 +158,7 @@ export function DataTablePanel<T>({
                 {toolbarLabel}
               </span>
               <div className="pf-periods" role="group" aria-label={toolbarLabel}>
-                {TABLE_PAGE_SIZE_OPTIONS.map((opt) => (
+                {pageSizeOptions.map((opt) => (
                   <button
                     key={String(opt.value)}
                     type="button"
@@ -162,6 +166,7 @@ export function DataTablePanel<T>({
                       "pf-period-btn",
                       pageSize === opt.value && "pf-period-btn--active"
                     )}
+                    disabled={paginationPending}
                     onClick={() => pg.handlePageSizeChange(opt.value)}
                   >
                     {opt.label}
@@ -193,7 +198,7 @@ export function DataTablePanel<T>({
               <button
                 type="button"
                 className="platform-report-pagination__btn"
-                disabled={page <= 1}
+                disabled={paginationPending || page <= 1}
                 onClick={() => pg.setPage((p) => Math.max(1, p - 1))}
                 aria-label="Previous page"
               >
@@ -206,7 +211,7 @@ export function DataTablePanel<T>({
               <button
                 type="button"
                 className="platform-report-pagination__btn"
-                disabled={page >= totalPages}
+                disabled={paginationPending || page >= totalPages}
                 onClick={() => pg.setPage((p) => Math.min(totalPages, p + 1))}
                 aria-label="Next page"
               >

@@ -7,11 +7,10 @@ export const FATAL_YN_PARAM_IDS = new Set([
   "chat-correct",
   "chat-complete",
   "chat-alltagged",
-  "chat-correcttag",
 ]);
 
 /**
- * Call Disposition params that used to be Y / FATAL / N/A and are now the
+ * Disposition params that used to be Y / FATAL / N/A and are now the
  * standard Y / N / N/A (Yes = max, No = 0, N/A excluded, never fatal). Audits saved while they were
  * fatal keep that legacy definition for that audit only — see
  * `lib/audit/legacy-fatal-params.ts`.
@@ -19,6 +18,7 @@ export const FATAL_YN_PARAM_IDS = new Set([
 export const FORMER_FATAL_YN_PARAM_IDS = new Set([
   "call-alltagged",
   "call-correcttag",
+  "chat-correcttag",
 ]);
 
 type ParamLike = Pick<AuditParameter, "id" | "scoring">;

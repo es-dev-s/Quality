@@ -1,85 +1,77 @@
 "use client";
 
-import { formatCallDurationForType } from "@/lib/audit/call-duration";
-import Link from "next/link";
-import { useMemo, useState, useEffect, useOptimistic, useCallback, useRef, startTransition } from "react";
-import { useRouter } from "next/navigation";
-import { Download, Eye, Pencil, Trash2, ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react";
-import {
-  FilterSidebar,
-  FilterSidebarGrid,
-  FilterSidebarSection,
-} from "@/components/filters/filter-sidebar";
-import { FilterSelect } from "@/components/filters/filter-select";
-import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
-import { useBusyAction } from "@/lib/hooks/use-busy-action";
 import { AuditDetailModal } from "@/components/audit-logs/audit-detail-modal";
+import {
+	applyFeedbackDateTimeChange,
+	applyFeedbackStatusChange,
+	FeedbackStatusDateTimeCell,
+} from "@/components/audit-logs/feedback-status-datetime";
+import {
+	feedbackStatusClass,
+	FeedbackStatusSelect,
+} from "@/components/audit-logs/feedback-status-select";
+import {
+	ReferenceAttachmentView,
+} from "@/components/audit-logs/reference-attachment-view";
 import { HistoryBadge } from "@/components/audit/history-badge";
 import { HistoryFilterSection } from "@/components/audit/history-filter-section";
+import { FilterSelect } from "@/components/filters/filter-select";
 import {
-  AUDIT_SOURCE_FILTER_OPTIONS,
-  auditSourceChipLabel,
-  type AuditSourceKind,
-} from "@/lib/audit/audit-source";
-import { AUDIT_TYPE_OPTIONS } from "@/lib/audit/audit-type";
-import {
-  ReferenceAttachmentView,
-  referenceAttachmentSearchText,
-} from "@/components/audit-logs/reference-attachment-view";
-import {
-  applyFeedbackDateTimeChange,
-  applyFeedbackStatusChange,
-  FeedbackStatusDateTimeCell,
-} from "@/components/audit-logs/feedback-status-datetime";
-import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
-import { Select } from "@/components/primitives/field";
-import {
-  DataTablePanel,
-  usePaginatedRows,
-} from "@/components/primitives/data-table-panel";
-import { useToast } from "@/components/primitives/toast";
-import { LoadingZone } from "@/components/primitives/loading-zone";
+	FilterSidebar,
+	FilterSidebarGrid,
+	FilterSidebarSection,
+} from "@/components/filters/filter-sidebar";
 import { ConfirmModal } from "@/components/primitives/confirm-modal";
-import { cn } from "@/lib/utils";
-import { deleteAuditSubmissions, getAuditExportRows, updateAuditFeedback } from "@/lib/actions/audit";
+import {
+	DataTablePanel,
+} from "@/components/primitives/data-table-panel";
+import { DateRangePicker,type DateRangeValue } from "@/components/primitives/date-range-picker";
+import { Select } from "@/components/primitives/field";
+import { LoadingZone } from "@/components/primitives/loading-zone";
+import { useToast } from "@/components/primitives/toast";
+import { deleteAuditSubmissions,updateAuditFeedback } from "@/lib/actions/audit";
+import {
+	buildAgentFilterSelectOptions,
+	canFilterByAgent,
+} from "@/lib/audit/agent-filter-access";
 import type { AuditLogEntry } from "@/lib/audit/audit-records";
 import {
-  defaultAuditHistoryFilter,
-  filterByAuditHistory,
-  viewerCanAccessTransferHistory,
-  type AuditHistoryFilter,
-} from "@/lib/audit/history-filter";
+	AUDIT_SOURCE_FILTER_OPTIONS,
+	auditSourceChipLabel,
+	type AuditSourceKind,
+} from "@/lib/audit/audit-source";
+import { AUDIT_TYPE_OPTIONS } from "@/lib/audit/audit-type";
+import { formatCallDurationForType } from "@/lib/audit/call-duration";
 import {
-  FEEDBACK_SECURITY_OPTIONS,
-  FEEDBACK_SEVERITY_LABEL,
-  FEEDBACK_STATUS_OPTIONS,
-  type FeedbackSecurity,
-  type FeedbackStatus,
-} from "@/lib/audit/feedback";
-import {
-  matchesDateRange,
-  matchesCustomDateRange,
-  type DateRangeFilter,
+	type DateRangeFilter,
 } from "@/lib/audit/date-filters";
-import { exportReportCsv } from "@/lib/reports/export-csv";
-import { DateRangePicker, type DateRangeValue } from "@/components/primitives/date-range-picker";
 import {
-  FeedbackStatusSelect,
-  feedbackStatusClass,
-} from "@/components/audit-logs/feedback-status-select";
+	FEEDBACK_SECURITY_OPTIONS,
+	FEEDBACK_SEVERITY_LABEL,
+	FEEDBACK_STATUS_OPTIONS,
+	type FeedbackSecurity,
+	type FeedbackStatus,
+} from "@/lib/audit/feedback";
 import { canEditFeedbackDateTimeForStatus } from "@/lib/audit/feedback-status-access";
-import type { MemberFeedbackMode } from "@/lib/audit/member-access";
 import {
-  buildAgentFilterSelectOptions,
-  canFilterByAgent,
-  matchesAgentFilter,
-} from "@/lib/audit/agent-filter-access";
-import { resolveMetricDate } from "@/lib/audit/metric-dates";
+	viewerCanAccessTransferHistory,
+	type AuditHistoryFilter,
+} from "@/lib/audit/history-filter";
+import { auditLogQueryString,localAuditDate,type AuditLogPage } from "@/lib/audit/log-query";
+import type { MemberFeedbackMode } from "@/lib/audit/member-access";
+import { formatSecondsAgo } from "@/lib/format-relative-time";
+import { useAuditLogPage } from "@/lib/hooks/use-audit-log-page";
+import { useBusyAction } from "@/lib/hooks/use-busy-action";
+import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
+import { useRealtime } from "@/lib/hooks/use-realtime";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import type { SessionRole } from "@/lib/rbac";
-import { formatSecondsAgo } from "@/lib/format-relative-time";
-import { useRealtime } from "@/lib/hooks/use-realtime";
 import { isAuditSSEEvent } from "@/lib/sse-events";
+import type { TablePageSize } from "@/lib/ui/paginate-rows";
+import { cn } from "@/lib/utils";
+import { ArrowDownWideNarrow,ArrowUpNarrowWide,Download,Eye,Pencil,Trash2 } from "lucide-react";
+import Link from "next/link";
+import { startTransition,useCallback,useEffect,useMemo,useOptimistic,useRef,useState,type SetStateAction } from "react";
 
 function rowIdsKey(rows: AuditLogEntry[]): string {
   if (rows.length === 0) return "";
@@ -89,18 +81,8 @@ function rowIdsKey(rows: AuditLogEntry[]): string {
     .join("|");
 }
 
-function setsEqual(a: Set<string>, b: Set<string>): boolean {
-  if (a.size !== b.size) return false;
-  for (const id of a) {
-    if (!b.has(id)) return false;
-  }
-  return true;
-}
-
 type AuditLogsTableProps = {
-  submissions: AuditLogEntry[];
-  /** Scoped total in DB — may match submissions.length when all rows are loaded. */
-  totalCount?: number;
+  initialPage: AuditLogPage;
   roleSlug: string;
   showSectionHead?: boolean;
   enableFilters?: boolean;
@@ -114,7 +96,6 @@ type AuditLogsTableProps = {
   canCreateAudit?: boolean;
   canExport?: boolean;
   isSuperAdmin?: boolean;
-  viewerUserId?: string;
 };
 
 type ScorePreset = "all" | "90+" | "75-89" | "50-74" | "1-49" | "0";
@@ -174,85 +155,65 @@ function agentInitials(name: string) {
     .join("");
 }
 
-function matchesSearch(row: AuditLogEntry, query: string) {
-  if (!query.trim()) return true;
-  const q = query.trim().toLowerCase();
-  const haystack = [
-    row.auditCode,
-    row.agent,
-    row.supervisor,
-    row.lob,
-    row.sublob,
-    row.reason,
-    row.auditor,
-    row.grade,
-    row.type,
-    row.businessType,
-    row.auditType,
-    String(row.finalPct),
-    row.feedbackSecurity,
-    row.feedbackStatus,
-    row.feedbackDate ?? "",
-    row.agentFeedback,
-    row.mobile,
-    formatCallDurationForType(row.type, row.callDurationSec),
-    row.submittedBy,
-    row.auditSource,
-    referenceAttachmentSearchText(row.referenceUrl),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(q);
+/** Updating this label must not re-render the table every second. */
+function AuditLogSyncStatus({ fetchedAt }: { fetchedAt: number }) {
+  const [now, setNow] = useState(fetchedAt);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return <>Updated {formatSecondsAgo(Math.max(0, Math.floor((now - fetchedAt) / 1000)))}</>;
 }
 
-function matchesScore(row: AuditLogEntry, preset: ScorePreset) {
-  const range = SCORE_PRESETS.find((p) => p.value === preset) ?? SCORE_PRESETS[0];
-  const score = row.hasFatal ? 0 : row.finalPct;
-  return score >= range.min && score <= range.max;
-}
+const AUDIT_PAGE_SIZES: { value: TablePageSize; label: string }[] = [
+  { value: 20, label: "20" }, { value: 50, label: "50" },
+];
 
 export function AuditLogsTable({
-  submissions,
-  totalCount,
+  initialPage,
   roleSlug,
   showSectionHead = true,
   enableFilters = true,
   feedbackStatusRole = null,
   memberFeedbackMode,
   canEditFeedbackFully = false,
-  canEditFeedbackDate = false,
   canEditSupervisorRemarks = false,
   canEditAudits = false,
   canDeleteAudits = false,
   canCreateAudit = false,
   canExport = false,
   isSuperAdmin = false,
-  viewerUserId,
 }: AuditLogsTableProps) {
-  const router = useRouter();
   const { toast } = useToast();
-  const [lastSyncedAt, setLastSyncedAt] = useState(() => Date.now());
-  const [secondsSinceSync, setSecondsSinceSync] = useState(0);
-  const [search, setSearch] = useState("");
-  const [scorePreset, setScorePreset] = useState<ScorePreset>("all");
-  const [grade, setGrade] = useState("");
-  const [type, setType] = useState("");
-  const [businessType, setBusinessType] = useState("");
-  const [auditType, setAuditType] = useState("");
-  const [agent, setAgent] = useState("");
-  const [feedbackStatus, setFeedbackStatus] = useState("");
-  const [auditSource, setAuditSource] = useState<AuditSourceKind | "">("");
-  const [dateSort, setDateSort] = useState<"asc" | "desc">("desc");
-  const [historyFilter, setHistoryFilter] = useState<AuditHistoryFilter>(() =>
-    defaultAuditHistoryFilter(submissions, viewerUserId, roleSlug, "logs")
-  );
-  const [dateRange, setDateRange] = useState<DateRangeFilter>("all");
-  const [customRange, setCustomRange] = useState<DateRangeValue>({ from: "", to: "" });
+  const { query, setQuery, data: page, loading: pageLoading, error: pageError, refresh: refreshPage, changeFilters } = useAuditLogPage(initialPage);
+  const [search, setSearch] = useState(query.search);
+  const { scorePreset, grade, type, businessType, auditType, agent, feedbackStatus, auditSource, dateSort, historyFilter, dateRange } = query;
+  const customRange = useMemo(() => ({ from: query.customFrom, to: query.customTo }), [query.customFrom, query.customTo]);
+  const setScorePreset = useCallback((value: ScorePreset) => changeFilters({ scorePreset: value }), [changeFilters]);
+  const setGrade = useCallback((value: string) => changeFilters({ grade: value }), [changeFilters]);
+  const setType = useCallback((value: string) => changeFilters({ type: value as "" | "Call" | "Chat" }), [changeFilters]);
+  const setBusinessType = useCallback((value: string) => changeFilters({ businessType: value }), [changeFilters]);
+  const setAuditType = useCallback((value: string) => changeFilters({ auditType: value }), [changeFilters]);
+  const setAgent = useCallback((value: string) => changeFilters({ agent: value }), [changeFilters]);
+  const setFeedbackStatus = useCallback((value: string) => changeFilters({ feedbackStatus: value }), [changeFilters]);
+  const setAuditSource = useCallback((value: AuditSourceKind | "") => changeFilters({ auditSource: value }), [changeFilters]);
+  const setDateSort = useCallback((value: SetStateAction<"asc" | "desc">) => {
+    setQuery((current) => ({ ...current, page: 1, dateSort: typeof value === "function" ? value(current.dateSort) : value }));
+  }, [setQuery]);
+  const setHistoryFilter = useCallback((value: AuditHistoryFilter) => changeFilters({ historyFilter: value }), [changeFilters]);
+  const setDateRange = useCallback((value: DateRangeFilter) => changeFilters({ dateRange: value, today: localAuditDate() }), [changeFilters]);
+  const setCustomRange = useCallback((value: DateRangeValue) => changeFilters({ customFrom: value.from, customTo: value.to }), [changeFilters]);
+
+  useEffect(() => {
+    const value = search.trim().slice(0, 200);
+    if (value === query.search) return;
+    const timer = window.setTimeout(() => changeFilters({ search: value }), 300);
+    return () => window.clearTimeout(timer);
+  }, [search, query.search, changeFilters]);
   const filterSidebar = useFilterSidebar();
   const [viewId, setViewId] = useState<string | null>(null);
   const [optimisticRows, applyOptimisticRows] = useOptimistic(
-    submissions,
+    page.submissions,
     (
       current: AuditLogEntry[],
       action:
@@ -273,35 +234,32 @@ export function AuditLogsTable({
     }
   );
   const rows = optimisticRows;
-  const dbTotal = totalCount ?? rows.length;
-  const visibleRowIdsKey = rowIdsKey(rows);
-  const rowIdsRef = useRef(new Set<string>());
+  const dbTotal = page.totalCount;
+  const visibleRowIdsKey = useMemo(() => rowIdsKey(rows), [rows]);
   const reconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    rowIdsRef.current = new Set(
-      visibleRowIdsKey ? visibleRowIdsKey.split("|") : []
-    );
-  }, [visibleRowIdsKey]);
-
+  const refreshCurrentPage = useCallback(() => {
+    if (reconcileTimerRef.current) clearTimeout(reconcileTimerRef.current);
+    reconcileTimerRef.current = null;
+    refreshPage();
+  }, [refreshPage]);
   const scheduleAuditLogsReconcile = useCallback(() => {
-    if (reconcileTimerRef.current) {
-      clearTimeout(reconcileTimerRef.current);
-    }
+    if (reconcileTimerRef.current) clearTimeout(reconcileTimerRef.current);
     reconcileTimerRef.current = setTimeout(() => {
-      router.refresh();
       reconcileTimerRef.current = null;
-    }, 800);
-  }, [router]);
-
-  useEffect(() => {
-    return () => {
-      if (reconcileTimerRef.current) {
-        clearTimeout(reconcileTimerRef.current);
-      }
-    };
+      refreshPage();
+    }, 500);
+  }, [refreshPage]);
+  useEffect(() => () => {
+    if (reconcileTimerRef.current) clearTimeout(reconcileTimerRef.current);
   }, []);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [selection, setSelection] = useState(() => ({ key: visibleRowIdsKey, ids: new Set<string>() }));
+  const selectedIds = useMemo(() => selection.key === visibleRowIdsKey ? selection.ids : new Set<string>(), [selection, visibleRowIdsKey]);
+  const setSelectedIds = useCallback((next: SetStateAction<Set<string>>) => {
+    setSelection((current) => {
+      const ids = current.key === visibleRowIdsKey ? current.ids : new Set<string>();
+      return { key: visibleRowIdsKey, ids: typeof next === "function" ? next(ids) : next };
+    });
+  }, [visibleRowIdsKey]);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     ids: string[];
     label: string;
@@ -309,93 +267,17 @@ export function AuditLogsTable({
   const { busy: deletePending, run: runDelete } = useBusyAction();
   const { busy: feedbackPending, run: runFeedback } = useBusyAction();
   const { busy: exportPending, run: runExport } = useBusyAction();
-  const tableBusy = deletePending || exportPending;
+  const tableBusy = pageLoading || deletePending || exportPending;
 
-  const columnCount = canDeleteAudits ? 14 : 13;
 
-  useEffect(() => {
-    setLastSyncedAt(Date.now());
-  }, [submissions]);
-
-  const handleRealtime = useCallback(
-    (event: Parameters<typeof isAuditSSEEvent>[0]) => {
-      if (!isAuditSSEEvent(event)) return;
-
-      switch (event.type) {
-        case "audit:created":
-        case "invalidate":
-          router.refresh();
-          setLastSyncedAt(Date.now());
-          break;
-        case "audit:updated":
-          if (event.changes) {
-            startTransition(() => {
-              applyOptimisticRows({
-                type: "patch",
-                id: event.auditId,
-                patch: event.changes as Partial<AuditLogEntry>,
-              });
-            });
-            if ("feedbackStatus" in event.changes) {
-              router.refresh();
-            } else {
-              scheduleAuditLogsReconcile();
-            }
-          } else {
-            router.refresh();
-          }
-          setLastSyncedAt(Date.now());
-          break;
-        case "audit:deleted":
-          startTransition(() => {
-            applyOptimisticRows({ type: "delete", ids: [event.auditId] });
-          });
-          setLastSyncedAt(Date.now());
-          break;
-      }
-    },
-    [router, applyOptimisticRows, scheduleAuditLogsReconcile]
-  );
-
+  const handleRealtime = useCallback((event: Parameters<typeof isAuditSSEEvent>[0]) => {
+    if (isAuditSSEEvent(event)) scheduleAuditLogsReconcile();
+  }, [scheduleAuditLogsReconcile]);
   useRealtime(handleRealtime);
 
-  useEffect(() => {
-    const tick = window.setInterval(() => {
-      setSecondsSinceSync(Math.floor((Date.now() - lastSyncedAt) / 1000));
-    }, 1000);
-    return () => window.clearInterval(tick);
-  }, [lastSyncedAt]);
-
-  useEffect(() => {
-    const rowIds = new Set(
-      visibleRowIdsKey ? visibleRowIdsKey.split("|") : []
-    );
-    setSelectedIds((current) => {
-      if (current.size === 0) return current;
-      const next = new Set<string>();
-      for (const id of current) {
-        if (rowIds.has(id)) next.add(id);
-      }
-      return setsEqual(current, next) ? current : next;
-    });
-  }, [visibleRowIdsKey]);
-
-  const agentNames = useMemo(
-    () =>
-      [...new Set(rows.map((row) => row.agent).filter(Boolean))].sort((a, b) =>
-        a.localeCompare(b)
-      ),
-    [rows]
-  );
+  const agentNames = page.filterOptions.agents;
   const showAgentFilter = canFilterByAgent(roleSlug) && agentNames.length > 0;
-
-  const businessTypeOptions = useMemo(
-    () =>
-      [...new Set(rows.map((row) => row.businessType).filter(Boolean))].sort(
-        (a, b) => a.localeCompare(b)
-      ),
-    [rows]
-  );
+  const businessTypeOptions = page.filterOptions.businessTypes;
 
   const scoreFilterOptions = useMemo(
     () => SCORE_PRESETS.map((preset) => ({ value: preset.value, label: preset.label })),
@@ -450,84 +332,21 @@ export function AuditLogsTable({
 
   const sourceFilterOptions = useMemo(() => AUDIT_SOURCE_FILTER_OPTIONS, []);
 
-  const filtered = useMemo(() => {
-    const hasCustom = !!(customRange.from || customRange.to);
-    const historyScoped = filterByAuditHistory(
-      rows,
-      viewerCanAccessTransferHistory(roleSlug) ? historyFilter : "working"
-    );
-    const matched = historyScoped.filter((row) => {
-      if (!matchesSearch(row, search)) return false;
-      if (!matchesScore(row, scorePreset)) return false;
-      const metricDate = resolveMetricDate(row.auditDate, row.callDate);
-      if (hasCustom) {
-        if (!matchesCustomDateRange(metricDate, customRange.from, customRange.to)) return false;
-      } else {
-        if (!matchesDateRange(metricDate, dateRange)) return false;
-      }
-      if (grade && row.grade !== grade) return false;
-      if (type && row.type !== type) return false;
-      if (businessType && row.businessType !== businessType) return false;
-      if (auditType && row.auditType !== auditType) return false;
-      if (!matchesAgentFilter(row.agent, agent)) return false;
-      if (feedbackStatus && row.feedbackStatus !== feedbackStatus) return false;
-      if (auditSource && row.auditSource !== auditSource) return false;
-      return true;
-    });
-
-    const direction = dateSort === "asc" ? 1 : -1;
-    return [...matched].sort((a, b) => {
-      const aDate = resolveMetricDate(a.auditDate, a.callDate);
-      const bDate = resolveMetricDate(b.auditDate, b.callDate);
-      if (aDate !== bDate) {
-        return aDate.localeCompare(bDate) * direction;
-      }
-      // Tie-break with createdAt so same-day rows stay stable.
-      const createdCmp = a.createdAt.localeCompare(b.createdAt);
-      if (createdCmp !== 0) return createdCmp * direction;
-      return a.auditCode.localeCompare(b.auditCode) * direction;
-    });
-  }, [rows, historyFilter, roleSlug, search, scorePreset, dateRange, customRange, grade, type, businessType, auditType, agent, feedbackStatus, auditSource, dateSort]);
-
-  const paginationResetKey = useMemo(
-    () =>
-      [
-        search,
-        scorePreset,
-        dateRange,
-        customRange.from,
-        customRange.to,
-        grade,
-        type,
-        businessType,
-        auditType,
-        agent,
-        feedbackStatus,
-        auditSource,
-        historyFilter,
-        dateSort,
-        filtered.length,
-      ].join("|"),
-    [
-      search,
-      scorePreset,
-      dateRange,
-      customRange.from,
-      customRange.to,
-      grade,
-      type,
-      businessType,
-      auditType,
-      agent,
-      feedbackStatus,
-      auditSource,
-      historyFilter,
-      dateSort,
-      filtered.length,
-    ]
-  );
-
-  const pagination = usePaginatedRows(filtered, 20, paginationResetKey);
+  const setPage = (next: SetStateAction<number>) => setQuery((current) => ({
+    ...current, page: typeof next === "function" ? next(current.page) : next,
+  }));
+  const setPageSize = (next: SetStateAction<TablePageSize>) => setQuery((current) => {
+    const size = typeof next === "function" ? next(current.pageSize) : next;
+    return { ...current, page: 1, pageSize: size === 50 ? 50 : 20 };
+  });
+  const handlePageSizeChange = (size: TablePageSize) => setPageSize(size);
+  const pageStart = page.filteredCount ? (page.query.page - 1) * page.query.pageSize + 1 : 0;
+  const pagination = {
+    slice: rows, total: page.filteredCount, totalPages: page.totalPages,
+    start: pageStart, end: page.filteredCount ? Math.min(pageStart + rows.length - 1, page.filteredCount) : 0,
+    page: page.query.page, pageSize: query.pageSize,
+    setPage, setPageSize, handlePageSizeChange,
+  };
   const pageRows = pagination.slice;
   const pageIds = useMemo(() => pageRows.map((row) => row.id), [pageRows]);
 
@@ -578,10 +397,11 @@ export function AuditLogsTable({
       const result = await deleteAuditSubmissions(ids);
       if ("error" in result && result.error) {
         toast(result.error, "error");
-        router.refresh();
+        refreshCurrentPage();
         return;
       }
 
+      refreshCurrentPage();
       const deleted = "deleted" in result ? result.deleted : ids.length;
       setSelectedIds((current) => {
         const next = new Set(current);
@@ -610,7 +430,9 @@ export function AuditLogsTable({
     auditType !== "" ||
     agent !== "" ||
     feedbackStatus !== "" ||
-    auditSource !== "";
+    auditSource !== "" ||
+    Boolean(customRange.from || customRange.to) ||
+    historyFilter !== page.defaultHistoryFilter;
 
   const advancedFilterCount = useMemo(() => {
     let count = 0;
@@ -702,21 +524,11 @@ export function AuditLogsTable({
     }
 
     return chips;
-  }, [dateRange, customRange, scorePreset, grade, type, businessType, auditType, agent, feedbackStatus, auditSource]);
+  }, [dateRange, customRange, scorePreset, grade, type, businessType, auditType, agent, feedbackStatus, auditSource, setCustomRange, setDateRange, setScorePreset, setGrade, setType, setBusinessType, setAuditType, setAgent, setFeedbackStatus, setAuditSource]);
 
   const clearFilters = () => {
     setSearch("");
-    setScorePreset("all");
-    setDateRange("all");
-    setCustomRange({ from: "", to: "" });
-    setGrade("");
-    setType("");
-    setBusinessType("");
-    setAuditType("");
-    setAgent("");
-    setFeedbackStatus("");
-    setAuditSource("");
-    setHistoryFilter(defaultAuditHistoryFilter(rows, viewerUserId, roleSlug, "logs"));
+    changeFilters({ search: "", scorePreset: "all", dateRange: "all", customFrom: "", customTo: "", grade: "", type: "", businessType: "", auditType: "", agent: "", feedbackStatus: "", auditSource: "", historyFilter: page.defaultHistoryFilter });
   };
 
   function patchRowFeedback(
@@ -734,12 +546,9 @@ export function AuditLogsTable({
     const current = rows.find((row) => row.id === id);
     if (current?.isHistory) return;
 
-    let nextRow: AuditLogEntry | undefined;
-    let previousRow: AuditLogEntry | undefined;
-
     const currentRow = rows.find((row) => row.id === id);
     if (!currentRow) return;
-    previousRow = currentRow;
+    const previousRow = currentRow;
 
     let next: AuditLogEntry = { ...currentRow, ...patch };
 
@@ -758,7 +567,7 @@ export function AuditLogsTable({
       };
     }
 
-    nextRow = next;
+    const nextRow = next;
     startTransition(() => {
       applyOptimisticRows({ type: "patch", id, patch: nextRow! });
     });
@@ -780,6 +589,7 @@ export function AuditLogsTable({
       }
 
       if ("success" in result && result.success) {
+        refreshCurrentPage();
         const serverPatch = {
           feedbackStatus: result.feedbackStatus ?? nextRow!.feedbackStatus,
           feedbackDate: result.feedbackDate ?? null,
@@ -816,31 +626,36 @@ export function AuditLogsTable({
     rows.length === 0
       ? "Saved audits will appear here after you complete a form."
       : hasActiveFilters
-        ? filtered.length === 0
+        ? page.filteredCount === 0
           ? "No audits match your filters."
-          : `Showing ${pagination.start}–${pagination.end} of ${filtered.length} filtered audit${
-              filtered.length === 1 ? "" : "s"
+          : `Showing ${pagination.start}–${pagination.end} of ${page.filteredCount} filtered audit${
+              page.filteredCount === 1 ? "" : "s"
             } (${dbTotal} saved).`
-        : filtered.length === 0
+        : page.filteredCount === 0
           ? "No audits to display."
           : `Showing ${pagination.start}–${pagination.end} of ${dbTotal} saved audit${
               dbTotal === 1 ? "" : "s"
             }.`;
 
   function handleExportCsv() {
-    if (filtered.length === 0) return;
-
-    runExport(async () => {
-      const result = await getAuditExportRows(filtered.map((row) => row.id));
-      if (result.error) {
-        toast(result.error, "error");
-        return;
+    if (page.filteredCount === 0) return;
+    void runExport(async () => {
+      try {
+        const response = await fetch(`/api/audit-logs/export?${auditLogQueryString(page.query)}`, { cache: "no-store" });
+        if (!response.ok) {
+          const result = await response.json();
+          throw new Error(result.error ?? "Could not export audit logs.");
+        }
+        const url = URL.createObjectURL(await response.blob());
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `audit-logs-${Date.now()}.csv`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        toast("Exported matching audits with full details.", "success");
+      } catch (error) {
+        toast(error instanceof Error ? error.message : "Could not export audit logs.", "error");
       }
-      exportReportCsv(result.rows, "audit-logs");
-      toast(
-        `Exported ${result.rows.length} audit${result.rows.length === 1 ? "" : "s"} with full details.`,
-        "success"
-      );
     });
   }
 
@@ -870,15 +685,15 @@ export function AuditLogsTable({
           </button>
         </>
       ) : null}
-      {canExport && filtered.length > 0 ? (
+      {canExport && page.filteredCount > 0 ? (
         <button
           type="button"
           className="ui-btn ui-btn--secondary ui-btn--sm"
-          disabled={exportPending}
+          disabled={exportPending || pageLoading}
           onClick={handleExportCsv}
         >
           <Download size={15} aria-hidden />
-          Export CSV ({filtered.length})
+          Export CSV ({page.filteredCount})
         </button>
       ) : null}
       {canCreateAudit ? (
@@ -903,7 +718,7 @@ export function AuditLogsTable({
           </div>
           <div className="audit-logs__head-actions">
             <span className="table-meta" style={{ marginRight: "auto" }}>
-              Updated {formatSecondsAgo(secondsSinceSync)}
+              <AuditLogSyncStatus fetchedAt={page.fetchedAt} />
             </span>
             {toolbarActions}
           </div>
@@ -911,7 +726,7 @@ export function AuditLogsTable({
       )}
 
 
-      {enableFilters && rows.length > 0 ? (
+      {enableFilters && dbTotal > 0 ? (
         <FilterSidebar
           open={filterSidebar.open}
           onOpenChange={filterSidebar.onOpenChange}
@@ -1049,6 +864,7 @@ export function AuditLogsTable({
         </FilterSidebar>
       ) : null}
 
+      {pageError ? <p role="alert" className="platform-empty platform-empty--error">{pageError} <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm" onClick={refreshCurrentPage}>Try again</button></p> : null}
       <LoadingZone
         loading={tableBusy}
         label={
@@ -1062,7 +878,7 @@ export function AuditLogsTable({
         }
         className="audit-logs-page__table-zone loading-zone--fill"
       >
-        {rows.length === 0 ? (
+        {dbTotal === 0 ? (
           <div className="platform-report-table-empty">
             {roleSlug === SYSTEM_ROLE_SLUGS.MEMBER ? (
               <>
@@ -1086,12 +902,14 @@ export function AuditLogsTable({
         ) : (
           <DataTablePanel
             pagination={pagination}
+            pageSizeOptions={AUDIT_PAGE_SIZES}
+            paginationPending={pageLoading}
             fillViewport
             scrollClassName="audit-logs-page__table-scroll"
             summaryLabel={
-              rows.length > 0
+              dbTotal > 0
                 ? hasActiveFilters
-                  ? `${filtered.length} of ${dbTotal} audit${dbTotal === 1 ? "" : "s"}`
+                  ? `${page.filteredCount} of ${dbTotal} audit${dbTotal === 1 ? "" : "s"}`
                   : `${dbTotal} audit${dbTotal === 1 ? "" : "s"}`
                 : undefined
             }

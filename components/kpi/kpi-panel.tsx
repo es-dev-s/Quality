@@ -1,28 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { FilterSelect } from "@/components/filters/filter-select";
 import { FilterClearButton } from "@/components/filters/filter-clear-button";
-import {
-  DateRangePicker,
-  type DateRangeValue,
-} from "@/components/primitives/date-range-picker";
+import { FilterSelect } from "@/components/filters/filter-select";
 import { KpiScoreboard } from "@/components/kpi/kpi-scoreboard";
-import { useToast } from "@/components/primitives/toast";
-import { computeKpiRows } from "@/lib/kpi/compute-kpi";
-import type { KpiPageData } from "@/lib/kpi/records";
-import { setAuditTargetPerAgent } from "@/lib/actions/audit-targets";
 import {
-  DEFAULT_KPI_FILTERS,
-  KPI_TIME_OPTIONS,
-  countActiveKpiFilters,
-  type KpiFilterOptions,
-  type KpiFiltersState,
+	DateRangePicker,
+	type DateRangeValue,
+} from "@/components/primitives/date-range-picker";
+import { useToast } from "@/components/primitives/toast";
+import { setAuditTargetPerAgent } from "@/lib/actions/audit-targets";
+import { useServerResource } from "@/lib/hooks/use-server-resource";
+import {
+	countActiveKpiFilters,
+	DEFAULT_KPI_FILTERS,
+	KPI_TIME_OPTIONS,
+	type KpiFilterOptions,
+	type KpiFiltersState,
 } from "@/lib/kpi/filters";
+import { kpiQuerySchema,type KpiSummary } from "@/lib/kpi/summary";
+import { useEffect,useMemo,useRef,useState } from "react";
 
 type KpiPanelProps = {
   filterOptions: KpiFilterOptions;
-  data: KpiPageData;
+  data: KpiSummary;
 };
 
 function toSelectOptions(
@@ -36,17 +36,17 @@ function toSelectOptions(
   ];
 }
 
-export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
+export function KpiPanel({ filterOptions, data: initialData }: KpiPanelProps) {
   const { toast } = useToast();
   const [filters, setFilters] = useState<KpiFiltersState>(DEFAULT_KPI_FILTERS);
-  const [targetPerAgent, setTargetPerAgent] = useState(data.targetPerAgent);
+  const [targetPerAgent, setTargetPerAgent] = useState(initialData.targetPerAgent);
   const targetSaveSeq = useRef(0);
-  const lastSavedTarget = useRef(data.targetPerAgent);
+  const lastSavedTarget = useRef(initialData.targetPerAgent);
   const pendingTarget = useRef<number | null>(null);
   const targetTimer = useRef<number | null>(null);
 
-  const qualityManagers = filterOptions.qualityManagers ?? [];
-  const qualityAnalysts = filterOptions.qualityAnalysts ?? [];
+  const qualityManagers = useMemo(() => filterOptions.qualityManagers ?? [], [filterOptions.qualityManagers]);
+  const qualityAnalysts = useMemo(() => filterOptions.qualityAnalysts ?? [], [filterOptions.qualityAnalysts]);
   const qmAgentNamesByQm = filterOptions.qmAgentNamesByQm ?? {};
 
   const timeOptions = useMemo(
@@ -67,26 +67,12 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
     [qualityAnalysts]
   );
 
-  const rows = useMemo(
-    () =>
-      computeKpiRows({
-        records: data.records,
-        filters,
-        rosterAgentNames: data.rosterAgentNames,
-        targetPerAgent,
-        qmAgentNamesByQm,
-      }),
-    [
-      data.records,
-      data.rosterAgentNames,
-      targetPerAgent,
-      qmAgentNamesByQm,
-      filters,
-    ]
-  );
-
-  const summary = rows.find((row) => row.id === "overall") ?? null;
-  const agentCount = Math.max(0, rows.length - 1);
+  const query = useMemo(() => kpiQuerySchema.parse({ filters, targetPerAgent }), [filters, targetPerAgent]);
+  const initialQuery = useMemo(() => kpiQuerySchema.parse({ targetPerAgent: initialData.targetPerAgent }), [initialData]);
+  const resource = useServerResource("kpi", query, initialData, initialQuery);
+  const data = resource.data;
+  const summary = data.summary;
+  const agentCount = data.agentCount;
   const qmRosterSize = filters.qm
     ? (qmAgentNamesByQm[filters.qm]?.length ?? 0)
     : null;
@@ -229,6 +215,8 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
         </div>
       </div>
 
+      {resource.error ? <p role="alert">{resource.error}</p> : null}
+      <div aria-busy={resource.loading}>
       <KpiScoreboard
         summary={summary}
         targetPerAgent={targetPerAgent}
@@ -239,6 +227,7 @@ export function KpiPanel({ filterOptions, data }: KpiPanelProps) {
         onTargetChange={scheduleTargetSave}
         onTargetCommit={persistTarget}
       />
+      </div>
     </section>
   );
 }

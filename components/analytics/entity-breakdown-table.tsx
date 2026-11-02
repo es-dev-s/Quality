@@ -1,25 +1,25 @@
 "use client";
 
-import { useMemo } from "react";
-import type { QmsEntityMetricRow } from "@/lib/audit/analytics-metrics";
+import { useAnalyticsBreakdown } from "@/components/analytics/pagination-context";
 import {
-  sortBreakdownRows,
-  type AnalyticsSortOrder,
-} from "@/lib/audit/analytics-sort";
-import {
-  QmsBadge,
-  QmsCard,
-  QmsEmpty,
-  QmsSectionTitle,
-  scoreHex,
+	QmsBadge,
+	QmsCard,
+	QmsEmpty,
+	QmsSectionTitle,
+	scoreHex,
 } from "@/components/analytics/qms-primitives";
 import {
-  DataTablePanel,
-  usePaginatedRows,
+	DataTablePanel
 } from "@/components/primitives/data-table-panel";
+import type { QmsEntityMetricRow } from "@/lib/audit/analytics-metrics";
+import type { BreakdownKey } from "@/lib/audit/analytics-query";
+import {
+	type AnalyticsSortOrder
+} from "@/lib/audit/analytics-sort";
 
 type EntityBreakdownTableProps = {
   rows: QmsEntityMetricRow[];
+  dataKey: BreakdownKey;
   entityLabel: string;
   metricLabel: string;
   sortOrder: AnalyticsSortOrder;
@@ -28,19 +28,15 @@ type EntityBreakdownTableProps = {
 };
 
 export function EntityBreakdownTable({
-  rows,
+  dataKey,
   entityLabel,
   metricLabel,
-  sortOrder,
   title,
   sub,
 }: EntityBreakdownTableProps) {
-  const sortedRows = useMemo(
-    () => sortBreakdownRows(rows, sortOrder),
-    [rows, sortOrder]
-  );
-  const pagination = usePaginatedRows(sortedRows);
-
+  const resource = useAnalyticsBreakdown(dataKey);
+  const pagination = resource.pagination;
+  const rows = pagination.slice;
   if (rows.length === 0) {
     return (
       <QmsEmpty
@@ -52,7 +48,9 @@ export function EntityBreakdownTable({
   return (
     <QmsCard>
       <QmsSectionTitle title={title} sub={sub} />
+      {resource.error ? <p role="alert">{resource.error}</p> : null}
       <DataTablePanel
+        paginationPending={resource.loading}
         pagination={pagination}
         renderTable={(slice) => (
           <table className="ui-table qms-table platform-report-table platform-report-table--expanded">

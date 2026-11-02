@@ -1,118 +1,113 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import type { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/auth";
+import { getInteractionConfig } from "@/lib/actions/interaction-config";
+import { getTemplateById } from "@/lib/actions/templates";
+import { resolveAuditOwnership } from "@/lib/agent-transfer/ownership";
+import { canFilterByAgent } from "@/lib/audit/agent-filter-access";
+import { fetchAgentRosterNames } from "@/lib/audit/agent-roster";
+import type {
+	AuditDetail,
+	AuditEditPayload,
+	DashboardAuditData,
+} from "@/lib/audit/audit-records";
+import { resolveAuditSourceKind } from "@/lib/audit/audit-source";
+import { parseAuditType } from "@/lib/audit/audit-type";
+import { calculateResults } from "@/lib/audit/calculate-results";
 import {
-  permissionError,
-  requirePermission,
-  requirePermissionResult,
-} from "@/lib/auth-guards";
-import { PERMISSIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+	callDurationSecondsForType,
+	formatCallDurationForType,
+} from "@/lib/audit/call-duration";
+import { dataScopeFromSession } from "@/lib/audit/data-scope";
+import { fetchDeactivatedAgentMatchNames } from "@/lib/audit/deactivated-agent-targets";
 import {
-  canDeleteAuditLogs,
-  canEditFeedbackFully,
-  canEditSupervisorRemarks,
-  canExportAuditData,
-  hasScope,
-  isSuperAdmin,
-  type SessionRole,
-} from "@/lib/rbac";
-import { scopedAuditByIdWhere, scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
+	defaultAuditFeedback,
+	normalizeFeedbackForSave,
+	parseFeedbackSecurity,
+	parseFeedbackStatus,
+	validateFeedbackForSave,
+	type AuditFeedbackFields,
+	type FeedbackSecurity,
+	type FeedbackStatus,
+} from "@/lib/audit/feedback";
 import { resolveStatusTimestamps } from "@/lib/audit/feedback-datetime";
 import {
-  assertFeedbackStatusChangeAllowed,
-  canChangeFeedbackStatusInAuditLogs,
+	assertFeedbackStatusChangeAllowed,
+	canChangeFeedbackStatusInAuditLogs,
 } from "@/lib/audit/feedback-status-access";
-import { resolveMemberFeedbackMode } from "@/lib/audit/member-access";
-import { calculateResults } from "@/lib/audit/calculate-results";
-import { resolveAuditOwnership } from "@/lib/agent-transfer/ownership";
-import { parseAuditType } from "@/lib/audit/audit-type";
-import { getInteractionConfig } from "@/lib/actions/interaction-config";
-import { validateAuditFormAgainstConfig } from "@/lib/audit/validate-audit-form-config";
-import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
-import { getTemplateById } from "@/lib/actions/templates";
-import { fetchAuditTemplateForEdit } from "@/lib/audit/template-db";
-import {
-  sanitizeScoresForTemplate,
-  templateForStoredAudit,
-} from "@/lib/audit/stored-audit-template";
+import { resolveFormFeedbackForSave } from "@/lib/audit/form-feedback-save";
+import { assertAuditNotHistory } from "@/lib/audit/history-guard";
 import { storedRowsFromRecord } from "@/lib/audit/legacy-fatal-params";
+import { fetchAuditLogPage } from "@/lib/audit/log-page";
+import { auditLogOrderBy,auditLogQuerySchema,auditLogWhere } from "@/lib/audit/log-query";
+import { resolveMemberFeedbackMode } from "@/lib/audit/member-access";
+import { resolveTeamNameSnapshot } from "@/lib/audit/resolve-team-name";
+import { scopedAuditByIdWhere,scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
 import {
-  isNextDataCacheOverflowError,
-  isPrismaSchemaMismatchError,
-  isRetryableDbError,
-  withDbRetry,
-} from "@/lib/db/with-db-retry";
-import { assertWriteRateLimit } from "@/lib/server/rate-limit";
+	sanitizeScoresForTemplate,
+	templateForStoredAudit,
+} from "@/lib/audit/stored-audit-template";
+import { fetchAuditTemplateForEdit } from "@/lib/audit/template-db";
+import type {
+	AuditFormData,
+	AuditRecord,
+	AuditRow,
+	CategoryScore,
+	ScoresMap,
+} from "@/lib/audit/types";
+import { validateAuditFormAgainstConfig } from "@/lib/audit/validate-audit-form-config";
+import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
+import { requireAuth } from "@/lib/auth";
 import {
-  auditIdSchema,
-  deleteAuditSubmissionsSchema,
-  exportAuditSubmissionsSchema,
-  saveAuditSubmissionSchema,
-  updateAuditFeedbackSchema,
-  updateAuditSubmissionSchema,
-  updateSupervisorRemarksSchema,
-} from "@/lib/validation/audit";
-import { paginationLimitSchema } from "@/lib/validation/common";
-import { toIsoTimestamp } from "@/lib/db/to-iso-timestamp";
+	permissionError,
+	requirePermission,
+	requirePermissionResult,
+} from "@/lib/auth-guards";
 import { cacheScopeFromSession } from "@/lib/cache";
 import {
-  getCachedAuditSubmissionsPage,
-  getCachedDashboardRecords,
-  parseAuditPageLimit,
+	getCachedAuditSubmissionsPage,
+	getCachedDashboardRecords,
+	parseAuditPageLimit,
 } from "@/lib/cached-queries/audit-submissions";
-import { dispatchFatalAuditNotifications } from "@/lib/notifications/dispatch-fatal-audit";
-import { dispatchDisputeAuditNotifications } from "@/lib/notifications/dispatch-dispute-audit";
+import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
+import { toIsoTimestamp } from "@/lib/db/to-iso-timestamp";
 import {
-  AUDIT_EXPORT_SELECT,
-  mapSubmissionToExportRow,
-  type AuditExportRow,
-} from "@/lib/reports/audit-export-row";
+	isNextDataCacheOverflowError,
+	isPrismaSchemaMismatchError,
+	isRetryableDbError,
+	withDbRetry,
+} from "@/lib/db/with-db-retry";
 import { invalidateAuditCaches } from "@/lib/invalidate-cache";
-import { AUDIT_LOG_LIST_SELECT } from "@/lib/select-shapes";
-import { assertAuditNotHistory } from "@/lib/audit/history-guard";
-import { fetchAgentRosterNames } from "@/lib/audit/agent-roster";
-import { fetchDeactivatedAgentMatchNames } from "@/lib/audit/deactivated-agent-targets";
-import { canFilterByAgent } from "@/lib/audit/agent-filter-access";
-import { dataScopeFromSession } from "@/lib/audit/data-scope";
-import { resolveAuditSourceKind } from "@/lib/audit/audit-source";
-import { ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
 import { readAuditTargetsForViewer } from "@/lib/kpi/audit-targets";
 import { KPI_DEFAULT_AGENT_TARGET } from "@/lib/kpi/records";
-import { resolveTeamNameSnapshot } from "@/lib/audit/resolve-team-name";
-import { reconcileTransferHistoryForViewer } from "@/lib/audit/transfer-history";
-import { resolveFormFeedbackForSave } from "@/lib/audit/form-feedback-save";
-import { normalizeLegacyReferenceFields } from "@/lib/audit/validate-interaction-details";
+import { dispatchDisputeAuditNotifications } from "@/lib/notifications/dispatch-dispute-audit";
+import { dispatchFatalAuditNotifications } from "@/lib/notifications/dispatch-fatal-audit";
+import { PERMISSIONS,SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+import {
+	canDeleteAuditLogs,
+	canEditFeedbackFully,
+	canEditSupervisorRemarks,
+	canExportAuditData,
+	type SessionRole,
+} from "@/lib/rbac";
+import {
+	AUDIT_EXPORT_SELECT,
+	mapSubmissionToExportRow,
+	type AuditExportRow,
+} from "@/lib/reports/audit-export-row";
+import { assertWriteRateLimit } from "@/lib/server/rate-limit";
 import { normalizeReferenceValue } from "@/lib/upload/reference-url-paths";
+import { ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
 import {
-  callDurationSecondsForType,
-  formatCallDurationForType,
-} from "@/lib/audit/call-duration";
-import {
-  defaultAuditFeedback,
-  normalizeFeedbackForSave,
-  parseFeedbackSecurity,
-  parseFeedbackStatus,
-  validateFeedbackForSave,
-  type FeedbackSecurity,
-  type FeedbackStatus,
-  type AuditFeedbackFields,
-} from "@/lib/audit/feedback";
-import type {
-  AuditDetail,
-  AuditEditPayload,
-  AuditLogEntry,
-  DashboardAuditData,
-} from "@/lib/audit/audit-records";
-import type {
-  AuditFormData,
-  AuditRecord,
-  AuditRow,
-  CategoryScore,
-  ScoresMap,
-} from "@/lib/audit/types";
+	auditIdSchema,
+	deleteAuditSubmissionsSchema,
+	exportAuditSubmissionsSchema,
+	saveAuditSubmissionSchema,
+	updateAuditFeedbackSchema,
+	updateAuditSubmissionSchema,
+	updateSupervisorRemarksSchema,
+} from "@/lib/validation/audit";
+import { revalidatePath } from "next/cache";
 
 function validationError(message: string) {
   return { error: message };
@@ -469,107 +464,22 @@ function parseRows(value: unknown): AuditRow[] {
   return value as AuditRow[];
 }
 
-type AuditLogRow = {
-  id: string;
-  auditCode: string;
-  agent: string;
-  supervisor: string | null;
-  lob: string;
-  sublob: string | null;
-  reason: string | null;
-  type: string;
-  businessType: string;
-  auditType: string;
-  callDate: string;
-  auditDate: string;
-  auditor: string | null;
-  qualityPct: number;
-  finalPct: number;
-  grade: string;
-  hasFatal: boolean;
-  feedbackSecurity: string;
-  feedbackStatus: string;
-  feedbackDate: string | null;
-  feedbackStatusAt: string | null;
-  agentFeedback: string;
-  supervisorRemarks: string;
-  referenceUrl: string | null;
-  mobile: string | null;
-  callDurationSec: number | null;
-  submittedBy: {
-    name: string | null;
-    email: string;
-    role?: { slug: string; name: string } | null;
-  };
-  createdAt: Date | string;
-  isHistory: boolean;
-  historyOwnerId?: string | null;
-};
-
-function mapAuditSubmission(s: AuditLogRow): AuditLogEntry {
-  const legacy = normalizeLegacyReferenceFields(
-    s.mobile ?? "",
-    s.referenceUrl
-  );
-  const submittedByRoleSlug = s.submittedBy.role?.slug ?? null;
-
-  return {
-    id: s.id,
-    auditCode: s.auditCode,
-    agent: s.agent,
-    supervisor: s.supervisor,
-    lob: s.lob,
-    sublob: s.sublob,
-    reason: s.reason,
-    type: s.type,
-    businessType: s.businessType,
-    auditType: s.auditType ?? "",
-    callDate: s.callDate,
-    auditDate: s.auditDate,
-    auditor: s.auditor,
-    qualityPct: s.qualityPct,
-    finalPct: s.finalPct,
-    grade: s.grade,
-    hasFatal: s.hasFatal,
-    feedbackSecurity: parseFeedbackSecurity(s.feedbackSecurity),
-    feedbackStatus: parseFeedbackStatus(s.feedbackStatus),
-    feedbackDate: s.feedbackDate,
-    feedbackStatusAt: s.feedbackStatusAt,
-    agentFeedback: s.agentFeedback ?? "",
-    supervisorRemarks: s.supervisorRemarks ?? "",
-    mobile: legacy.mobile || null,
-    callDurationSec: s.callDurationSec ?? null,
-    referenceUrl: legacy.referenceUrl || null,
-    submittedBy: s.submittedBy.name ?? s.submittedBy.email,
-    submittedByRoleSlug,
-    auditSource: resolveAuditSourceKind(submittedByRoleSlug),
-    createdAt: toIsoTimestamp(s.createdAt),
-    isHistory: s.isHistory,
-    historyOwnerId: s.historyOwnerId ?? null,
-  };
+export async function getAuditLogs(input?: unknown) {
+  const session = await requirePermission(PERMISSIONS.AUDIT_LOGS_READ);
+  const query = auditLogQuerySchema.parse(input ?? {});
+  return fetchAuditLogPage(await scopedAuditWhere(session), query, {
+    id: session.user.id, roleSlug: session.user.role.slug,
+  });
 }
 
-export async function getAuditLogs() {
+/** Full filtered export is loaded only after an explicit download request. */
+export async function getAuditLogExportData(input: unknown) {
   const session = await requirePermission(PERMISSIONS.AUDIT_LOGS_READ);
-  await reconcileTransferHistoryForViewer(
-    session.user.id,
-    session.user.role.slug
-  );
-  const where = await scopedAuditWhere(session);
-
-  const [totalCount, submissions] = await Promise.all([
-    prisma.auditSubmission.count({ where }),
-    prisma.auditSubmission.findMany({
-      where,
-      select: AUDIT_LOG_LIST_SELECT,
-      orderBy: { createdAt: "desc" },
-    }),
-  ]);
-
-  return {
-    totalCount,
-    submissions: submissions.map(mapAuditSubmission),
-  };
+  if (!canExportAuditData(session.user.role)) return { error: permissionError().error, rows: [] };
+  const query = auditLogQuerySchema.parse(input);
+  const where = auditLogWhere(await scopedAuditWhere(session), { ...query, historyFilter: query.historyFilter ?? "working" });
+  const rows = await prisma.auditSubmission.findMany({ where, select: AUDIT_EXPORT_SELECT, orderBy: auditLogOrderBy(query) });
+  return { error: null, rows: rows.map(mapSubmissionToExportRow) };
 }
 
 export async function getAuditExportRows(ids: string[]) {
@@ -1392,10 +1302,6 @@ export async function getDashboardAuditData(): Promise<DashboardAuditData> {
   );
 
   try {
-    await reconcileTransferHistoryForViewer(
-      session.user.id,
-      session.user.role.slug
-    );
     const [submissions, rosterAgentNames, targets] = await Promise.all([
       withDbRetry(() => getCachedDashboardRecords(cacheScope)()),
       canFilterByAgent(session.user.role.slug)

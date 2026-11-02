@@ -1,19 +1,23 @@
 "use client";
+import { agentsTableQuerySchema } from "@/lib/admin/table-query";
+import { remotePagination,usePageState,useServerResource } from "@/lib/hooks/use-server-resource";
+import { pageInfo,type PageInfo } from "@/lib/server/page-query";
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
-import { UserPlus } from "lucide-react";
+import { useDashboardShell } from "@/components/dashboard/shell";
 import { Button } from "@/components/primitives/button";
 import {
-  DataTablePanel,
-  usePaginatedRows,
+	DataTablePanel
 } from "@/components/primitives/data-table-panel";
-import { useDashboardShell } from "@/components/dashboard/shell";
 import type { AgentListItem } from "@/lib/actions/agents";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { UserPlus } from "lucide-react";
+import Link from "next/link";
+import { useMemo,useState } from "react";
 
 type AgentsTableProps = {
   agents: AgentListItem[];
+  initialPagination?: PageInfo;
+  initialTotal?: number;
   canManage: boolean;
   canManageUsers?: boolean;
   canTransferAgents?: boolean;
@@ -23,7 +27,9 @@ type AgentsTableProps = {
 };
 
 export function AgentsTable({
-  agents,
+  agents: initialAgents,
+  initialPagination,
+  initialTotal,
   canManage,
   canManageUsers = false,
   canTransferAgents = false,
@@ -35,20 +41,11 @@ export function AgentsTable({
   const isQualityAnalyst = user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_ANALYST;
   const [search, setSearch] = useState("");
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return agents;
-    return agents.filter(
-      (agent) =>
-        (agent.profileName ?? "").toLowerCase().includes(q) ||
-        agent.name.toLowerCase().includes(q) ||
-        agent.email.toLowerCase().includes(q) ||
-        (agent.teamName ?? "").toLowerCase().includes(q)
-    );
-  }, [agents, search]);
-
-  const pagination = usePaginatedRows(filtered);
-
+  const pageState = usePageState(search);
+  const initialData = useMemo(() => ({ agents: initialAgents, pagination: initialPagination ?? pageInfo(initialAgents.length, { page: 1, pageSize: 20 }), totalCount: initialTotal ?? initialAgents.length, canManage }), [initialAgents, initialPagination, initialTotal, canManage]);
+  const resource = useServerResource("agents", { page: pageState.page, pageSize: pageState.pageSize, search }, initialData, agentsTableQuerySchema.parse({}));
+  const agents = resource.data.agents;
+  const pagination = remotePagination(agents, resource.data.pagination, pageState);
   const manageAgentsAction = (
     <>
       {canTransferAgents ? (
@@ -101,10 +98,12 @@ export function AgentsTable({
 
       <div className={embedded ? "settings-tab-layout__body" : undefined}>
         <div className={embedded ? "loading-zone--fill" : undefined}>
+          {resource.error ? <p role="alert">{resource.error}</p> : null}
           <DataTablePanel
             pagination={pagination}
+            paginationPending={resource.loading}
             fillViewport={embedded}
-            summaryLabel={`${filtered.length} of ${agents.length} agent${
+            summaryLabel={`${resource.data.pagination.total} of ${resource.data.totalCount} agent${
               agents.length === 1 ? "" : "s"
             }`}
             search={{

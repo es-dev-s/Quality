@@ -17,6 +17,19 @@ type RetiredParam = {
 
 const RETIRED_PARAMS: RetiredParam[] = [
   {
+    // Chat Sales & Compliance 21 → 18 pts (Chat 103 → 100 pts).
+    sectionId: "chat-sales",
+    insertAfterId: "chat-nurturing",
+    param: {
+      id: "chat-urgency",
+      name: "Urgency Creation",
+      max: 3,
+      cat: "Sales & Compliance",
+      scoring: "Y/N/NA",
+      points: { Y: 3, N: 0 },
+    },
+  },
+  {
     // "Hold (<=1min 3x)" — removed from Call Compliance (Call 100 → 97 pts).
     sectionId: "call-compliance",
     insertAfterId: "call-closing",

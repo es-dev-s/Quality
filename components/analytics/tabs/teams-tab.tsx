@@ -1,40 +1,40 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
-import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
-import {
-  sortByNumber,
-  type AnalyticsSortOrder,
-} from "@/lib/audit/analytics-sort";
 import { EntityBreakdownTable } from "@/components/analytics/entity-breakdown-table";
+import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
 import { QmsChartTooltip } from "@/components/analytics/qms-chart-tooltip";
 import {
-  CHART_COLORS,
-  QMS_CHART_TOOLTIP,
-  QmsBadge,
-  QmsCard,
-  QmsEmpty,
-  QmsKpiTile,
-  QmsSectionTitle,
-  QmsViewToggle,
-  scoreHex,
+	CHART_COLORS,
+	QMS_CHART_TOOLTIP,
+	QmsBadge,
+	QmsCard,
+	QmsEmpty,
+	QmsKpiTile,
+	QmsSectionTitle,
+	QmsViewToggle,
+	scoreHex,
 } from "@/components/analytics/qms-primitives";
-import { QmsChartFrame } from "@/components/analytics/qms-chart-frame";
 import {
-  DataTablePanel,
-  usePaginatedRows,
+	DataTablePanel,
+	usePaginatedRows,
 } from "@/components/primitives/data-table-panel";
+import type { QmsAnalyticsData } from "@/lib/audit/analytics-metrics";
+import {
+	sortByNumber,
+	type AnalyticsSortOrder,
+} from "@/lib/audit/analytics-sort";
+import { PASS_RATE_TARGET_PCT } from "@/lib/audit/metrics-config";
+import { useMemo,useState } from "react";
+import {
+	Bar,
+	BarChart,
+	CartesianGrid,
+	Cell,
+	ResponsiveContainer,
+	Tooltip,
+	XAxis,
+	YAxis,
+} from "recharts";
 
 type TeamsTabProps = {
   data: QmsAnalyticsData;
@@ -81,6 +81,7 @@ export function TeamsTab({ data, sortOrder }: TeamsTabProps) {
           ]}
         />
         <EntityBreakdownTable
+          dataKey={view === "parameter" ? "team_param_breakdown" : "team_cat_breakdown"}
           rows={
             view === "parameter"
               ? data.team_param_breakdown

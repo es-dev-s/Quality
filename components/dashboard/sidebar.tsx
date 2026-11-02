@@ -1,29 +1,29 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useDashboardShell } from "@/components/dashboard/shell";
+import { PERMISSIONS,SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import {
-  BarChart3,
-  ClipboardList,
-  FileText,
-  Gauge,
-  History,
-  LayoutDashboard,
-  PhoneCall,
-  Plus,
-  ScrollText,
-  Settings,
-  Upload,
-} from "lucide-react";
+	canImportData,
+	canViewKpi,
+	canWriteAuditTemplates,
+	hasScope,
+} from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 import {
-  canImportData,
-  canViewKpi,
-  canWriteAuditTemplates,
-} from "@/lib/rbac";
-import { PERMISSIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
-import { hasScope } from "@/lib/rbac";
-import { useDashboardShell } from "@/components/dashboard/shell";
+	BarChart3,
+	ClipboardList,
+	FileText,
+	Gauge,
+	History,
+	LayoutDashboard,
+	PhoneCall,
+	Plus,
+	ScrollText,
+	Settings,
+	Upload,
+} from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const mainNav = [
   {
@@ -94,7 +94,7 @@ function NavLink({
   return (
     <Link
       href={href}
-      prefetch
+      prefetch={false}
       onClick={onNavigate}
       title={collapsed ? label : undefined}
       className={cn(
@@ -128,7 +128,7 @@ function FormSubLink({
   return (
     <Link
       href={href}
-      prefetch
+      prefetch={false}
       onClick={onNavigate}
       className={cn("forms-nav-sub-link", active && "forms-nav-sub-link--active")}
     >
@@ -183,7 +183,7 @@ export function DashboardSidebar() {
             collapsed && "dashboard-sidebar__brand--collapsed"
           )}
         >
-          <Link href="/dashboard" prefetch onClick={closeMobile} className="dashboard-sidebar__logo">
+          <Link href="/dashboard" prefetch={false} onClick={closeMobile} className="dashboard-sidebar__logo">
             QA
           </Link>
           {!collapsed && (
@@ -272,7 +272,7 @@ export function DashboardSidebar() {
                     {showTemplateAdmin && (
                       <Link
                         href="/forms/templates?new=1"
-                        prefetch
+                        prefetch={false}
                         onClick={closeMobile}
                         className={cn(
                           "forms-nav-create",

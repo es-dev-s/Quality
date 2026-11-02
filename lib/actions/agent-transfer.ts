@@ -1,52 +1,54 @@
 "use server";
+import { scopedAuditWhere } from "@/lib/audit/scoped-audit-query";
+import { transferHistoryQuerySchema } from "@/lib/audit/transfer-history-query";
+import { pageInfo,type PageInfo } from "@/lib/server/page-query";
 
-import { revalidatePath } from "next/cache";
-import { z } from "zod";
-import type { AgentTransferStatus, Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/auth";
-import { permissionError, requirePermission } from "@/lib/auth-guards";
-import { PERMISSIONS, SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
-import { canApproveAgentRequests, isSuperAdmin, type SessionRole } from "@/lib/rbac";
-import { assertActorManagesUser } from "@/lib/user-roster-scope";
-import { resolveRoleUserName } from "@/lib/audit/role-users";
-import { caseInsensitiveIn } from "@/lib/audit/prisma-string-filters";
-import { assertWriteRateLimit } from "@/lib/server/rate-limit";
 import {
-  invalidateAgentAssignmentCaches,
-  invalidateAgentCaches,
-  invalidateAuditCaches,
-  invalidateInteractionConfigCaches,
-  invalidateUserCaches,
-} from "@/lib/invalidate-cache";
-import { isSupervisorTierRole, SUPERVISOR_TIER_ROLE_SLUG_FILTER } from "@/lib/audit/supervisor-tier";
-import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
-import { withActiveUserFilter, ACTIVE_USER_WHERE } from "@/lib/user-active-filter";
-import {
-  buildAgentOwnedAuditWhere,
-  reconcileTransferHistoryForViewer,
-} from "@/lib/audit/transfer-history";
-import {
-  fetchApprovedTransferIdsForQa,
-  fetchCreatedSupervisorIds,
-} from "@/lib/audit/transfer-history-scope";
-import { fetchQmApprovedAgentDisplayNames } from "@/lib/audit/agent-roster";
-import {
-  AgentTransferError as TransferExecutionError,
-  executeAgentTransfer,
-  getRevertEligibilityForTransfers,
-  previewAgentTransferRevert,
-  revertAgentTransferInTx,
-  type RevertPreview,
-} from "@/lib/agent-transfer/engine";
-import {
-  getAgentTransferRevertWindowDays,
-  isAgentTransferRevertEnabled,
+	getAgentTransferRevertWindowDays,
+	isAgentTransferRevertEnabled,
 } from "@/lib/agent-transfer/config";
 import {
-  emitAgentTransferRevertedEvents,
-  emitAgentTransferredEvents,
+	executeAgentTransfer,
+	getRevertEligibilityForTransfers,
+	previewAgentTransferRevert,
+	revertAgentTransferInTx,
+	AgentTransferError as TransferExecutionError,
+	type RevertPreview,
+} from "@/lib/agent-transfer/engine";
+import {
+	emitAgentTransferredEvents,
+	emitAgentTransferRevertedEvents,
 } from "@/lib/agent-transfer/events";
+import { fetchQmApprovedAgentDisplayNames } from "@/lib/audit/agent-roster";
+import { caseInsensitiveIn } from "@/lib/audit/prisma-string-filters";
+import { resolveRoleUserName } from "@/lib/audit/role-users";
+import { isSupervisorTierRole,SUPERVISOR_TIER_ROLE_SLUG_FILTER } from "@/lib/audit/supervisor-tier";
+import {
+	buildAgentOwnedAuditWhere
+} from "@/lib/audit/transfer-history";
+import {
+	fetchApprovedTransferIdsForQa,
+	fetchCreatedSupervisorIds,
+} from "@/lib/audit/transfer-history-scope";
+import { requireAuth } from "@/lib/auth";
+import { permissionError,requirePermission } from "@/lib/auth-guards";
+import { isPrismaUniqueViolation } from "@/lib/db/prisma-errors";
+import {
+	invalidateAgentAssignmentCaches,
+	invalidateAgentCaches,
+	invalidateAuditCaches,
+	invalidateInteractionConfigCaches,
+	invalidateUserCaches,
+} from "@/lib/invalidate-cache";
+import { PERMISSIONS,SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+import { canApproveAgentRequests,isSuperAdmin,type SessionRole } from "@/lib/rbac";
+import { assertWriteRateLimit } from "@/lib/server/rate-limit";
+import { ACTIVE_USER_WHERE,withActiveUserFilter } from "@/lib/user-active-filter";
+import { assertActorManagesUser } from "@/lib/user-roster-scope";
+import type { AgentTransferStatus,Prisma } from "@prisma/client";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 const transferSchema = z.object({
   agentUserId: z.string().min(1),
@@ -962,16 +964,15 @@ function mapTransferRow(
   };
 }
 
-export async function getAgentTransferHistory(): Promise<{
+export async function getAgentTransferHistory(input: unknown = {}): Promise<{
   transfers: AgentTransferRow[];
   historyAudits: TransferHistoryAuditRow[];
+  transferPagination: PageInfo;
+  auditPagination: PageInfo;
 }> {
   await requirePermission(PERMISSIONS.USERS_READ_MANAGED);
   const session = await requireAuth();
-  await reconcileTransferHistoryForViewer(
-    session.user.id,
-    session.user.role.slug
-  );
+  const query = transferHistoryQuerySchema.parse(input);
 
   let transferWhere: Prisma.AgentTransferWhereInput | undefined;
 
@@ -1026,41 +1027,28 @@ export async function getAgentTransferHistory(): Promise<{
     transferWhere = { id: "__none__" };
   }
 
-  const transfers = await prisma.agentTransfer.findMany({
-    where: transferWhere,
-    include: transferInclude,
-    orderBy: [{ requestedAt: "desc" }],
-    take: 200,
-  });
-
-  const approvedTransferIds = transfers
-    .filter((row) => row.status === "APPROVED")
-    .map((row) => row.id);
-
-  const historyAudits =
-    approvedTransferIds.length === 0
-      ? []
-      : await prisma.auditSubmission.findMany({
-          where: {
-            isHistory: true,
-            historyTransferId: { in: approvedTransferIds },
-          },
-          select: {
-            id: true,
-            auditCode: true,
-            agent: true,
-            supervisor: true,
-            auditDate: true,
-            qualityPct: true,
-            finalPct: true,
-            grade: true,
-            hasFatal: true,
-            historyTransferId: true,
-            historyTransfer: { select: { transferredAt: true } },
-          },
-          orderBy: { auditDate: "desc" },
-          take: 500,
-        });
+  const visibility = transferWhere ?? {};
+  const transferText = { contains: query.transferSearch, mode: "insensitive" as const };
+  const searchWhere: Prisma.AgentTransferWhereInput = query.transferSearch ? { OR: [
+    { agentNameSnapshot: transferText }, { agentEmailSnapshot: transferText }, { note: transferText }, { revertReason: transferText },
+    { fromSupervisor: { name: transferText } }, { toSupervisor: { name: transferText } }, { transferredBy: { name: transferText } },
+    ...(["PENDING", "APPROVED", "REJECTED", "REVERTED"] as const).filter((status) => status.toLowerCase().includes(query.transferSearch.toLowerCase())).map((status) => ({ status })),
+    ...(query.transferSearch.toLowerCase().includes("revert") ? [{ kind: "REVERT" as const }] : []),
+  ] } : {};
+  const filteredTransfers = { AND: [visibility, searchWhere] };
+  const historyScope = await scopedAuditWhere(session, { isHistory: true, historyTransfer: { AND: [visibility, { status: "APPROVED" }] } });
+  const auditText = { contains: query.auditSearch, mode: "insensitive" as const };
+  const historyWhere = query.auditSearch ? { AND: [historyScope, { OR: [{ auditCode: auditText }, { agent: auditText }, { supervisor: auditText }, { grade: auditText }] }] } : historyScope;
+  const [transferCount, auditCount] = await Promise.all([
+    prisma.agentTransfer.count({ where: filteredTransfers }),
+    prisma.auditSubmission.count({ where: historyWhere }),
+  ]);
+  const transferPagination = pageInfo(transferCount, { page: query.transferPage, pageSize: query.transferPageSize });
+  const auditPagination = pageInfo(auditCount, { page: query.auditPage, pageSize: query.auditPageSize });
+  const [transfers, historyAudits] = await Promise.all([
+    prisma.agentTransfer.findMany({ where: filteredTransfers, include: transferInclude, orderBy: [{ requestedAt: "desc" }, { id: "desc" }], skip: (transferPagination.page - 1) * transferPagination.pageSize, take: transferPagination.pageSize }),
+    prisma.auditSubmission.findMany({ where: historyWhere, select: { id: true, auditCode: true, agent: true, supervisor: true, auditDate: true, qualityPct: true, finalPct: true, grade: true, hasFatal: true, historyTransferId: true, historyTransfer: { select: { transferredAt: true } } }, orderBy: [{ auditDate: "desc" }, { id: "desc" }], skip: (auditPagination.page - 1) * auditPagination.pageSize, take: auditPagination.pageSize }),
+  ]);
 
   const revertViews = new Map<string, RevertView>();
   const viewerMayRevert =
@@ -1092,6 +1080,7 @@ export async function getAgentTransferHistory(): Promise<{
   }
 
   return {
+    transferPagination, auditPagination,
     transfers: transfers.map((row) =>
       mapTransferRow(row, revertViews.get(row.id) ?? NO_REVERT)
     ),

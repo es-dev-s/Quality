@@ -1,9 +1,11 @@
-import { revalidateTag } from "next/cache";
 import { CACHE_TAGS } from "@/lib/cache";
-import { broadcastToTag, broadcastToTags } from "@/lib/sse-broadcast";
+import { invalidateReadResults } from "@/lib/server/read-cache";
+import { broadcastToTag,broadcastToTags } from "@/lib/sse-broadcast";
 import type { SSEEvent } from "@/lib/sse-events";
+import { revalidateTag } from "next/cache";
 
 export function invalidateCacheTags(tags: string[], event?: SSEEvent) {
+  invalidateReadResults();
   const unique = [...new Set(tags)];
   for (const tag of unique) {
     revalidateTag(tag, "max");
@@ -18,6 +20,7 @@ export function invalidateCacheTags(tags: string[], event?: SSEEvent) {
  * audit-submissions channel so every role with audit-logs:read receives one event.
  */
 export function invalidateAuditCaches(userId: string, event?: SSEEvent) {
+  invalidateReadResults();
   const cacheTags = [
     CACHE_TAGS.AUDIT_SUBMISSIONS,
     CACHE_TAGS.userAudits(userId),
