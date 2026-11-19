@@ -63,15 +63,13 @@ import { formatSecondsAgo } from "@/lib/format-relative-time";
 import { useAuditLogPage } from "@/lib/hooks/use-audit-log-page";
 import { useBusyAction } from "@/lib/hooks/use-busy-action";
 import { useFilterSidebar } from "@/lib/hooks/use-filter-sidebar";
-import { useRealtime } from "@/lib/hooks/use-realtime";
 import { SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import type { SessionRole } from "@/lib/rbac";
-import { isAuditSSEEvent } from "@/lib/sse-events";
 import type { TablePageSize } from "@/lib/ui/paginate-rows";
 import { cn } from "@/lib/utils";
 import { ArrowDownWideNarrow,ArrowUpNarrowWide,Download,Eye,Pencil,Trash2 } from "lucide-react";
 import Link from "next/link";
-import { startTransition,useCallback,useEffect,useMemo,useOptimistic,useRef,useState,type SetStateAction } from "react";
+import { startTransition,useCallback,useEffect,useMemo,useOptimistic,useState,type SetStateAction } from "react";
 
 function rowIdsKey(rows: AuditLogEntry[]): string {
   if (rows.length === 0) return "";
@@ -236,22 +234,11 @@ export function AuditLogsTable({
   const rows = optimisticRows;
   const dbTotal = page.totalCount;
   const visibleRowIdsKey = useMemo(() => rowIdsKey(rows), [rows]);
-  const reconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // No automatic refetch on other users' SSE events: it caused the table spinner
+  // and reloads while nobody touched the page. Refetch only on own actions/filters.
   const refreshCurrentPage = useCallback(() => {
-    if (reconcileTimerRef.current) clearTimeout(reconcileTimerRef.current);
-    reconcileTimerRef.current = null;
     refreshPage();
   }, [refreshPage]);
-  const scheduleAuditLogsReconcile = useCallback(() => {
-    if (reconcileTimerRef.current) clearTimeout(reconcileTimerRef.current);
-    reconcileTimerRef.current = setTimeout(() => {
-      reconcileTimerRef.current = null;
-      refreshPage();
-    }, 500);
-  }, [refreshPage]);
-  useEffect(() => () => {
-    if (reconcileTimerRef.current) clearTimeout(reconcileTimerRef.current);
-  }, []);
   const [selection, setSelection] = useState(() => ({ key: visibleRowIdsKey, ids: new Set<string>() }));
   const selectedIds = useMemo(() => selection.key === visibleRowIdsKey ? selection.ids : new Set<string>(), [selection, visibleRowIdsKey]);
   const setSelectedIds = useCallback((next: SetStateAction<Set<string>>) => {
@@ -268,12 +255,6 @@ export function AuditLogsTable({
   const { busy: feedbackPending, run: runFeedback } = useBusyAction();
   const { busy: exportPending, run: runExport } = useBusyAction();
   const tableBusy = pageLoading || deletePending || exportPending;
-
-
-  const handleRealtime = useCallback((event: Parameters<typeof isAuditSSEEvent>[0]) => {
-    if (isAuditSSEEvent(event)) scheduleAuditLogsReconcile();
-  }, [scheduleAuditLogsReconcile]);
-  useRealtime(handleRealtime);
 
   const agentNames = page.filterOptions.agents;
   const showAgentFilter = canFilterByAgent(roleSlug) && agentNames.length > 0;
