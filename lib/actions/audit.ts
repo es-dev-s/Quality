@@ -79,7 +79,10 @@ import {
 import { invalidateAuditCaches } from "@/lib/invalidate-cache";
 import { readAuditTargetsForViewer } from "@/lib/kpi/audit-targets";
 import { KPI_DEFAULT_AGENT_TARGET } from "@/lib/kpi/records";
+import { isDisputeOpen, parseDisputeStage } from "@/lib/audit/dispute";
+import { closeExpiredDisputes } from "@/lib/audit/dispute-sweep";
 import { dispatchDisputeAuditNotifications } from "@/lib/notifications/dispatch-dispute-audit";
+import { dispatchDisputeResolved } from "@/lib/notifications/dispatch-dispute-workflow";
 import { dispatchFatalAuditNotifications } from "@/lib/notifications/dispatch-fatal-audit";
 import { PERMISSIONS,SYSTEM_ROLE_SLUGS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -88,6 +91,7 @@ import {
 	canEditFeedbackFully,
 	canEditSupervisorRemarks,
 	canExportAuditData,
+	isSuperAdmin,
 	type SessionRole,
 } from "@/lib/rbac";
 import {
@@ -467,6 +471,7 @@ function parseRows(value: unknown): AuditRow[] {
 export async function getAuditLogs(input?: unknown) {
   const session = await requirePermission(PERMISSIONS.AUDIT_LOGS_READ);
   const query = auditLogQuerySchema.parse(input ?? {});
+  await closeExpiredDisputes().catch(() => undefined);
   return fetchAuditLogPage(await scopedAuditWhere(session), query, {
     id: session.user.id, roleSlug: session.user.role.slug,
   });
@@ -732,6 +737,7 @@ export async function getAuditForEdit(id: string): Promise<AuditEditPayload | nu
     templateId,
     formData,
     scores,
+    disputeStage: submission.disputeStage,
     // Older audits keep the rubric they were scored on: retired params
     // (e.g. Call "Hold") stay scored from their stored value, and params added
     // later (e.g. "Urgency Creation") are left out, so editing never silently
@@ -750,7 +756,8 @@ export async function updateAuditSubmission(
   id: string,
   formData: AuditFormData,
   scores: ScoresMap,
-  templateId: string
+  templateId: string,
+  revisionRationale?: string
 ) {
   const auth = await requirePermissionResult(PERMISSIONS.AUDIT_FORM_WRITE);
   if (auth.error) return { error: auth.error };
@@ -828,6 +835,13 @@ export async function updateAuditSubmission(
       submittedById: true,
       scores: true,
       record: true,
+      qualityPct: true,
+      finalPct: true,
+      grade: true,
+      catScores: true,
+      rows: true,
+      auditVersion: true,
+      disputeStage: true,
     },
   });
   if (!existing) {
@@ -835,6 +849,35 @@ export async function updateAuditSubmission(
   }
   if (existing.isHistory) {
     return { error: "History audits cannot be edited." };
+  }
+
+  // While a dispute is open, score/parameter changes are a new audit version
+  // approved by the Quality Manager once the team-lead remark is in.
+  const openDispute = isDisputeOpen(parseDisputeStage(existing.disputeStage));
+  const trimmedRationale = revisionRationale?.trim() ?? "";
+  if (openDispute) {
+    const isApprover =
+      session.user.role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER ||
+      isSuperAdmin(session.user.role);
+    if (!isApprover) {
+      return {
+        error:
+          "This audit has an open dispute. Only the Quality Manager can approve a revised version.",
+      };
+    }
+    if (existing.disputeStage !== "AWAITING_QM_REVIEW") {
+      return {
+        error:
+          existing.disputeStage === "AWAITING_TL_REMARK"
+            ? "Wait for the team lead's remark before revising this audit."
+            : "This dispute was already reviewed. It cannot be revised again.",
+      };
+    }
+    if (trimmedRationale.length < 10) {
+      return {
+        error: "Add a revision rationale (at least 10 characters) to approve a new version.",
+      };
+    }
   }
 
   // Audits keep the rubric they were scored on: a retired param (e.g. Call
@@ -856,7 +899,16 @@ export async function updateAuditSubmission(
   if ("error" in feedbackResult) {
     return { error: feedbackResult.error };
   }
-  const preservedFeedback = feedbackResult;
+  const revisedAt = new Date();
+  const preservedFeedback = openDispute
+    ? {
+        ...feedbackResult,
+        // Reshare the revised audit to the agent.
+        feedbackStatus: "Shared" as const,
+        feedbackDate: revisedAt.toISOString(),
+        feedbackStatusAt: "",
+      }
+    : feedbackResult;
   const agentFeedback = validFormData.agentFeedback.trim();
 
   const result = calculateResults(
@@ -891,9 +943,25 @@ export async function updateAuditSubmission(
         );
 
   try {
-    const updated = await prisma.auditSubmission.updateMany({
-      where: await scopedAuditByIdWhere(session, validId),
+    const scopedWhere = await scopedAuditByIdWhere(session, validId);
+    const disputeRevisionData = openDispute
+      ? {
+          auditVersion: existing.auditVersion + 1,
+          disputeStage: "AWAITING_FINAL_ACK",
+          disputeOutcome: "REVISED",
+          disputeOutcomeNote: trimmedRationale,
+          disputeReviewedAt: revisedAt,
+          disputeReviewedById: session.user.id,
+          disputeResharedAt: revisedAt,
+        }
+      : {};
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.auditSubmission.updateMany({
+      where: openDispute
+        ? { AND: [scopedWhere, { disputeStage: "AWAITING_QM_REVIEW" }] }
+        : scopedWhere,
       data: {
+        ...disputeRevisionData,
         templateId: template.id,
         agent: record.agent,
         supervisor: record.supervisor || null,
@@ -931,10 +999,36 @@ export async function updateAuditSubmission(
         record: record as unknown as object,
         teamNameSnapshot,
       },
+      });
+      // Preserve the version being replaced, with rationale and approver.
+      if (result.count > 0 && openDispute) {
+        await tx.auditRevision.create({
+          data: {
+            auditId: validId,
+            version: existing.auditVersion,
+            qualityPct: existing.qualityPct,
+            finalPct: existing.finalPct,
+            grade: existing.grade,
+            hasFatal: existing.hasFatal,
+            scores: existing.scores as object,
+            catScores: existing.catScores as object,
+            rows: existing.rows as object,
+            record: existing.record as object,
+            rationale: trimmedRationale,
+            outcome: "REVISED",
+            approvedById: session.user.id,
+          },
+        });
+      }
+      return result;
     });
 
     if (updated.count === 0) {
-      return { error: "Audit not found." };
+      return {
+        error: openDispute
+          ? "This dispute was already reviewed. Refresh and retry."
+          : "Audit not found.",
+      };
     }
   } catch (error) {
     console.error("updateAuditSubmission failed:", error);
@@ -971,7 +1065,20 @@ export async function updateAuditSubmission(
     });
   }
 
+  if (openDispute) {
+    void dispatchDisputeResolved({
+      auditId: validId,
+      auditCode: record.id,
+      agent: record.agent,
+      outcome: "REVISED",
+      resolvedById: session.user.id,
+    }).catch((error) => {
+      console.error("dispatchDisputeResolved failed:", error);
+    });
+  }
+
   if (
+    !openDispute &&
     previousFeedbackStatus !== "Disputed" &&
     preservedFeedback.feedbackStatus === "Disputed"
   ) {
@@ -1035,6 +1142,7 @@ export async function updateAuditFeedback(
       feedbackStatus: true,
       feedbackDate: true,
       feedbackStatusAt: true,
+      disputeStage: true,
     },
   });
   if (!existing) {
@@ -1046,6 +1154,34 @@ export async function updateAuditFeedback(
 
   const previousStatus = parseFeedbackStatus(existing.feedbackStatus);
   const nextStatusParsed = parseFeedbackStatus(parsed.data.feedbackStatus);
+
+  // Disputes run through their own stages (remark → review → reshare → ack).
+  // The plain status dropdown must not skip them.
+  const disputeStage = parseDisputeStage(existing.disputeStage);
+  const statusChanging = previousStatus !== nextStatusParsed;
+  if (statusChanging && nextStatusParsed === "Disputed") {
+    return {
+      error: "Use the dispute form to dispute this audit's feedback.",
+    };
+  }
+  if (
+    statusChanging &&
+    isDisputeOpen(disputeStage) &&
+    !canEditFeedbackFully(session.user.role)
+  ) {
+    if (disputeStage === "AWAITING_FINAL_ACK" && nextStatusParsed === "Acknowledged") {
+      // Allowed: the agent closes the dispute below.
+    } else {
+      return {
+        error:
+          "This audit has an open dispute. Its status changes as the dispute progresses.",
+      };
+    }
+  }
+  const closesDispute =
+    statusChanging &&
+    disputeStage === "AWAITING_FINAL_ACK" &&
+    nextStatusParsed === "Acknowledged";
 
   if (!canEditFeedbackFully(session.user.role)) {
     const memberMode =
@@ -1116,6 +1252,13 @@ export async function updateAuditFeedback(
       feedbackStatus: feedback.feedbackStatus,
       feedbackDate: feedback.feedbackDate || null,
       feedbackStatusAt: feedback.feedbackStatusAt || null,
+      ...(closesDispute
+        ? {
+            disputeStage: "CLOSED",
+            disputeClosedAt: new Date(),
+            disputeCloseReason: "ACKNOWLEDGED",
+          }
+        : {}),
     },
   });
 
@@ -1137,20 +1280,6 @@ export async function updateAuditFeedback(
       feedbackStatusAt: feedback.feedbackStatusAt || null,
     },
   });
-
-  if (previousStatus !== "Disputed" && nextStatusParsed === "Disputed") {
-    void dispatchDisputeAuditNotifications({
-      auditId: existing.id,
-      auditCode: existing.auditCode,
-      agent: existing.agent,
-      supervisor: existing.supervisor,
-      auditor: existing.auditor,
-      submittedById: existing.submittedById,
-      disputedById: session.user.id,
-    }).catch((error) => {
-      console.error("dispatchDisputeAuditNotifications failed:", error);
-    });
-  }
 
   return {
     success: true as const,

@@ -59,7 +59,7 @@ async function findActiveUserIdByRoleAndName(
   return match?.id ?? null;
 }
 
-async function findAgentUserId(agentName: string): Promise<string | null> {
+export async function findAgentUserId(agentName: string): Promise<string | null> {
   const direct = await findActiveUserIdByRoleAndName(
     SYSTEM_ROLE_SLUGS.AGENT,
     agentName
@@ -154,4 +154,29 @@ export async function resolveDisputeAuditRecipients(
   }
 
   return [...recipients.entries()].map(([userId, role]) => ({ userId, role }));
+}
+
+/**
+ * Quality Managers to notify about a dispute: the manager(s) responsible for the
+ * agent, falling back to every active Quality Manager so the dispute never
+ * stalls with nobody to review it.
+ */
+export async function resolveQualityManagerIds(
+  agentName: string,
+  excludeUserId?: string
+): Promise<string[]> {
+  const agentUserId = await findAgentUserId(agentName);
+  let ids = agentUserId ? await findManagerUserIdsForAgent(agentUserId) : [];
+
+  if (ids.length === 0) {
+    const managers = await prisma.user.findMany({
+      where: withActiveUserFilter({
+        role: { slug: SYSTEM_ROLE_SLUGS.QUALITY_MANAGER },
+      }),
+      select: { id: true },
+    });
+    ids = managers.map((user) => user.id);
+  }
+
+  return ids.filter((id) => id !== excludeUserId);
 }

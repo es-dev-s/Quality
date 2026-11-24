@@ -99,6 +99,8 @@ export type AuditEditPayload = {
   scores: ScoresMap;
   /** Rubric for this audit (retired params restored when the audit has stored values for them). */
   template: AuditTemplate;
+  /** Open-dispute stage; the Quality Manager must give a rationale to save a new version. */
+  disputeStage: string | null;
 };
 
 export type DashboardAuditRecord = {

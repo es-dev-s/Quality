@@ -30,6 +30,8 @@ import { Select } from "@/components/primitives/field";
 import { LoadingZone } from "@/components/primitives/loading-zone";
 import { useToast } from "@/components/primitives/toast";
 import { deleteAuditSubmissions,updateAuditFeedback } from "@/lib/actions/audit";
+import { raiseAuditDispute } from "@/lib/actions/dispute";
+import { DisputeConfirmModal } from "@/components/audit-logs/dispute-confirm-modal";
 import {
 	buildAgentFilterSelectOptions,
 	canFilterByAgent,
@@ -253,6 +255,11 @@ export function AuditLogsTable({
   } | null>(null);
   const { busy: deletePending, run: runDelete } = useBusyAction();
   const { busy: feedbackPending, run: runFeedback } = useBusyAction();
+  const [disputeTarget, setDisputeTarget] = useState<{
+    id: string;
+    auditCode: string;
+  } | null>(null);
+  const { busy: disputePending, run: runDispute } = useBusyAction();
   const { busy: exportPending, run: runExport } = useBusyAction();
   const tableBusy = pageLoading || deletePending || exportPending;
 
@@ -531,6 +538,15 @@ export function AuditLogsTable({
     if (!currentRow) return;
     const previousRow = currentRow;
 
+    // Disputes need a warning + reason first, then run the dispute workflow.
+    if (
+      patch.feedbackStatus === "Disputed" &&
+      currentRow.feedbackStatus !== "Disputed"
+    ) {
+      setDisputeTarget({ id, auditCode: currentRow.auditCode });
+      return;
+    }
+
     let next: AuditLogEntry = { ...currentRow, ...patch };
 
     if (patch.feedbackStatus && patch.feedbackStatus !== currentRow.feedbackStatus) {
@@ -590,6 +606,33 @@ export function AuditLogsTable({
           });
         }
       }
+    });
+  }
+
+  function confirmDispute(reason: string) {
+    const target = disputeTarget;
+    if (!target) return;
+    runDispute(async () => {
+      const result = await raiseAuditDispute(target.id, reason);
+      if ("error" in result && result.error) {
+        toast(result.error, "error");
+        return;
+      }
+      setDisputeTarget(null);
+      toast("Dispute raised. Your supervisor has 24 hours to respond.", "success");
+      if ("feedbackStatusAt" in result) {
+        startTransition(() => {
+          applyOptimisticRows({
+            type: "patch",
+            id: target.id,
+            patch: {
+              feedbackStatus: "Disputed",
+              feedbackStatusAt: result.feedbackStatusAt,
+            },
+          });
+        });
+      }
+      refreshCurrentPage();
     });
   }
 
@@ -1262,6 +1305,13 @@ export function AuditLogsTable({
         onClose={() => setViewId(null)}
       />
 
+      <DisputeConfirmModal
+        open={disputeTarget !== null}
+        auditCode={disputeTarget?.auditCode}
+        loading={disputePending}
+        onClose={() => setDisputeTarget(null)}
+        onConfirm={confirmDispute}
+      />
       <ConfirmModal
         open={Boolean(deleteConfirm)}
         onClose={() => setDeleteConfirm(null)}

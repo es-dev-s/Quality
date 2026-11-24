@@ -1,6 +1,10 @@
 export const NOTIFICATION_TYPES = {
   FATAL_AUDIT: "fatal_audit",
   DISPUTE_RAISED: "dispute_raised",
+  /** Team lead submitted the structured remark; Quality Manager must review. */
+  DISPUTE_REMARK_SUBMITTED: "dispute_remark_submitted",
+  /** Quality Manager resolved the dispute and reshared the audit with the agent. */
+  DISPUTE_RESOLVED: "dispute_resolved",
   AGENT_TRANSFERRED: "agent_transferred",
   AGENT_TRANSFER_REVERTED: "agent_transfer_reverted",
   /** Sent to the agent themself (they cannot open transfer history). */

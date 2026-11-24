@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, FileText, MessageSquare, Pencil, Phone, ShieldAlert, X } from "lucide-react";
+import { DisputePanel } from "@/components/audit-logs/dispute-panel";
 import { getAuditDetail, updateSupervisorRemarks } from "@/lib/actions/audit";
 import {
   parseReferenceItems,
@@ -367,6 +368,8 @@ export function AuditDetailModal({
                   </div>
                 ) : null}
               </section>
+
+              <DisputePanel auditId={detail.id} isHistory={detail.isHistory} />
 
               {/* ── Supervisor remarks (full-width) ───────────────── */}
               {(canEditSupervisorRemarks || detail.supervisorRemarks.trim()) && (
