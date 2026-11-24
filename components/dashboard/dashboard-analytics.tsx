@@ -188,7 +188,7 @@ export function DashboardAnalytics({
   const { page: fatalPage, setPage: setFatalPage } = usePageState(JSON.stringify([includeFilters, historyFilter, period, customRange, selectedFatal]));
   const request = useMemo(() => ({ period, customRange, includeFilters, historyFilter, trendGranularity, targetAuditSource, agentTarget, totalMonthlyTarget, auditorTargetRange, selectedFatal, agentPage, auditorPage, fatalPage }), [period, customRange, includeFilters, historyFilter, trendGranularity, targetAuditSource, agentTarget, totalMonthlyTarget, auditorTargetRange, selectedFatal, agentPage, auditorPage, fatalPage]);
   const initialQuery = useMemo(() => ({ ...dashboardQuerySchema.parse({}), historyFilter: initialData.defaultHistoryFilter, agentTarget: initialData.agentTarget, totalMonthlyTarget: initialData.totalMonthlyTarget }), [initialData]);
-  const resource = useServerResource("dashboard", request, initialData, initialQuery);
+  const resource = useServerResource("dashboard", request, initialData, initialQuery, { live: false });
   const data = resource.data;
   const { filterOptions, stats, monthStats, distribution, trendData, agentTargets, auditorTargets, agentTargetSourceCounts, resolvedMonthlyTarget, topAgents, topFatals, recentSubmissions } = data;
   const selectedFatalOccurrences = data.fatalOccurrences;
@@ -660,7 +660,7 @@ export function DashboardAnalytics({
 
       {resource.error ? <p role="alert" className="platform-empty platform-empty--error">{resource.error}</p> : null}
       <LoadingZone
-        loading={isRefreshing || resource.loading}
+        loading={isRefreshing}
         label="Refreshing dashboard…"
         className="dash-sections loading-zone--stack"
       >

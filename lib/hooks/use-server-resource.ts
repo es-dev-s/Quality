@@ -20,12 +20,24 @@ function eventToken(event: object) {
   return token;
 }
 
-export function useServerResource<T>(view: string, query: object, initialData: T, initialQuery: object) {
+export type UseServerResourceOptions = {
+  live?: boolean;
+};
+
+export function useServerResource<T>(
+  view: string,
+  query: object,
+  initialData: T,
+  initialQuery: object,
+  options?: UseServerResourceOptions
+) {
+  const live = options?.live ?? false;
   const queryKey = stableKey(query);
   const initialKey = stableKey(initialQuery);
   const [nonce, setNonce] = useState("");
   const liveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useRealtime((event) => {
+    if (!live) return;
     if (!isAuditSSEEvent(event) && !isAgentTransferSSEEvent(event)) return;
     if (liveTimer.current) clearTimeout(liveTimer.current);
     // All consumers of one event share the server's in-flight aggregate result.
