@@ -169,6 +169,18 @@ function notificationTag(type: string): { label: string; className: string } | n
       className: "notification-bell__tag notification-bell__tag--fatal",
     };
   }
+  if (type === NOTIFICATION_TYPES.DISPUTE_REMARK_SUBMITTED) {
+    return {
+      label: "REVIEW DISPUTE",
+      className: "notification-bell__tag notification-bell__tag--dispute",
+    };
+  }
+  if (type === NOTIFICATION_TYPES.DISPUTE_RESOLVED) {
+    return {
+      label: "DISPUTE RESOLVED",
+      className: "notification-bell__tag notification-bell__tag--dispute",
+    };
+  }
   if (type === NOTIFICATION_TYPES.DISPUTE_RAISED) {
     return {
       label: "DISPUTE RAISED",

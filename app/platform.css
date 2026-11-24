@@ -5077,3 +5077,20 @@
 .audit-feedback-status--premium.ui-custom-select__trigger {
   font-weight: 650;
 }
+
+/* ── Dispute workflow ─────────────────────────────────────── */
+.dispute-revision-panel { border-color: #f59e0b; background: #fffbeb; }
+.dispute-revision-panel__hint { margin: 0 0 8px; font-size: 13px; color: #92400e; }
+.dispute-warning { display: flex; gap: 10px; padding: 12px; border-radius: 8px; background: #fef3c7; border: 1px solid #f59e0b; color: #78350f; font-size: 13px; line-height: 1.45; }
+.dispute-warning ul { margin: 6px 0 0; padding-left: 18px; }
+.dispute-panel { display: grid; gap: 10px; }
+.dispute-panel__status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 600; }
+.dispute-panel__due { font-size: 12px; font-weight: 500; color: var(--color-text-muted, #6b7280); }
+.dispute-panel__due--overdue { color: #b91c1c; font-weight: 700; }
+.dispute-panel__block { padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,.6); border: 1px solid rgba(0,0,0,.08); }
+.dispute-panel__label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; margin-bottom: 2px; }
+.dispute-panel__text { margin: 0; white-space: pre-wrap; font-size: 13px; }
+.dispute-panel__form { display: grid; gap: 8px; }
+.dispute-panel__form select, .dispute-panel__form textarea { width: 100%; }
+.dispute-panel__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.dispute-panel__versions { display: grid; gap: 6px; font-size: 13px; }

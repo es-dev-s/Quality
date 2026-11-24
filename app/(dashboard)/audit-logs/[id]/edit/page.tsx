@@ -61,6 +61,7 @@ async function EditAuditContent({ id }: { id: string }) {
       initialType={editData.formData.type}
       editAuditId={editData.id}
       editAuditCode={editData.auditCode}
+      disputeRevision={editData.disputeStage === "AWAITING_QM_REVIEW"}
       initialFormData={editData.formData}
       initialScores={editData.scores}
       successRedirect="/audit-logs"

@@ -7,50 +7,51 @@ datasource db {
 }
 
 model User {
-  id                 String                  @id @default(cuid())
-  name               String?
-  email              String                  @unique
-  password           String
-  passwordEncrypted  String?                 @map("password_encrypted")
-  roleId             String
-  isActive           Boolean                 @default(true) @map("is_active")
-  approvalStatus     UserApprovalStatus      @default(ACTIVE) @map("approval_status")
-  sessionVersion     Int                     @default(0) @map("session_version")
-  dateOfJoining      String?                 @map("date_of_joining")
-  teamName           String?                 @map("team_name")
-  createdById        String?                 @map("created_by_id")
-  role               Role                    @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  createdBy          User?                   @relation("UserCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdUsers       User[]                  @relation("UserCreatedBy")
-  auditSubmissions   AuditSubmission[]
-  templatePreference UserTemplatePreference?
-  provisioningRequests UserProvisioningRequest[] @relation("ProvisioningRequestedBy")
-  provisioningReviews  UserProvisioningRequest[] @relation("ProvisioningReviewedBy")
-  approvedFromRequest  UserProvisioningRequest?  @relation("ApprovedUser")
-  agentAssignments     AgentAssignment[]       @relation("AgentAssignments")
-  assignedAgents       AgentAssignment[]       @relation("AssignedAgentsTo")
-  assignmentsMade      AgentAssignment[]       @relation("AgentAssignedByQM")
-  memberAccessAsMember MemberAccessGrant[]     @relation("MemberAccessMember")
-  memberAccessAsTarget MemberAccessGrant[]     @relation("MemberAccessTarget")
-  memberAccessGranted  MemberAccessGrant[]     @relation("MemberAccessGrantedBy")
-  securityAuditTargets SecurityAuditLog[]      @relation("SecurityAuditTarget")
-  securityAuditActions SecurityAuditLog[]      @relation("SecurityAuditActor")
-  notifications        Notification[]
-  agentTransfersAsAgent     AgentTransfer[] @relation("TransferAgent")
-  agentTransfersFrom        AgentTransfer[] @relation("TransferFromSupervisor")
-  agentTransfersTo          AgentTransfer[] @relation("TransferToSupervisor")
-  agentTransfersPerformed   AgentTransfer[] @relation("TransferPerformedBy")
-  agentTransfersAssignedReview AgentTransfer[] @relation("TransferAssignedReviewer")
-  agentTransfersReviewed    AgentTransfer[] @relation("TransferReviewedBy")
-  agentTransfersFromQa      AgentTransfer[] @relation("TransferFromQa")
-  historyOwnedAudits        AuditSubmission[] @relation("HistoryOwner")
-  agentTransfersReverted    AgentTransfer[] @relation("TransferRevertedBy")
-  teamMembershipsAsAgent    AgentTeamMembership[] @relation("MembershipAgent")
-  teamMembershipsAsSupervisor AgentTeamMembership[] @relation("MembershipSupervisor")
-  auditsAsAgentUser         AuditSubmission[] @relation("AuditAgentUser")
-  auditsOwned               AuditSubmission[] @relation("AuditOwnerSupervisor")
-  createdAt          DateTime                @default(now())
-  updatedAt          DateTime                @updatedAt
+  id                           String                    @id @default(cuid())
+  name                         String?
+  email                        String                    @unique
+  password                     String
+  passwordEncrypted            String?                   @map("password_encrypted")
+  roleId                       String
+  isActive                     Boolean                   @default(true) @map("is_active")
+  approvalStatus               UserApprovalStatus        @default(ACTIVE) @map("approval_status")
+  sessionVersion               Int                       @default(0) @map("session_version")
+  dateOfJoining                String?                   @map("date_of_joining")
+  teamName                     String?                   @map("team_name")
+  createdById                  String?                   @map("created_by_id")
+  role                         Role                      @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  createdBy                    User?                     @relation("UserCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdUsers                 User[]                    @relation("UserCreatedBy")
+  auditSubmissions             AuditSubmission[]
+  templatePreference           UserTemplatePreference?
+  provisioningRequests         UserProvisioningRequest[] @relation("ProvisioningRequestedBy")
+  provisioningReviews          UserProvisioningRequest[] @relation("ProvisioningReviewedBy")
+  approvedFromRequest          UserProvisioningRequest?  @relation("ApprovedUser")
+  agentAssignments             AgentAssignment[]         @relation("AgentAssignments")
+  assignedAgents               AgentAssignment[]         @relation("AssignedAgentsTo")
+  assignmentsMade              AgentAssignment[]         @relation("AgentAssignedByQM")
+  memberAccessAsMember         MemberAccessGrant[]       @relation("MemberAccessMember")
+  memberAccessAsTarget         MemberAccessGrant[]       @relation("MemberAccessTarget")
+  memberAccessGranted          MemberAccessGrant[]       @relation("MemberAccessGrantedBy")
+  securityAuditTargets         SecurityAuditLog[]        @relation("SecurityAuditTarget")
+  securityAuditActions         SecurityAuditLog[]        @relation("SecurityAuditActor")
+  notifications                Notification[]
+  agentTransfersAsAgent        AgentTransfer[]           @relation("TransferAgent")
+  agentTransfersFrom           AgentTransfer[]           @relation("TransferFromSupervisor")
+  agentTransfersTo             AgentTransfer[]           @relation("TransferToSupervisor")
+  agentTransfersPerformed      AgentTransfer[]           @relation("TransferPerformedBy")
+  agentTransfersAssignedReview AgentTransfer[]           @relation("TransferAssignedReviewer")
+  agentTransfersReviewed       AgentTransfer[]           @relation("TransferReviewedBy")
+  agentTransfersFromQa         AgentTransfer[]           @relation("TransferFromQa")
+  historyOwnedAudits           AuditSubmission[]         @relation("HistoryOwner")
+  agentTransfersReverted       AgentTransfer[]           @relation("TransferRevertedBy")
+  teamMembershipsAsAgent       AgentTeamMembership[]     @relation("MembershipAgent")
+  teamMembershipsAsSupervisor  AgentTeamMembership[]     @relation("MembershipSupervisor")
+  auditsAsAgentUser            AuditSubmission[]         @relation("AuditAgentUser")
+  auditsOwned                  AuditSubmission[]         @relation("AuditOwnerSupervisor")
+  auditRevisionsApproved       AuditRevision[]           @relation("AuditRevisionApprover")
+  createdAt                    DateTime                  @default(now())
+  updatedAt                    DateTime                  @updatedAt
 
   @@index([createdById])
   @@index([isActive])
@@ -83,7 +84,9 @@ model AgentAssignment {
   @@map("agent_assignments")
 }
 
-/** Delegated Agent/QA visibility for Member users (QM / Superadmin managed). */
+/**
+ * Delegated Agent/QA visibility for Member users (QM / Superadmin managed).
+ */
 model MemberAccessGrant {
   id           String   @id @default(cuid())
   memberId     String   @map("member_id")
@@ -92,9 +95,9 @@ model MemberAccessGrant {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  member    User @relation("MemberAccessMember", fields: [memberId], references: [id], onDelete: Cascade)
+  member     User @relation("MemberAccessMember", fields: [memberId], references: [id], onDelete: Cascade)
   targetUser User @relation("MemberAccessTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
-  grantedBy User @relation("MemberAccessGrantedBy", fields: [grantedById], references: [id], onDelete: Restrict)
+  grantedBy  User @relation("MemberAccessGrantedBy", fields: [grantedById], references: [id], onDelete: Restrict)
 
   @@unique([memberId, targetUserId])
   @@index([memberId])
@@ -116,46 +119,46 @@ enum AgentTransferKind {
 }
 
 model AgentTransfer {
-  id                  String               @id @default(cuid())
-  agentUserId         String               @map("agent_user_id")
-  agentNameSnapshot   String               @map("agent_name_snapshot")
-  agentEmailSnapshot  String               @map("agent_email_snapshot")
-  fromSupervisorId    String               @map("from_supervisor_id")
-  toSupervisorId      String               @map("to_supervisor_id")
-  fromQaUserId        String?              @map("from_qa_user_id")
-  transferredById     String               @map("transferred_by_id")
-  assignedReviewerId  String?              @map("assigned_reviewer_id")
-  status              AgentTransferStatus  @default(PENDING)
-  note                String?
+  id                   String              @id @default(cuid())
+  agentUserId          String              @map("agent_user_id")
+  agentNameSnapshot    String              @map("agent_name_snapshot")
+  agentEmailSnapshot   String              @map("agent_email_snapshot")
+  fromSupervisorId     String              @map("from_supervisor_id")
+  toSupervisorId       String              @map("to_supervisor_id")
+  fromQaUserId         String?             @map("from_qa_user_id")
+  transferredById      String              @map("transferred_by_id")
+  assignedReviewerId   String?             @map("assigned_reviewer_id")
+  status               AgentTransferStatus @default(PENDING)
+  note                 String?
   auditCountAtTransfer Int                 @default(0) @map("audit_count_at_transfer")
-  requestedAt         DateTime             @default(now()) @map("requested_at")
-  transferredAt       DateTime?            @map("transferred_at")
-  reviewedById          String?              @map("reviewed_by_id")
-  reviewedAt            DateTime?            @map("reviewed_at")
-  reviewNote            String?              @map("review_note")
-  kind                  AgentTransferKind    @default(TRANSFER)
-  fromTeamNameSnapshot  String?              @map("from_team_name_snapshot")
-  toTeamNameSnapshot    String?              @map("to_team_name_snapshot")
-  agentTeamNameBefore   String?              @map("agent_team_name_before")
-  fromQaAssignedById    String?              @map("from_qa_assigned_by_id")
-  revertOfTransferId    String?              @unique @map("revert_of_transfer_id")
-  revertedAt            DateTime?            @map("reverted_at")
-  revertedById          String?              @map("reverted_by_id")
-  revertReason          String?              @map("revert_reason")
-  idempotencyKey        String?              @unique @map("idempotency_key")
-  version               Int                  @default(0)
+  requestedAt          DateTime            @default(now()) @map("requested_at")
+  transferredAt        DateTime?           @map("transferred_at")
+  reviewedById         String?             @map("reviewed_by_id")
+  reviewedAt           DateTime?           @map("reviewed_at")
+  reviewNote           String?             @map("review_note")
+  kind                 AgentTransferKind   @default(TRANSFER)
+  fromTeamNameSnapshot String?             @map("from_team_name_snapshot")
+  toTeamNameSnapshot   String?             @map("to_team_name_snapshot")
+  agentTeamNameBefore  String?             @map("agent_team_name_before")
+  fromQaAssignedById   String?             @map("from_qa_assigned_by_id")
+  revertOfTransferId   String?             @unique @map("revert_of_transfer_id")
+  revertedAt           DateTime?           @map("reverted_at")
+  revertedById         String?             @map("reverted_by_id")
+  revertReason         String?             @map("revert_reason")
+  idempotencyKey       String?             @unique @map("idempotency_key")
+  version              Int                 @default(0)
 
-  agentUser         User  @relation("TransferAgent", fields: [agentUserId], references: [id], onDelete: Restrict)
-  fromSupervisor    User  @relation("TransferFromSupervisor", fields: [fromSupervisorId], references: [id], onDelete: Restrict)
-  toSupervisor      User  @relation("TransferToSupervisor", fields: [toSupervisorId], references: [id], onDelete: Restrict)
-  fromQaUser        User? @relation("TransferFromQa", fields: [fromQaUserId], references: [id], onDelete: SetNull)
-  transferredBy     User  @relation("TransferPerformedBy", fields: [transferredById], references: [id], onDelete: Restrict)
-  assignedReviewer  User? @relation("TransferAssignedReviewer", fields: [assignedReviewerId], references: [id], onDelete: SetNull)
-  reviewedBy        User? @relation("TransferReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
-  historyAudits     AuditSubmission[]
-  revertedBy        User? @relation("TransferRevertedBy", fields: [revertedById], references: [id], onDelete: SetNull)
-  revertOf          AgentTransfer?  @relation("TransferRevert", fields: [revertOfTransferId], references: [id], onDelete: SetNull)
-  revertTransfer    AgentTransfer?  @relation("TransferRevert")
+  agentUser          User                  @relation("TransferAgent", fields: [agentUserId], references: [id], onDelete: Restrict)
+  fromSupervisor     User                  @relation("TransferFromSupervisor", fields: [fromSupervisorId], references: [id], onDelete: Restrict)
+  toSupervisor       User                  @relation("TransferToSupervisor", fields: [toSupervisorId], references: [id], onDelete: Restrict)
+  fromQaUser         User?                 @relation("TransferFromQa", fields: [fromQaUserId], references: [id], onDelete: SetNull)
+  transferredBy      User                  @relation("TransferPerformedBy", fields: [transferredById], references: [id], onDelete: Restrict)
+  assignedReviewer   User?                 @relation("TransferAssignedReviewer", fields: [assignedReviewerId], references: [id], onDelete: SetNull)
+  reviewedBy         User?                 @relation("TransferReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  historyAudits      AuditSubmission[]
+  revertedBy         User?                 @relation("TransferRevertedBy", fields: [revertedById], references: [id], onDelete: SetNull)
+  revertOf           AgentTransfer?        @relation("TransferRevert", fields: [revertOfTransferId], references: [id], onDelete: SetNull)
+  revertTransfer     AgentTransfer?        @relation("TransferRevert")
   membershipsStarted AgentTeamMembership[] @relation("MembershipStartedBy")
   membershipsEnded   AgentTeamMembership[] @relation("MembershipEndedBy")
 
@@ -186,10 +189,10 @@ model AgentTeamMembership {
   endedByTransferId   String?   @map("ended_by_transfer_id")
   createdAt           DateTime  @default(now()) @map("created_at")
 
-  agentUser         User           @relation("MembershipAgent", fields: [agentUserId], references: [id], onDelete: Cascade)
-  supervisor        User           @relation("MembershipSupervisor", fields: [supervisorId], references: [id], onDelete: Cascade)
-  startedByTransfer AgentTransfer? @relation("MembershipStartedBy", fields: [startedByTransferId], references: [id], onDelete: SetNull)
-  endedByTransfer   AgentTransfer? @relation("MembershipEndedBy", fields: [endedByTransferId], references: [id], onDelete: SetNull)
+  agentUser         User              @relation("MembershipAgent", fields: [agentUserId], references: [id], onDelete: Cascade)
+  supervisor        User              @relation("MembershipSupervisor", fields: [supervisorId], references: [id], onDelete: Cascade)
+  startedByTransfer AgentTransfer?    @relation("MembershipStartedBy", fields: [startedByTransferId], references: [id], onDelete: SetNull)
+  endedByTransfer   AgentTransfer?    @relation("MembershipEndedBy", fields: [endedByTransferId], references: [id], onDelete: SetNull)
   audits            AuditSubmission[]
 
   @@index([agentUserId, startedAt])
@@ -221,25 +224,25 @@ enum UserProvisioningStatus {
 }
 
 model UserProvisioningRequest {
-  id             String                   @id @default(cuid())
-  name           String
-  email          String
-  passwordHash   String                   @map("password_hash")
-  passwordEncrypted String?               @map("password_encrypted")
-  dateOfJoining  String?                  @map("date_of_joining")
-  teamName       String?                  @map("team_name")
-  targetRoleSlug String                   @map("target_role_slug")
-  status         UserProvisioningStatus   @default(PENDING)
-  requestedById  String                   @map("requested_by_id")
-  requestedBy    User                     @relation("ProvisioningRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
-  reviewedById   String?                  @map("reviewed_by_id")
-  reviewedBy     User?                    @relation("ProvisioningReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
-  reviewNote     String?                  @map("review_note")
-  reviewedAt     DateTime?                @map("reviewed_at")
-  createdUserId  String?                  @unique @map("created_user_id")
-  createdUser    User?                    @relation("ApprovedUser", fields: [createdUserId], references: [id], onDelete: SetNull)
-  createdAt      DateTime                 @default(now()) @map("created_at")
-  updatedAt      DateTime                 @updatedAt @map("updated_at")
+  id                String                 @id @default(cuid())
+  name              String
+  email             String
+  passwordHash      String                 @map("password_hash")
+  passwordEncrypted String?                @map("password_encrypted")
+  dateOfJoining     String?                @map("date_of_joining")
+  teamName          String?                @map("team_name")
+  targetRoleSlug    String                 @map("target_role_slug")
+  status            UserProvisioningStatus @default(PENDING)
+  requestedById     String                 @map("requested_by_id")
+  requestedBy       User                   @relation("ProvisioningRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  reviewedById      String?                @map("reviewed_by_id")
+  reviewedBy        User?                  @relation("ProvisioningReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewNote        String?                @map("review_note")
+  reviewedAt        DateTime?              @map("reviewed_at")
+  createdUserId     String?                @unique @map("created_user_id")
+  createdUser       User?                  @relation("ApprovedUser", fields: [createdUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
 
   @@index([status, targetRoleSlug])
   @@index([requestedById])
@@ -350,62 +353,83 @@ model SystemMeta {
 }
 
 model AuditSubmission {
-  id             String        @id @default(cuid())
-  auditCode      String        @unique
-  submissionKey  String?       @unique @map("submission_key")
-  templateId     String?       @map("template_id")
-  template       FormTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  submittedById  String
-  submittedBy    User          @relation(fields: [submittedById], references: [id], onDelete: Restrict)
-  agent          String
-  supervisor     String?
-  auditor        String?
-  type           String
-  businessType   String
-  auditType      String        @default("") @map("audit_type")
-  callDate       String
-  auditDate      String
-  lob            String
-  sublob         String?
-  reason         String?
-  mobile         String?
+  id                  String               @id @default(cuid())
+  auditCode           String               @unique
+  submissionKey       String?              @unique @map("submission_key")
+  templateId          String?              @map("template_id")
+  template            FormTemplate?        @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  submittedById       String
+  submittedBy         User                 @relation(fields: [submittedById], references: [id], onDelete: Restrict)
+  agent               String
+  supervisor          String?
+  auditor             String?
+  type                String
+  businessType        String
+  auditType           String               @default("") @map("audit_type")
+  callDate            String
+  auditDate           String
+  lob                 String
+  sublob              String?
+  reason              String?
+  mobile              String?
   /// Interaction duration in whole seconds (required on new form submissions; null for legacy/imported rows).
-  callDurationSec Int?    @map("call_duration_sec")
-  referenceUrl   String?  @map("reference_url")
-  response       String?
-  qualityPct     Int
-  finalPct       Int
-  grade          String
-  hasFatal       Boolean  @default(false)
-  fatalList      Json     @default("[]")
-  feedbackStatus   String   @default("Pending")
-  feedbackSecurity String   @default("NA")
-  feedbackDate     String?
-  feedbackStatusAt String?  @map("feedback_status_at")
-  agentFeedback    String   @default("")
-  supervisorRemarks String  @default("") @map("supervisor_remarks")
-  totalScored    Float
-  totalMax       Float
-  scores         Json
-  catScores      Json
-  rows           Json
-  record         Json
-  isHistory         Boolean       @default(false) @map("is_history")
-  historyOwnerId    String?       @map("history_owner_id")
-  historyOwner      User?         @relation("HistoryOwner", fields: [historyOwnerId], references: [id], onDelete: SetNull)
-  historyTransferId String?       @map("history_transfer_id")
-  historyTransfer   AgentTransfer? @relation(fields: [historyTransferId], references: [id], onDelete: SetNull)
-  teamNameSnapshot  String?       @map("team_name_snapshot")
+  callDurationSec     Int?                 @map("call_duration_sec")
+  referenceUrl        String?              @map("reference_url")
+  response            String?
+  qualityPct          Int
+  finalPct            Int
+  grade               String
+  hasFatal            Boolean              @default(false)
+  fatalList           Json                 @default("[]")
+  feedbackStatus      String               @default("Pending")
+  feedbackSecurity    String               @default("NA")
+  feedbackDate        String?
+  feedbackStatusAt    String?              @map("feedback_status_at")
+  agentFeedback       String               @default("")
+  supervisorRemarks   String               @default("") @map("supervisor_remarks")
+  /// Current audit version; bumps each time a dispute revision is approved.
+  auditVersion        Int                  @default(1) @map("audit_version")
+  /// null = no dispute. AWAITING_TL_REMARK | AWAITING_QM_REVIEW | AWAITING_FINAL_ACK | CLOSED
+  disputeStage        String?              @map("dispute_stage")
+  disputeReason       String               @default("") @map("dispute_reason")
+  disputeRaisedAt     DateTime?            @map("dispute_raised_at")
+  disputeRaisedById   String?              @map("dispute_raised_by_id")
+  /// Structured team-lead remark: { assessment, findings, recommendation }.
+  disputeTlRemark     Json?                @map("dispute_tl_remark")
+  disputeTlRemarkAt   DateTime?            @map("dispute_tl_remark_at")
+  disputeTlRemarkById String?              @map("dispute_tl_remark_by_id")
+  disputeReviewedAt   DateTime?            @map("dispute_reviewed_at")
+  disputeReviewedById String?              @map("dispute_reviewed_by_id")
+  /// UPHELD | REVISED
+  disputeOutcome      String?              @map("dispute_outcome")
+  disputeOutcomeNote  String               @default("") @map("dispute_outcome_note")
+  disputeResharedAt   DateTime?            @map("dispute_reshared_at")
+  disputeClosedAt     DateTime?            @map("dispute_closed_at")
+  /// ACKNOWLEDGED | ESCALATION_EXPIRED
+  disputeCloseReason  String?              @map("dispute_close_reason")
+  revisions           AuditRevision[]
+  totalScored         Float
+  totalMax            Float
+  scores              Json
+  catScores           Json
+  rows                Json
+  record              Json
+  isHistory           Boolean              @default(false) @map("is_history")
+  historyOwnerId      String?              @map("history_owner_id")
+  historyOwner        User?                @relation("HistoryOwner", fields: [historyOwnerId], references: [id], onDelete: SetNull)
+  historyTransferId   String?              @map("history_transfer_id")
+  historyTransfer     AgentTransfer?       @relation(fields: [historyTransferId], references: [id], onDelete: SetNull)
+  teamNameSnapshot    String?              @map("team_name_snapshot")
   /// Stable ownership (set at creation, backfilled for legacy rows).
-  agentUserId       String?       @map("agent_user_id")
-  agentUser         User?         @relation("AuditAgentUser", fields: [agentUserId], references: [id], onDelete: SetNull)
-  ownerSupervisorId String?       @map("owner_supervisor_id")
-  ownerSupervisor   User?         @relation("AuditOwnerSupervisor", fields: [ownerSupervisorId], references: [id], onDelete: SetNull)
-  teamMembershipId  String?       @map("team_membership_id")
-  teamMembership    AgentTeamMembership? @relation(fields: [teamMembershipId], references: [id], onDelete: SetNull)
-  notifications  Notification[]
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  agentUserId         String?              @map("agent_user_id")
+  agentUser           User?                @relation("AuditAgentUser", fields: [agentUserId], references: [id], onDelete: SetNull)
+  ownerSupervisorId   String?              @map("owner_supervisor_id")
+  ownerSupervisor     User?                @relation("AuditOwnerSupervisor", fields: [ownerSupervisorId], references: [id], onDelete: SetNull)
+  teamMembershipId    String?              @map("team_membership_id")
+  teamMembership      AgentTeamMembership? @relation(fields: [teamMembershipId], references: [id], onDelete: SetNull)
+  notifications       Notification[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@index([agent])
   @@index([isHistory])
@@ -422,10 +446,38 @@ model AuditSubmission {
   @@index([auditor])
   @@index([auditDate])
   @@index([feedbackStatus])
+  @@index([disputeStage])
   @@index([auditType])
   @@index([submittedById, auditDate])
   @@index([templateId, auditDate])
   @@index([id, createdAt])
+}
+
+/// Snapshot of an audit version that was superseded by an approved dispute revision.
+model AuditRevision {
+  id           String          @id @default(cuid())
+  auditId      String          @map("audit_id")
+  audit        AuditSubmission @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  /// The version that was replaced (the "original" for version 1).
+  version      Int
+  qualityPct   Int             @map("quality_pct")
+  finalPct     Int             @map("final_pct")
+  grade        String
+  hasFatal     Boolean         @default(false) @map("has_fatal")
+  scores       Json
+  catScores    Json            @map("cat_scores")
+  rows         Json
+  record       Json
+  rationale    String
+  /// Outcome applied (always REVISED today).
+  outcome      String
+  approvedById String          @map("approved_by_id")
+  approvedBy   User            @relation("AuditRevisionApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  createdAt    DateTime        @default(now()) @map("created_at")
+
+  @@unique([auditId, version])
+  @@index([auditId])
+  @@map("audit_revisions")
 }
 
 model Notification {

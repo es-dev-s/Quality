@@ -173,6 +173,8 @@ type AuditFormProps = {
   initialType?: InteractionType;
   editAuditId?: string;
   editAuditCode?: string;
+  /** Quality Manager is revising a disputed audit: saving creates a new version and needs a rationale. */
+  disputeRevision?: boolean;
   initialFormData?: AuditFormData;
   initialScores?: ScoresMap;
   successRedirect?: string;
@@ -203,6 +205,7 @@ export function AuditForm({
   initialType = "Call",
   editAuditId,
   editAuditCode,
+  disputeRevision = false,
   initialFormData,
   initialScores,
   successRedirect = "/audit-logs",
@@ -212,6 +215,7 @@ export function AuditForm({
   formFeedbackMode: formFeedbackModeProp,
 }: AuditFormProps) {
   const isEditMode = Boolean(editAuditId);
+  const [revisionRationale, setRevisionRationale] = useState("");
   const router = useRouter();
   const { toast } = useToast();
   const { user } = useDashboardShell();
@@ -555,12 +559,21 @@ export function AuditForm({
           return;
         }
 
+        if (disputeRevision && revisionRationale.trim().length < 10) {
+          toast(
+            "Add a revision rationale (at least 10 characters) before saving a new version.",
+            "error"
+          );
+          return;
+        }
+
         const res = isEditMode
           ? await updateAuditSubmission(
               editAuditId!,
               submitFormData,
               scores,
-              activeTemplate.id
+              activeTemplate.id,
+              disputeRevision ? revisionRationale : undefined
             )
           : await saveAuditSubmission(submitFormData, scores, activeTemplate.id, {
               submissionKey: submissionKeyRef.current ?? undefined,
@@ -671,6 +684,26 @@ export function AuditForm({
         <div className="audit-form-scroll">
           <div className="audit-form-page__inner">
         <div className="audit-form">
+          {disputeRevision ? (
+            <section className="audit-panel dispute-revision-panel">
+              <header className="audit-panel__head">
+                <h2 className="audit-panel__title">New audit version (dispute)</h2>
+              </header>
+              <p className="dispute-revision-panel__hint">
+                Saving creates a new version and reshares it with the agent. The
+                original scores are preserved. The rationale is shown to the agent.
+              </p>
+              <textarea
+                className="adi-remarks-input"
+                rows={3}
+                maxLength={2000}
+                value={revisionRationale}
+                onChange={(e) => setRevisionRationale(e.target.value)}
+                placeholder="Revision rationale (required)…"
+                aria-label="Revision rationale"
+              />
+            </section>
+          ) : null}
           <section className="audit-panel">
             <header className="audit-panel__head">
               <span className="audit-panel__step">01</span>
