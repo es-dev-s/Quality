@@ -634,6 +634,7 @@ export async function getAuditDetail(id: string) {
     auditSource: resolveAuditSourceKind(submittedByRoleSlug),
     createdAt: submission.createdAt.toISOString(),
     isHistory: submission.isHistory,
+    auditVersion: submission.auditVersion,
     historyOwnerId: submission.historyOwnerId ?? null,
   } satisfies AuditDetail;
 }

@@ -44,6 +44,8 @@ export type AuditLogEntry = {
   auditSource: AuditSourceKind;
   createdAt: string;
   isHistory: boolean;
+  /** Current audit version; above 1 means an original version is preserved. */
+  auditVersion?: number;
   historyOwnerId?: string | null;
 };
 
@@ -88,6 +90,8 @@ export type AuditDetail = {
   auditSource: AuditSourceKind;
   createdAt: string;
   isHistory: boolean;
+  /** Current audit version; above 1 means an original version is preserved. */
+  auditVersion?: number;
   historyOwnerId?: string | null;
 };
 

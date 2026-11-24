@@ -30,6 +30,8 @@ import { canEditFeedbackFully, isSuperAdmin } from "@/lib/rbac";
 import { assertWriteRateLimit } from "@/lib/server/rate-limit";
 import { cuidSchema } from "@/lib/validation/common";
 import { revalidatePath } from "next/cache";
+import type { AuditDetail } from "@/lib/audit/audit-records";
+import type { AuditRow } from "@/lib/audit/types";
 import { z } from "zod";
 
 const L = DISPUTE_TEXT_LIMITS;
@@ -485,5 +487,105 @@ export async function getDisputeDetail(id: string): Promise<DisputeDetail | null
       approvedByName: r.approvedBy.name?.trim() || r.approvedBy.email,
       createdAt: r.createdAt.toISOString(),
     })),
+  };
+}
+
+export type AuditRevisionSnapshot = {
+  version: number;
+  qualityPct: number;
+  finalPct: number;
+  grade: string;
+  hasFatal: boolean;
+  fatalList: string[];
+  totalScored: number;
+  totalMax: number;
+  catScores: Record<string, { scored: number; max: number }>;
+  rows: AuditRow[];
+  /** Descriptive fields as originally audited (only those present in the snapshot). */
+  fields: Partial<
+    Pick<
+      AuditDetail,
+      | "callDate"
+      | "auditDate"
+      | "lob"
+      | "sublob"
+      | "reason"
+      | "subReason"
+      | "mobile"
+      | "response"
+      | "auditType"
+    >
+  >;
+  rationale: string;
+  approvedByName: string;
+  createdAt: string;
+};
+
+/** Read-only snapshot of a replaced audit version (1 = the original audit). */
+export async function getAuditRevisionSnapshot(
+  id: string,
+  version: number
+): Promise<AuditRevisionSnapshot | null> {
+  const session = await requireAuth();
+  const parsed = idSchema.safeParse({ id });
+  if (!parsed.success || !Number.isInteger(version) || version < 1) return null;
+
+  const audit = await prisma.auditSubmission.findFirst({
+    where: await scopedAuditByIdWhere(session, parsed.data.id),
+    select: { id: true },
+  });
+  if (!audit) return null;
+
+  const r = await prisma.auditRevision.findUnique({
+    where: { auditId_version: { auditId: audit.id, version } },
+    include: { approvedBy: { select: { name: true, email: true } } },
+  });
+  if (!r) return null;
+
+  const rec = (r.record && typeof r.record === "object" ? r.record : {}) as Record<
+    string,
+    unknown
+  >;
+  const str = (k: string) => (typeof rec[k] === "string" ? (rec[k] as string) : undefined);
+  const rows = (Array.isArray(r.rows) ? r.rows : []) as AuditRow[];
+  const catScores = (
+    r.catScores && typeof r.catScores === "object" ? r.catScores : {}
+  ) as AuditRevisionSnapshot["catScores"];
+  const num = (k: string, fallback: number) =>
+    typeof rec[k] === "number" ? (rec[k] as number) : fallback;
+
+  const fields: AuditRevisionSnapshot["fields"] = {};
+  for (const key of [
+    "callDate",
+    "auditDate",
+    "lob",
+    "sublob",
+    "reason",
+    "subReason",
+    "mobile",
+    "response",
+    "auditType",
+  ] as const) {
+    const value = str(key);
+    if (value !== undefined) fields[key] = value as never;
+  }
+
+  return {
+    version: r.version,
+    qualityPct: r.qualityPct,
+    finalPct: r.finalPct,
+    grade: r.grade,
+    hasFatal: r.hasFatal,
+    fatalList: Array.isArray(rec.fatalList)
+      ? (rec.fatalList as unknown[]).filter((x): x is string => typeof x === "string")
+      : [],
+    totalScored: num("totalScored", rows.reduce((s, x) => s + (x.score ?? 0), 0)),
+    totalMax: num("totalMax", rows.reduce((s, x) => s + (x.max ?? 0), 0)),
+    catScores,
+    rows,
+    fields,
+    rationale: r.rationale,
+    approvedByName: r.approvedBy.name?.trim() || r.approvedBy.email,
+    createdAt: r.createdAt.toISOString(),
   };
 }
