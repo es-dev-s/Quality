@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, FileText, MessageSquare, Pencil, Phone, ShieldAlert, X } from "lucide-react";
 import { DisputePanel } from "@/components/audit-logs/dispute-panel";
+import { getAuditRevisionSnapshot, type AuditRevisionSnapshot } from "@/lib/actions/dispute";
 import { getAuditDetail, updateSupervisorRemarks } from "@/lib/actions/audit";
 import {
   parseReferenceItems,
@@ -81,7 +82,15 @@ export function AuditDetailModal({
   elevated = false,
 }: AuditDetailModalProps) {
   const [mounted, setMounted] = useState(false);
-  const [detail, setDetail] = useState<AuditDetail | null>(null);
+  const [latest, setDetail] = useState<AuditDetail | null>(null);
+  // Keyed by audit id so the choice resets when another audit is opened.
+  const [originalSnap, setOriginalSnap] = useState<
+    (AuditRevisionSnapshot & { auditId: string }) | null
+  >(null);
+  const [viewingOriginalId, setViewingOriginalId] = useState<string | null>(null);
+  const [originalError, setOriginalError] = useState<{ id: string; text: string } | null>(null);
+  const original = originalSnap && originalSnap.auditId === latest?.id ? originalSnap : null;
+  const viewOriginal = !!latest && viewingOriginalId === latest.id;
   const [error, setError] = useState<string | null>(null);
   const [remarksDraft, setRemarksDraft] = useState("");
   const [remarksMessage, setRemarksMessage] = useState<string | null>(null);
@@ -132,21 +141,66 @@ export function AuditDetailModal({
     });
   }, [auditId, beginRequest]);
 
+  // Latest version by default; the original audit is a read-only overlay.
+  const detail = useMemo<AuditDetail | null>(() => {
+    if (!latest) return null;
+    if (!viewOriginal || !original) return latest;
+    return {
+      ...latest,
+      ...original.fields,
+      qualityPct: original.qualityPct,
+      finalPct: original.finalPct,
+      grade: original.grade,
+      hasFatal: original.hasFatal,
+      fatalList: original.fatalList,
+      totalScored: original.totalScored,
+      totalMax: original.totalMax,
+      catScores: original.catScores,
+      rows: original.rows,
+    };
+  }, [latest, original, viewOriginal]);
+
+  const hasOriginal = (latest?.auditVersion ?? 1) > 1;
+
+  function showVersion(original_: boolean) {
+    if (!latest) return;
+    const id = latest.id;
+    if (!original_) {
+      setViewingOriginalId(null);
+      return;
+    }
+    if (original) {
+      setViewingOriginalId(id);
+      return;
+    }
+    setOriginalError(null);
+    getAuditRevisionSnapshot(id, 1)
+      .then((snap) => {
+        if (!snap) {
+          setOriginalError({ id, text: "The original version is not available." });
+          return;
+        }
+        setOriginalSnap({ ...snap, auditId: id });
+        setViewingOriginalId(id);
+      })
+      .catch(() => setOriginalError({ id, text: "Unable to load the original version." }));
+  }
+
   const rowsByCategory = useMemo(
     () => (detail ? groupRowsByCategory(detail.rows) : new Map()),
     [detail]
   );
 
   function saveRemarks() {
-    if (!detail) return;
+    if (!latest) return;
     startRemarks(async () => {
       setRemarksMessage(null);
-      const result = await updateSupervisorRemarks(detail.id, remarksDraft);
+      const result = await updateSupervisorRemarks(latest.id, remarksDraft);
       if ("error" in result && result.error) {
         setRemarksMessage(result.error);
         return;
       }
-      setDetail({ ...detail, supervisorRemarks: remarksDraft });
+      setDetail({ ...latest, supervisorRemarks: remarksDraft });
       setRemarksMessage("Remarks saved.");
     });
   }
@@ -223,6 +277,37 @@ export function AuditDetailModal({
                 <div className="adi-history-banner" role="status">
                   This audit is read-only history from an agent transfer. It cannot
                   be edited.
+                </div>
+              ) : null}
+
+              {hasOriginal ? (
+                <div className="dispute-version-switch" role="group" aria-label="Audit version">
+                  <button
+                    type="button"
+                    className={cn("dispute-version-switch__btn", !viewOriginal && "is-active")}
+                    aria-pressed={!viewOriginal}
+                    onClick={() => showVersion(false)}
+                  >
+                    Latest (v{latest?.auditVersion})
+                  </button>
+                  <button
+                    type="button"
+                    className={cn("dispute-version-switch__btn", viewOriginal && "is-active")}
+                    aria-pressed={viewOriginal}
+                    onClick={() => showVersion(true)}
+                  >
+                    Original (v1)
+                  </button>
+                  {originalError && originalError.id === latest?.id ? (
+                    <span className="adi-remarks-msg" role="alert">{originalError.text}</span>
+                  ) : null}
+                </div>
+              ) : null}
+              {viewOriginal && original ? (
+                <div className="adi-history-banner" role="status">
+                  Viewing the original audit as first scored (read-only). Revised by{" "}
+                  {original.approvedByName} on {formatDateTime(original.createdAt)}:{" "}
+                  {original.rationale}
                 </div>
               ) : null}
 
