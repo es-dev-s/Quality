@@ -89,6 +89,7 @@ import { prisma } from "@/lib/prisma";
 import {
 	canDeleteAuditLogs,
 	canEditFeedbackFully,
+	alwaysShowsSupervisorRemarks,
 	canEditSupervisorRemarks,
 	canExportAuditData,
 	isSuperAdmin,
@@ -635,6 +636,7 @@ export async function getAuditDetail(id: string) {
     createdAt: submission.createdAt.toISOString(),
     isHistory: submission.isHistory,
     auditVersion: submission.auditVersion,
+    showSupervisorRemarks: alwaysShowsSupervisorRemarks(session.user.role),
     historyOwnerId: submission.historyOwnerId ?? null,
   } satisfies AuditDetail;
 }

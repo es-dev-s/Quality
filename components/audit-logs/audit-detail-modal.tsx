@@ -457,7 +457,7 @@ export function AuditDetailModal({
               <DisputePanel auditId={detail.id} isHistory={detail.isHistory} />
 
               {/* ── Supervisor remarks (full-width) ───────────────── */}
-              {(canEditSupervisorRemarks || detail.supervisorRemarks.trim()) && (
+              {(canEditSupervisorRemarks || detail.showSupervisorRemarks || detail.supervisorRemarks.trim()) && (
                 <section className="adi-section adi-section--remarks">
                   <h3 className="adi-section__title">Supervisor remarks</h3>
                   {canEditSupervisorRemarks && !detail.isHistory ? (
@@ -489,9 +489,14 @@ export function AuditDetailModal({
                       </div>
                     </>
                   ) : (
-                    <p className="adi-remarks-text">
-                      {detail.supervisorRemarks.trim() || "—"}
-                    </p>
+                    <textarea
+                      className="adi-remarks-input"
+                      rows={3}
+                      value={detail.supervisorRemarks.trim()}
+                      readOnly
+                      aria-readonly="true"
+                      placeholder="No supervisor remarks yet."
+                    />
                   )}
                 </section>
               )}
