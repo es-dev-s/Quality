@@ -1,4 +1,5 @@
 "use server";
+import { autoAcknowledgeExpiredFeedback } from "@/lib/audit/feedback-auto-ack";
 import { buildKpiSummary,kpiQuerySchema } from "@/lib/kpi/summary";
 import { cachedReadResult } from "@/lib/server/read-cache";
 
@@ -91,6 +92,7 @@ async function fetchKpiRecords(
 export async function getKpiData(): Promise<KpiPageData> {
   const session = await requireSuperAdmin();
   const ctx = dataScopeFromSession(session);
+  await autoAcknowledgeExpiredFeedback().catch(() => undefined);
 
   const [records, rosterAgentNames, targets] = await Promise.all([
     fetchKpiRecords(await scopedAuditWhere(session)),

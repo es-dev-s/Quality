@@ -80,6 +80,7 @@ import { invalidateAuditCaches } from "@/lib/invalidate-cache";
 import { readAuditTargetsForViewer } from "@/lib/kpi/audit-targets";
 import { KPI_DEFAULT_AGENT_TARGET } from "@/lib/kpi/records";
 import { isDisputeOpen, parseDisputeStage } from "@/lib/audit/dispute";
+import { autoAcknowledgeExpiredFeedback } from "@/lib/audit/feedback-auto-ack";
 import { closeExpiredDisputes } from "@/lib/audit/dispute-sweep";
 import { dispatchDisputeAuditNotifications } from "@/lib/notifications/dispatch-dispute-audit";
 import { dispatchDisputeResolved } from "@/lib/notifications/dispatch-dispute-workflow";
@@ -473,6 +474,7 @@ export async function getAuditLogs(input?: unknown) {
   const session = await requirePermission(PERMISSIONS.AUDIT_LOGS_READ);
   const query = auditLogQuerySchema.parse(input ?? {});
   await closeExpiredDisputes().catch(() => undefined);
+  await autoAcknowledgeExpiredFeedback().catch(() => undefined);
   return fetchAuditLogPage(await scopedAuditWhere(session), query, {
     id: session.user.id, roleSlug: session.user.role.slug,
   });
@@ -570,6 +572,7 @@ export async function getAuditDetail(id: string) {
     return null;
   }
 
+  await autoAcknowledgeExpiredFeedback().catch(() => undefined);
   const submission = await prisma.auditSubmission.findFirst({
     where: await scopedAuditByIdWhere(session, parsedId.data.id),
     include: {
