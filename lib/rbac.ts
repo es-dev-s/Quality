@@ -252,14 +252,16 @@ export function canEditFeedbackDate(role?: SessionRole | null): boolean {
   return canEditFeedbackFully(role);
 }
 
-/** Supervisor (and QM) remarks on viewed audits. */
+/** Supervisor remarks are written by the supervisor tier; QMs only read them. */
 export function canEditSupervisorRemarks(role?: SessionRole | null): boolean {
   if (!role) return false;
   if (isSuperAdmin(role)) return true;
-  return (
-    isSupervisorTierRole(role.slug) ||
-    role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER
-  );
+  return isSupervisorTierRole(role.slug);
+}
+
+/** Roles that see the supervisor remarks box even when it is empty (read-only for QMs). */
+export function alwaysShowsSupervisorRemarks(role?: SessionRole | null): boolean {
+  return !!role && role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER;
 }
 
 /** CSV export — requires audit logs and reports read access. */
