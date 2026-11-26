@@ -9,7 +9,6 @@ import { useDashboardShell } from "@/components/dashboard/shell";
 import { resolvePageTitle } from "@/lib/page-titles";
 import {
   canEditAuditSubmissions,
-  canEditSupervisorRemarks,
 } from "@/lib/rbac";
 
 type DashboardToolbarProps = {
@@ -55,7 +54,6 @@ export function DashboardToolbar({ actions }: DashboardToolbarProps) {
         {actions ? <div className="dashboard-toolbar__actions">{actions}</div> : null}
         <NotificationBell
           canEditAudits={canEditAuditSubmissions(user.role)}
-          canEditSupervisorRemarks={canEditSupervisorRemarks(user.role)}
         />
         <NavbarUserMenu />
       </div>

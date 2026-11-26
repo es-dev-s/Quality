@@ -5,7 +5,6 @@ import { getDashboardPageData } from "@/lib/actions/dashboard";
 import { requirePageAccess } from "@/lib/auth-guards";
 import {
 	canEditAuditSubmissions,
-	canEditSupervisorRemarks,
 } from "@/lib/rbac";
 import { Suspense } from "react";
 
@@ -17,7 +16,6 @@ async function DashboardContent() {
       data={data}
       roleSlug={session.user.role.slug}
       canEditAudits={canEditAuditSubmissions(session.user.role)}
-      canEditSupervisorRemarks={canEditSupervisorRemarks(session.user.role)}
       viewerUserId={session.user.id}
     />
   );

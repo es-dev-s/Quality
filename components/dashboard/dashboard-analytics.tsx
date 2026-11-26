@@ -62,7 +62,6 @@ type DashboardAnalyticsProps = {
   data: DashboardSummary;
   roleSlug: string;
   canEditAudits?: boolean;
-  canEditSupervisorRemarks?: boolean;
   viewerUserId?: string;
 };
 
@@ -145,7 +144,6 @@ export function DashboardAnalytics({
   data: initialData,
   roleSlug,
   canEditAudits = false,
-  canEditSupervisorRemarks = false,
 }: DashboardAnalyticsProps) {
   const { user } = useDashboardShell();
   const { toast } = useToast();
@@ -1161,7 +1159,6 @@ export function DashboardAnalytics({
         onPage={setFatalPage}
         loading={resource.loading}
         canEditAudits={canEditAudits}
-        canEditSupervisorRemarks={canEditSupervisorRemarks}
         onClose={() => { setSelectedFatal(null); setFatalPage(1); }}
       />
     </div>

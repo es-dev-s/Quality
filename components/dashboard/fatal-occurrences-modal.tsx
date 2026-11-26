@@ -19,7 +19,6 @@ type FatalOccurrencesModalProps = {
   onPage?: (page: number) => void;
   loading?: boolean;
   canEditAudits?: boolean;
-  canEditSupervisorRemarks?: boolean;
   onClose: () => void;
 };
 
@@ -39,7 +38,6 @@ export function FatalOccurrencesModal({
   onPage,
   loading = false,
   canEditAudits = false,
-  canEditSupervisorRemarks = false,
   onClose,
 }: FatalOccurrencesModalProps) {
   const open = Boolean(fatalName);
@@ -124,7 +122,6 @@ export function FatalOccurrencesModal({
       <AuditDetailModal
         auditId={viewAuditId}
         canEditAudits={canEditAudits}
-        canEditSupervisorRemarks={canEditSupervisorRemarks}
         elevated
         onClose={() => setViewAuditId(null)}
       />

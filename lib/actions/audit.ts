@@ -90,8 +90,6 @@ import { prisma } from "@/lib/prisma";
 import {
 	canDeleteAuditLogs,
 	canEditFeedbackFully,
-	alwaysShowsSupervisorRemarks,
-	canEditSupervisorRemarks,
 	canExportAuditData,
 	isSuperAdmin,
 	type SessionRole,
@@ -111,7 +109,6 @@ import {
 	saveAuditSubmissionSchema,
 	updateAuditFeedbackSchema,
 	updateAuditSubmissionSchema,
-	updateSupervisorRemarksSchema,
 } from "@/lib/validation/audit";
 import { revalidatePath } from "next/cache";
 
@@ -639,7 +636,6 @@ export async function getAuditDetail(id: string) {
     createdAt: submission.createdAt.toISOString(),
     isHistory: submission.isHistory,
     auditVersion: submission.auditVersion,
-    showSupervisorRemarks: alwaysShowsSupervisorRemarks(session.user.role),
     historyOwnerId: submission.historyOwnerId ?? null,
   } satisfies AuditDetail;
 }
@@ -1293,56 +1289,6 @@ export async function updateAuditFeedback(
     feedbackStatusAt: feedback.feedbackStatusAt || null,
     feedbackStatus: feedback.feedbackStatus,
   };
-}
-
-export async function updateSupervisorRemarks(
-  id: string,
-  supervisorRemarks: string
-) {
-  const session = await requireAuth();
-  if (!canEditSupervisorRemarks(session.user.role)) {
-    return permissionError();
-  }
-
-  const rateLimited = assertWriteRateLimit(
-    session.user.id,
-    "audit:supervisor-remarks",
-    { limit: 30, windowMs: 60_000 }
-  );
-  if (rateLimited) return rateLimited;
-
-  const parsed = updateSupervisorRemarksSchema.safeParse({
-    id,
-    supervisorRemarks,
-  });
-  if (!parsed.success) {
-    return validationError(
-      parsed.error.issues[0]?.message ?? "Invalid remarks."
-    );
-  }
-
-  const historyError = await assertAuditNotHistory(parsed.data.id);
-  if (historyError) {
-    return validationError(historyError);
-  }
-
-  const updated = await prisma.auditSubmission.updateMany({
-    where: await scopedAuditByIdWhere(session, parsed.data.id),
-    data: { supervisorRemarks: parsed.data.supervisorRemarks },
-  });
-
-  if (updated.count === 0) {
-    return { error: "Audit not found." };
-  }
-
-  revalidatePath("/audit-logs");
-
-  invalidateAuditCaches(session.user.id, {
-    type: "audit:updated",
-    auditId: parsed.data.id,
-  });
-
-  return { success: true as const };
 }
 
 export async function deleteAuditSubmissions(ids: string[]) {

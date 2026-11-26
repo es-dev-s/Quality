@@ -398,6 +398,10 @@ model AuditSubmission {
   disputeTlRemark     Json?                @map("dispute_tl_remark")
   disputeTlRemarkAt   DateTime?            @map("dispute_tl_remark_at")
   disputeTlRemarkById String?              @map("dispute_tl_remark_by_id")
+  /// Quality Manager remark following the supervisor remark (independent of the decision).
+  disputeQmRemark     String               @default("") @map("dispute_qm_remark")
+  disputeQmRemarkAt   DateTime?            @map("dispute_qm_remark_at")
+  disputeQmRemarkById String?              @map("dispute_qm_remark_by_id")
   disputeReviewedAt   DateTime?            @map("dispute_reviewed_at")
   disputeReviewedById String?              @map("dispute_reviewed_by_id")
   /// UPHELD | REVISED

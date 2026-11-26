@@ -93,7 +93,6 @@ export type AuditDetail = {
   /** Current audit version; above 1 means an original version is preserved. */
   auditVersion?: number;
   /** Show the supervisor remarks box even when empty (read-only viewers such as QMs). */
-  showSupervisorRemarks?: boolean;
   historyOwnerId?: string | null;
 };
 

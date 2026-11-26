@@ -11,7 +11,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown, FileText, MessageSquare, Pencil, Phone, ShieldAlert, X } from "lucide-react";
 import { DisputePanel } from "@/components/audit-logs/dispute-panel";
 import { getAuditRevisionSnapshot, type AuditRevisionSnapshot } from "@/lib/actions/dispute";
-import { getAuditDetail, updateSupervisorRemarks } from "@/lib/actions/audit";
+import { getAuditDetail } from "@/lib/actions/audit";
 import {
   parseReferenceItems,
   ReferenceAttachmentView,
@@ -25,13 +25,12 @@ import { selectionToneClass } from "@/lib/audit/selection-tone";
 import { formatFeedbackDateTime } from "@/lib/audit/feedback-datetime";
 import { FEEDBACK_SEVERITY_LABEL } from "@/lib/audit/feedback";
 import { useStaleRequestGuard } from "@/lib/hooks/use-stale-request-guard";
-import { LoadingIndicator, LoadingZone } from "@/components/primitives/loading-zone";
+import { LoadingIndicator } from "@/components/primitives/loading-zone";
 import { cn } from "@/lib/utils";
 
 type AuditDetailModalProps = {
   auditId: string | null;
   canEditAudits?: boolean;
-  canEditSupervisorRemarks?: boolean;
   onClose: () => void;
   /** Render above another open modal (e.g. fatal occurrences list) */
   elevated?: boolean;
@@ -77,7 +76,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export function AuditDetailModal({
   auditId,
   canEditAudits = false,
-  canEditSupervisorRemarks = false,
   onClose,
   elevated = false,
 }: AuditDetailModalProps) {
@@ -92,10 +90,7 @@ export function AuditDetailModal({
   const original = originalSnap && originalSnap.auditId === latest?.id ? originalSnap : null;
   const viewOriginal = !!latest && viewingOriginalId === latest.id;
   const [error, setError] = useState<string | null>(null);
-  const [remarksDraft, setRemarksDraft] = useState("");
-  const [remarksMessage, setRemarksMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const [remarksPending, startRemarks] = useTransition();
   const { beginRequest } = useStaleRequestGuard();
 
   useEffect(() => {
@@ -115,8 +110,6 @@ export function AuditDetailModal({
     if (!auditId) {
       setDetail(null);
       setError(null);
-      setRemarksDraft("");
-      setRemarksMessage(null);
       return;
     }
 
@@ -131,7 +124,6 @@ export function AuditDetailModal({
           return;
         }
         setDetail(data);
-        setRemarksDraft(data.supervisorRemarks ?? "");
         setError(null);
       } catch {
         if (request.isStale()) return;
@@ -190,20 +182,6 @@ export function AuditDetailModal({
     () => (detail ? groupRowsByCategory(detail.rows) : new Map()),
     [detail]
   );
-
-  function saveRemarks() {
-    if (!latest) return;
-    startRemarks(async () => {
-      setRemarksMessage(null);
-      const result = await updateSupervisorRemarks(latest.id, remarksDraft);
-      if ("error" in result && result.error) {
-        setRemarksMessage(result.error);
-        return;
-      }
-      setDetail({ ...latest, supervisorRemarks: remarksDraft });
-      setRemarksMessage("Remarks saved.");
-    });
-  }
 
   if (!auditId || !mounted) return null;
 
@@ -270,7 +248,6 @@ export function AuditDetailModal({
           )}
 
           {detail && (
-            <LoadingZone loading={remarksPending} label="Saving remarks…">
             <div className="adi-content">
 
               {detail.isHistory ? (
@@ -306,8 +283,7 @@ export function AuditDetailModal({
               {viewOriginal && original ? (
                 <div className="adi-history-banner" role="status">
                   Viewing the original audit as first scored (read-only). Revised by{" "}
-                  {original.approvedByName} on {formatDateTime(original.createdAt)}:{" "}
-                  {original.rationale}
+                  {original.approvedByName} on {formatDateTime(original.createdAt)}.
                 </div>
               ) : null}
 
@@ -416,7 +392,7 @@ export function AuditDetailModal({
                   );
                 })() : null}
 
-                {detail.response ? (
+                {detail.response && (!hasOriginal || viewOriginal) ? (
                   <div className="adi-reference">
                     <span className="adi-field__label">Response</span>
                     <p className="adi-reference__text">{detail.response}</p>
@@ -454,52 +430,10 @@ export function AuditDetailModal({
                 ) : null}
               </section>
 
-              <DisputePanel auditId={detail.id} isHistory={detail.isHistory} />
-
-              {/* ── Supervisor remarks (full-width) ───────────────── */}
-              {(canEditSupervisorRemarks || detail.showSupervisorRemarks || detail.supervisorRemarks.trim()) && (
-                <section className="adi-section adi-section--remarks">
-                  <h3 className="adi-section__title">Supervisor remarks</h3>
-                  {canEditSupervisorRemarks && !detail.isHistory ? (
-                    <>
-                      <textarea
-                        className="adi-remarks-input"
-                        rows={3}
-                        value={remarksDraft}
-                        onChange={(e) => setRemarksDraft(e.target.value)}
-                        placeholder="Add remarks for this audit…"
-                      />
-                      <div className="adi-remarks-actions">
-                        <button
-                          type="button"
-                          className="ui-btn ui-btn--primary ui-btn--sm"
-                          disabled={remarksPending}
-                          onClick={saveRemarks}
-                        >
-                          {remarksPending ? "Saving…" : "Save remarks"}
-                        </button>
-                        {remarksMessage ? (
-                          <span className={cn(
-                            "adi-remarks-msg",
-                            !remarksMessage.toLowerCase().includes("error") && "adi-remarks-msg--ok"
-                          )}>
-                            {remarksMessage}
-                          </span>
-                        ) : null}
-                      </div>
-                    </>
-                  ) : (
-                    <textarea
-                      className="adi-remarks-input"
-                      rows={3}
-                      value={detail.supervisorRemarks.trim()}
-                      readOnly
-                      aria-readonly="true"
-                      placeholder="No supervisor remarks yet."
-                    />
-                  )}
-                </section>
-              )}
+              {/* Dispute remarks (supervisor + QM) belong to the original audit only (QA-35). */}
+              {!hasOriginal || viewOriginal ? (
+                <DisputePanel auditId={detail.id} isHistory={detail.isHistory} />
+              ) : null}
 
               {/* ── Bottom: Category scores + Parameter table ─────── */}
               {(Object.keys(detail.catScores).length > 0 || detail.rows.length > 0) && (
@@ -594,7 +528,6 @@ export function AuditDetailModal({
               )}
 
             </div>
-            </LoadingZone>
           )}
         </div>
       </div>

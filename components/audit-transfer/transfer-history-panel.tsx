@@ -250,7 +250,6 @@ export function TransferHistoryPanel({
       <AuditDetailModal
         auditId={viewAuditId}
         canEditAudits={false}
-        canEditSupervisorRemarks={false}
         onClose={() => setViewAuditId(null)}
       />
 

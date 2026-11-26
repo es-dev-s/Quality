@@ -215,7 +215,7 @@ export function DisputePanel({ auditId, isHistory = false, onChanged }: DisputeP
         {!isHistory && viewer.canReview ? (
           <div className="dispute-panel__form">
             <span className="dispute-panel__label">
-              Quality Manager review (required within 24 hours)
+              Add remark (required within 24 hours)
             </span>
             <textarea
               className="adi-remarks-input"
