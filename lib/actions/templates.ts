@@ -447,8 +447,8 @@ export async function canManageTemplates(): Promise<boolean> {
  * AUTH AUDIT — lib/actions/ using requireAuth() on mutating operations (review separately):
  * - templates.ts: saveTemplate, deleteTemplate, rememberActiveTemplate, setActiveTemplateId
  *   (each checks canWriteAuditTemplates or userCanAccessTemplate after requireAuth)
- * - audit.ts: updateSupervisorRemarks, deleteAuditSubmissions
- *   (canEditSupervisorRemarks / isSuperAdmin checked after requireAuth)
+ * - audit.ts: deleteAuditSubmissions
+ *   (canDeleteAuditLogs checked after requireAuth)
  * - interaction-config.ts: saveInteractionConfig
  *   (canManageSettings checked after requireAuth)
  * - agents.ts: createAgent, updateAgent, deleteAgent, bulkDeleteAgents, setAgentsActive

@@ -90,7 +90,6 @@ type AuditLogsTableProps = {
   memberFeedbackMode?: MemberFeedbackMode;
   canEditFeedbackFully?: boolean;
   canEditFeedbackDate?: boolean;
-  canEditSupervisorRemarks?: boolean;
   canEditAudits?: boolean;
   canDeleteAudits?: boolean;
   canCreateAudit?: boolean;
@@ -177,7 +176,6 @@ export function AuditLogsTable({
   feedbackStatusRole = null,
   memberFeedbackMode,
   canEditFeedbackFully = false,
-  canEditSupervisorRemarks = false,
   canEditAudits = false,
   canDeleteAudits = false,
   canCreateAudit = false,
@@ -1301,7 +1299,6 @@ export function AuditLogsTable({
       <AuditDetailModal
         auditId={viewId}
         canEditAudits={canEditAudits}
-        canEditSupervisorRemarks={canEditSupervisorRemarks}
         onClose={() => setViewId(null)}
       />
 

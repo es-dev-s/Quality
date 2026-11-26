@@ -11,7 +11,6 @@ import {
 	canEditAuditSubmissions,
 	canEditFeedbackDate,
 	canEditFeedbackFully,
-	canEditSupervisorRemarks,
 	canExportAuditData,
 	canWriteAuditForm,
 	isSuperAdmin,
@@ -38,7 +37,6 @@ async function AuditLogsContent({ searchParams }: { searchParams: SearchParams }
       memberFeedbackMode={memberFeedbackMode}
       canEditFeedbackFully={canEditFeedbackFully(session.user.role)}
       canEditFeedbackDate={canEditFeedbackDate(session.user.role)}
-      canEditSupervisorRemarks={canEditSupervisorRemarks(session.user.role)}
       canEditAudits={canEditAuditSubmissions(session.user.role)}
       canDeleteAudits={canDeleteAuditLogs(session.user.role)}
       canCreateAudit={canWriteAuditForm(session.user.role)}

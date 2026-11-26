@@ -65,7 +65,6 @@ const AUDIT_SERVER_ACTIONS = [
   "getAuditDetail",
   "getAuditForEdit",
   "updateAuditFeedback",
-  "updateSupervisorRemarks",
   "deleteAuditSubmissions",
   "getDashboardAuditData",
   "getReportData",

@@ -61,6 +61,11 @@ const upholdSchema = z.object({
   note: z.string().trim().min(L.rationale.min, `Add a rationale (${L.rationale.min}+ characters).`).max(L.rationale.max),
 });
 
+const qmRemarkSchema = z.object({
+  id: cuidSchema,
+  remark: z.string().trim().min(L.remarkField.min, "A remark is required.").max(L.remarkField.max),
+});
+
 const idSchema = z.object({ id: cuidSchema });
 
 const AUDIT_SELECT = {
@@ -142,6 +147,9 @@ export async function raiseAuditDispute(id: string, reason: string) {
       disputeRaisedById: session.user.id,
       disputeTlRemarkAt: null,
       disputeTlRemarkById: null,
+      disputeQmRemark: "",
+      disputeQmRemarkAt: null,
+      disputeQmRemarkById: null,
       disputeReviewedAt: null,
       disputeReviewedById: null,
       disputeOutcome: null,
@@ -227,6 +235,46 @@ export async function submitDisputeRemark(input: {
     submittedById: session.user.id,
   }).catch((e) => console.error("dispatchDisputeRemarkSubmitted failed:", e));
 
+  return { success: true as const };
+}
+
+/** Quality Manager adds a remark after the supervisor remark (editable during review). */
+export async function submitQmDisputeRemark(input: { id: string; remark: string }) {
+  const session = await requireAuth();
+  const role = session.user.role;
+  if (role.slug !== SYSTEM_ROLE_SLUGS.QUALITY_MANAGER && !isSuperAdmin(role)) {
+    return permissionError();
+  }
+  const limited = assertWriteRateLimit(session.user.id, "audit:dispute-qm-remark", {
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
+  const parsed = qmRemarkSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid remark." };
+  }
+
+  const audit = await prisma.auditSubmission.findFirst({
+    where: await scopedAuditByIdWhere(session, parsed.data.id),
+    select: AUDIT_SELECT,
+  });
+  if (!audit) return { error: "Audit not found." };
+
+  const updated = await prisma.auditSubmission.updateMany({
+    where: { id: audit.id, disputeStage: "AWAITING_QM_REVIEW" },
+    data: {
+      disputeQmRemark: parsed.data.remark,
+      disputeQmRemarkAt: new Date(),
+      disputeQmRemarkById: session.user.id,
+    },
+  });
+  if (updated.count === 0) {
+    return { error: "Remarks can only be added while the dispute awaits Quality Manager review." };
+  }
+
+  refresh(session.user.id, audit.id);
   return { success: true as const };
 }
 
@@ -361,6 +409,8 @@ export type DisputeRevisionView = {
 export type DisputeViewer = {
   /** Team lead can submit the structured remark now. */
   canRemark: boolean;
+  /** Quality Manager can add/edit their remark now. */
+  canQmRemark: boolean;
   /** Quality Manager can review (uphold or revise) now. */
   canReview: boolean;
   /** Agent can acknowledge the resolution now. */
@@ -375,6 +425,8 @@ export type DisputeDetail = {
   raisedAt: string | null;
   tlRemark: DisputeTlRemark | null;
   tlRemarkAt: string | null;
+  qmRemark: string;
+  qmRemarkAt: string | null;
   outcome: string | null;
   outcomeNote: string;
   reviewedAt: string | null;
@@ -403,6 +455,8 @@ export async function getDisputeDetail(id: string): Promise<DisputeDetail | null
       disputeRaisedAt: true,
       disputeTlRemark: true,
       disputeTlRemarkAt: true,
+      disputeQmRemark: true,
+      disputeQmRemarkAt: true,
       disputeOutcome: true,
       disputeOutcomeNote: true,
       disputeReviewedAt: true,
@@ -453,6 +507,9 @@ export async function getDisputeDetail(id: string): Promise<DisputeDetail | null
     viewer: {
       canRemark:
         stage === "AWAITING_TL_REMARK" && (admin || isSupervisorTierRole(role.slug)),
+      canQmRemark:
+        stage === "AWAITING_QM_REVIEW" &&
+        (admin || role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER),
       canReview:
         stage === "AWAITING_QM_REVIEW" &&
         (admin || role.slug === SYSTEM_ROLE_SLUGS.QUALITY_MANAGER),
@@ -469,6 +526,8 @@ export async function getDisputeDetail(id: string): Promise<DisputeDetail | null
     raisedAt: iso(row.disputeRaisedAt),
     tlRemark: parseTlRemark(row.disputeTlRemark),
     tlRemarkAt: iso(row.disputeTlRemarkAt),
+    qmRemark: row.disputeQmRemark,
+    qmRemarkAt: iso(row.disputeQmRemarkAt),
     outcome: row.disputeOutcome,
     outcomeNote: row.disputeOutcomeNote,
     reviewedAt: iso(row.disputeReviewedAt),

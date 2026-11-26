@@ -212,10 +212,8 @@ function formatWhen(iso: string): string {
 
 export function NotificationBell({
   canEditAudits = false,
-  canEditSupervisorRemarks = false,
 }: {
   canEditAudits?: boolean;
-  canEditSupervisorRemarks?: boolean;
 }) {
   const { items, unreadCount, loading, markRead, markAllRead } =
     useNotifications();
@@ -369,7 +367,6 @@ export function NotificationBell({
       <AuditDetailModal
         auditId={viewAuditId}
         canEditAudits={canEditAudits}
-        canEditSupervisorRemarks={canEditSupervisorRemarks}
         elevated
         onClose={() => setViewAuditId(null)}
       />
