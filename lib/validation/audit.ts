@@ -97,6 +97,11 @@ export const updateAuditSubmissionSchema = z.object({
   templateId: z.string().trim().min(1),
 });
 
+export const updateSupervisorRemarksSchema = z.object({
+  id: cuidSchema,
+  supervisorRemarks: z.string().trim().max(4000),
+});
+
 export const updateAuditFeedbackSchema = z.object({
   id: cuidSchema,
   feedbackSecurity: z.enum(FEEDBACK_SECURITY_OPTIONS),

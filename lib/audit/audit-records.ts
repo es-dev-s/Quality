@@ -92,8 +92,11 @@ export type AuditDetail = {
   isHistory: boolean;
   /** Current audit version; above 1 means an original version is preserved. */
   auditVersion?: number;
-  /** Show the supervisor remarks box even when empty (read-only viewers such as QMs). */
   historyOwnerId?: string | null;
+  /** True once the audit has ever been disputed (dispute remarks live in the dispute panel). */
+  hasDispute?: boolean;
+  /** Viewer may add optional supervisor remarks (non-disputed, current audits only). */
+  canEditSupervisorRemarks?: boolean;
 };
 
 export type AuditEditPayload = {

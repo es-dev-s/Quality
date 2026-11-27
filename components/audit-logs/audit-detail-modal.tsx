@@ -11,7 +11,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown, FileText, MessageSquare, Pencil, Phone, ShieldAlert, X } from "lucide-react";
 import { DisputePanel } from "@/components/audit-logs/dispute-panel";
 import { getAuditRevisionSnapshot, type AuditRevisionSnapshot } from "@/lib/actions/dispute";
-import { getAuditDetail } from "@/lib/actions/audit";
+import { getAuditDetail, updateSupervisorRemarks } from "@/lib/actions/audit";
 import {
   parseReferenceItems,
   ReferenceAttachmentView,
@@ -91,6 +91,9 @@ export function AuditDetailModal({
   const viewOriginal = !!latest && viewingOriginalId === latest.id;
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [remarksDraft, setRemarksDraft] = useState("");
+  const [remarksMessage, setRemarksMessage] = useState<string | null>(null);
+  const [remarksPending, startRemarks] = useTransition();
   const { beginRequest } = useStaleRequestGuard();
 
   useEffect(() => {
@@ -110,6 +113,8 @@ export function AuditDetailModal({
     if (!auditId) {
       setDetail(null);
       setError(null);
+      setRemarksDraft("");
+      setRemarksMessage(null);
       return;
     }
 
@@ -124,6 +129,8 @@ export function AuditDetailModal({
           return;
         }
         setDetail(data);
+        setRemarksDraft(data?.supervisorRemarks ?? "");
+        setRemarksMessage(null);
         setError(null);
       } catch {
         if (request.isStale()) return;
@@ -182,6 +189,20 @@ export function AuditDetailModal({
     () => (detail ? groupRowsByCategory(detail.rows) : new Map()),
     [detail]
   );
+
+  function saveRemarks() {
+    if (!latest) return;
+    startRemarks(async () => {
+      setRemarksMessage(null);
+      const result = await updateSupervisorRemarks(latest.id, remarksDraft);
+      if ("error" in result && result.error) {
+        setRemarksMessage(result.error);
+        return;
+      }
+      setDetail({ ...latest, supervisorRemarks: remarksDraft.trim() });
+      setRemarksMessage("Remarks saved.");
+    });
+  }
 
   if (!auditId || !mounted) return null;
 
@@ -433,6 +454,46 @@ export function AuditDetailModal({
               {/* Dispute remarks (supervisor + QM) belong to the original audit only (QA-35). */}
               {!hasOriginal || viewOriginal ? (
                 <DisputePanel auditId={detail.id} isHistory={detail.isHistory} />
+              ) : null}
+
+              {/* ── Supervisor remarks: optional, only on audits with no dispute ── */}
+              {!detail.hasDispute &&
+              (detail.canEditSupervisorRemarks || detail.supervisorRemarks.trim()) ? (
+                <section className="adi-section adi-section--remarks">
+                  <h3 className="adi-section__title">Supervisor remarks (optional)</h3>
+                  {detail.canEditSupervisorRemarks ? (
+                    <>
+                      <textarea
+                        className="adi-remarks-input"
+                        rows={3}
+                        maxLength={4000}
+                        value={remarksDraft}
+                        onChange={(e) => setRemarksDraft(e.target.value)}
+                        placeholder="Add remarks for this audit…"
+                      />
+                      <div className="adi-remarks-actions">
+                        <button
+                          type="button"
+                          className="ui-btn ui-btn--primary ui-btn--sm"
+                          disabled={remarksPending}
+                          onClick={saveRemarks}
+                        >
+                          {remarksPending ? "Saving…" : "Save remarks"}
+                        </button>
+                        {remarksMessage ? (
+                          <span className={cn(
+                            "adi-remarks-msg",
+                            remarksMessage === "Remarks saved." && "adi-remarks-msg--ok"
+                          )}>
+                            {remarksMessage}
+                          </span>
+                        ) : null}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="adi-remarks-text">{detail.supervisorRemarks.trim()}</p>
+                  )}
+                </section>
               ) : null}
 
               {/* ── Bottom: Category scores + Parameter table ─────── */}
