@@ -252,6 +252,13 @@ export function canEditFeedbackDate(role?: SessionRole | null): boolean {
   return canEditFeedbackFully(role);
 }
 
+/** Supervisor-tier remarks on audits that were never disputed (optional). */
+export function canEditSupervisorRemarks(role?: SessionRole | null): boolean {
+  if (!role) return false;
+  if (isSuperAdmin(role)) return true;
+  return isSupervisorTierRole(role.slug);
+}
+
 /** CSV export — requires audit logs and reports read access. */
 export function canExportAuditData(role?: SessionRole | null): boolean {
   if (!role) return false;
